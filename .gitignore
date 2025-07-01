@@ -1,0 +1,20 @@
+# common cache files
+.cache/
+node_modules/
+dist/
+DS_Store
+.DS_Store
+
+# Dev tools and environment
+.vscode/
+.idea/
+.env
+.env.local
+*.formatted
+
+# Logs
+logs
+npm-debug.log*
+
+# User data
+data/

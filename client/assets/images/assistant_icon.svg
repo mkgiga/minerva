@@ -1,0 +1,18 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="cutouts" x="0" y="0" width="64" height="64">
+      <rect x="0" y="0" width="64" height="64" fill="white"/>
+      <!-- Eyes moved up by 3 units -->
+      <circle cx="24" cy="31" r="4" fill="black"/>
+      <circle cx="40" cy="31" r="4" fill="black"/>
+      <!-- Mouth moved up by 3 units, height 6 with rx=3 (half height) -->
+      <rect x="26" y="36" width="12" height="6" rx="3" ry="3" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- Robot head with cutout eyes and mouth -->
+  <rect x="16" y="20" width="32" height="28" rx="4" ry="4" fill="#3c4043" mask="url(#cutouts)"/>
+
+  <!-- Antenna block -->
+  <rect x="28" y="10" width="8" height="8" rx="2" ry="2" fill="#3c4043"/>
+</svg>

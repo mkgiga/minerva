@@ -1,0 +1,16 @@
+server:
+    host: 0.0.0.0
+    port: 8077
+    whitelist:
+        - localhost
+        - 127.0.0.1
+        - 192.168.*
+    cors:
+        enabled: true
+        allow_origin: "*"
+        allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
+        allow_headers: "Content-Type, Authorization"
+        credentials: true
+data:
+    data_dir: ./data
+    static_dir: ./client

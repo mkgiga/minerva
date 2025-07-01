@@ -1,0 +1,28 @@
+<svg viewBox="16 14 32 42" xmlns="http://www.w3.org/2000/svg">
+  <!-- The coordinate system is now relative to the new viewBox -->
+  <defs>
+    <mask id="lightbulb_cutouts">
+      <rect x="16" y="14" width="32" height="42" fill="white"/>
+      <!-- Internal filament cutout -->
+      <path d="M28 34 C28 30, 36 30, 36 34" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>
+      <!-- Screw thread cutouts -->
+      <rect x="22" y="45" width="20" height="2.5" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- The main body of the lightbulb -->
+  <path 
+    d="M 32,14 
+       C 22,14 16,22 16,32 
+       C 16,42 22,44 22,44 
+       L 22,54 
+       C 22,55.1 22.9,56 24,56 
+       L 40,56 
+       C 41.1,56 42,55.1 42,54 
+       L 42,44 
+       C 42,44 48,42 48,32 
+       C 48,22 42,14 32,14 Z" 
+    fill="#3c4043" 
+    mask="url(#lightbulb_cutouts)"
+  />
+</svg>

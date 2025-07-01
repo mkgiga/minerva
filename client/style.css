@@ -1,0 +1,456 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+
+:root {
+    /* Color Palette */
+    --bg-0: #202124; /* Deepest background */
+    --bg-1: #282a2e; /* Main panels, sidebars */
+    --bg-2: #323639; /* Hover, active elements */
+    --bg-3: #3c4043; /* Borders, dividers */
+
+    --text-primary: #e8eaed; /* Main text */
+    --text-secondary: #bdc1c6; /* Lighter text, labels */
+    --text-disabled: #9aa0a6; /* Disabled/placeholder text */
+
+    --accent-primary: #8ab4f8; /* Primary action color (blue) */
+    --accent-primary-faded: rgba(138, 180, 248, 0.3); /* For focus rings */
+    --accent-good: #69f0ae; /* Success color (green) */
+    --accent-warn: #ffd54f; /* Warning color (yellow) */
+    --accent-danger: #f28b82; /* Delete/error color (red) */
+    --accent-danger-hover: #f6a9a2;
+
+    /* Sizing & Spacing */
+    --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif;
+    --font-size-sm: 0.875rem; /* 14px */
+    --font-size-md: 1rem; /* 16px */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+
+    /* Transitions */
+    --transition-fast: all 0.15s ease-in-out;
+}
+
+/* --- Global Resets & Defaults --- */
+* {
+    box-sizing: border-box;
+    font-size: 16px; /* Base font size */
+    line-height: 1.5;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    height: 100%;
+    font-family: var(--font-family);
+    background-color: var(--bg-0);
+    color: var(--text-primary);
+    font-size: var(--font-size-md);
+    overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+}
+
+h2 {
+    font-size: 1.25rem;
+}
+h3 {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+}
+
+/* --- Custom Scrollbar --- */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-0);
+}
+::-webkit-scrollbar-thumb {
+    background-color: var(--bg-3);
+    border-radius: 5px;
+    border: 2px solid var(--bg-0);
+}
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--bg-2);
+}
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* --- Main App Layout --- */
+minerva-app {
+    display: block;
+    position: relative;
+    height: 100svh; /* Use small viewport height to avoid mobile browser UI clipping */
+    width: 100vw;
+}
+
+.icon-sidebar {
+    width: 50px;
+    background-color: var(--bg-0);
+    border-right: 1px solid var(--bg-3);
+    display: flex;
+    flex-direction: column-reverse; /* Icons from bottom up */
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+.icon-sidebar .nav-button {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-md);
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+}
+.icon-sidebar .nav-button:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-2);
+}
+.icon-sidebar .nav-button.active {
+    color: var(--accent-primary);
+}
+
+.main-view-wrapper {
+    flex-grow: 1;
+    display: grid;
+    height: 100%;
+    overflow: hidden;
+    /* Default to two panels, left and main */
+    grid-template-columns: 320px 1fr;
+}
+
+.system-defined:not(.used-partial-item) {
+    cursor: not-allowed;
+
+    /* It's 2025 - Modern browsers support nested selectors now. */
+    .item-name {
+        opacity: 0.25;
+    }
+}
+
+.system-defined:not(.used-partial-item):hover {
+    background-color: initial;
+}
+
+/* View-specific layouts */
+.main-view-wrapper.layout-three-panel {
+    grid-template-columns: 320px 1fr 280px;
+}
+.main-view-wrapper.layout-main-only {
+    grid-template-columns: 1fr;
+}
+
+/* --- Main View Panels --- */
+.panel-left,
+.panel-main,
+.panel-right {
+    background-color: var(--bg-1);
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.panel-left,
+.panel-right {
+    border-right: 1px solid var(--bg-3);
+}
+.panel-main {
+    background-color: var(--bg-0);
+}
+
+/* --- Global Overlay Elements --- */
+#notification-container {
+    position: fixed;
+    bottom: var(--spacing-md);
+    right: var(--spacing-md);
+    display: flex;
+    flex-direction: column-reverse; /* New notifications appear at the bottom */
+    gap: var(--spacing-md);
+    z-index: 2000;
+    max-width: 380px;
+    width: 100%;
+    pointer-events: none; /* Let clicks pass through the container to the UI below */
+}
+
+/* --- Component-specific Styles --- */
+.view-container {
+    padding: var(--spacing-lg);
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Character Editor & Generic Forms */
+.form-group {
+    margin-bottom: var(--spacing-lg);
+}
+.form-group label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: var(--bg-1);
+    border: 1px solid var(--bg-3);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: var(--font-size-md);
+    /* NO global transition */
+}
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-primary-faded, rgba(138, 180, 248, 0.3));
+    transition: var(--transition-fast); /* Transition only on focus */
+}
+.form-group textarea {
+    min-height: 250px;
+    resize: vertical;
+}
+
+/* --- Custom Form Elements --- */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--bg-2);
+    border-radius: 3px;
+    outline: none;
+    padding: 0;
+    margin: 0.6rem 0;
+    transition: var(--transition-fast);
+}
+input[type="range"]:hover {
+    background: var(--bg-3);
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--accent-primary);
+    cursor: pointer;
+    border-radius: 50%;
+    border: 2px solid var(--bg-0);
+}
+input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--accent-primary);
+    cursor: pointer;
+    border-radius: 50%;
+    border: 2px solid var(--bg-0);
+}
+input[type="range"]:focus {
+    box-shadow: 0 0 0 2px var(--accent-primary-faded);
+}
+
+input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: var(--bg-1);
+    margin: 0;
+    font: inherit;
+    color: currentColor;
+    width: 1.25em;
+    height: 1.25em;
+    border: 1px solid var(--bg-3);
+    border-radius: var(--radius-sm);
+    transform: translateY(-0.075em);
+    display: grid;
+    place-content: center;
+    cursor: pointer;
+}
+input[type="checkbox"]::before {
+    content: "";
+    width: 0.75em;
+    height: 0.75em;
+    transform: scale(0);
+    transition: 120ms transform ease-in-out;
+    box-shadow: inset 1em 1em var(--accent-primary);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+input[type="checkbox"]:checked::before {
+    transform: scale(1);
+}
+input[type="checkbox"]:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-primary-faded);
+}
+
+/* Generic Button Styles */
+.button-primary {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    background-color: var(--accent-primary);
+    color: var(--bg-0);
+    transition: var(--transition-fast);
+}
+.button-primary:hover {
+    opacity: 0.9;
+}
+
+.button-secondary {
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    background-color: var(--bg-2);
+    color: var(--text-primary);
+    border: 1px solid var(--bg-3);
+    transition: var(--transition-fast);
+}
+.button-secondary:hover {
+    background-color: var(--bg-3);
+}
+
+.button-danger {
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    background-color: var(--accent-danger);
+    color: var(--text-primary);
+    transition: var(--transition-fast);
+}
+.button-danger:hover {
+    opacity: 0.9;
+}
+
+
+/* Modal form layout for prompt partial editor */
+.modal-form-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.form-group-stretch {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+.form-group-stretch text-box {
+    flex-grow: 1;
+    min-height: 150px;
+}
+
+/* --- Mobile Support --- */
+@media (max-width: 768px) {
+    /* Move main nav bar to the bottom of the screen */
+    .app-layout-container {
+        flex-direction: column-reverse;
+    }
+
+    .icon-sidebar {
+        flex-direction: row-reverse;
+        justify-content: space-around;
+        width: 100%;
+        height: 55px; /* Taller for touch targets */
+        border-right: none;
+        border-top: 1px solid var(--bg-3);
+        padding: 0 var(--spacing-sm);
+        flex-shrink: 0;
+    }
+
+    /* Force all views into a single-column layout */
+    .main-view-wrapper {
+        grid-template-columns: 1fr !important;
+        overflow-y: auto; /* Allow the entire view area to scroll */
+    }
+
+    /* In a single-column layout, all panels need to be full-width */
+    .panel-left,
+    .panel-main,
+    .panel-right {
+        border-right: none;
+        border-bottom: 1px solid var(--bg-3);
+        height: auto; /* Allow panels to size to their content */
+    }
+
+    /* Reduce padding on mobile */
+    .view-container {
+        padding: var(--spacing-md);
+    }
+
+    /* Make chat messages wider and reduce avatar size */
+    .chat-message {
+        max-width: 95%;
+        gap: var(--spacing-sm);
+    }
+    .chat-message .avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    #chat-form .send-button {
+        width: 56px;
+        height: 100%;
+    }
+
+    /* Stack character editor header */
+    minerva-character-editor .editor-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-md);
+    }
+
+    /* Make modals take up more of the screen */
+    minerva-modal .modal-content,
+    main-chat-view .modal-content {
+        width: 95%;
+        height: auto;
+        max-height: 85vh;
+    }
+    main-chat-view .modal-content {
+        height: 80vh; /* Keep character picker modal tall */
+    }
+    minerva-modal .modal-body {
+        max-height: 60vh;
+    }
+
+    /* Move notifications above the new bottom nav bar */
+    #notification-container {
+        bottom: 65px; /* 55px bar height + 10px margin */
+        left: var(--spacing-sm);
+        right: var(--spacing-sm);
+        width: auto;
+        max-width: none;
+    }
+}

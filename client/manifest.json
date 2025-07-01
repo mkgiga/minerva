@@ -1,0 +1,26 @@
+{
+    "name": "Minerva",
+    "short_name": "Minerva",
+    "description": "A user-friendly GUI for roleplaying with Large Language Models.",
+    "start_url": "/",
+    "display": "standalone",
+    "display_override": [
+        "standalone",
+        "minimal-ui"
+    ],
+    "background_color": "#202124",
+    "theme_color": "#202124",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "/assets/images/minerva_icon_192.png",
+            "type": "image/png",
+            "sizes": "192x192"
+        },
+        {
+            "src": "/assets/images/minerva_icon_512.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}
