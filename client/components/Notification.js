@@ -9,7 +9,7 @@ class MinervaNotification extends BaseComponent {
         this.openHandler = null;
         this.timeoutId = null;
         this.type = 'info'; // Default type
-        this.render();
+        // Do NOT render here.
     }
 
     /**
@@ -30,6 +30,7 @@ class MinervaNotification extends BaseComponent {
     }
 
     connectedCallback() {
+        this.render(); // Render the component's content now that properties are set.
         
         this.shadowRoot.querySelector('.notification-box').addEventListener('click', this._onOpen.bind(this));
         this.shadowRoot.querySelector('.close-btn').addEventListener('click', this._onClose.bind(this));

@@ -7,6 +7,7 @@ import { BaseComponent } from '../../BaseComponent.js';
  * Child classes must implement the rendering and interaction logic.
  */
 export class BaseChatMode extends BaseComponent {
+    #isSending = false;
     constructor() {
         super();
         if (this.constructor === BaseChatMode) {
@@ -37,6 +38,9 @@ export class BaseChatMode extends BaseComponent {
         this.rendererType = data.rendererType;
         this.onInitialize();
     }
+    
+    get isSending() { return this.#isSending; }
+    set isSending(value) { this.#isSending = value; }
 
     /**
      * @abstract
@@ -96,18 +100,11 @@ export class BaseChatMode extends BaseComponent {
      * The mode should use this to perform targeted DOM updates.
      * @param {object} detail - Information about what changed.
      * @param {Array<string>} detail.changed - A list of top-level state properties that were updated (e.g., ['selectedChat', 'allCharacters']).
+     * @param {object} detail.oldState - The state before the update.
+     * @param {object} detail.newState - The current state after the update.
      */
     onStateUpdate(detail) {
         throw new Error('Method "onStateUpdate()" must be implemented.');
-    }
-    
-    /**
-     * @abstract
-     * Called directly when the chat object itself is updated (e.g., after an edit).
-     * @param {object} newChatData - The new, complete chat object from the server.
-     */
-    onChatUpdate(newChatData) {
-        throw new Error('Method "onChatUpdate()" must be implemented.');
     }
 
     /**

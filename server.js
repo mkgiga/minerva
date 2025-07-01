@@ -675,14 +675,8 @@ function initHttp() {
     app.get('/api/chats/:id', async (req, res) => {
         try {
             const chatPath = path.join(CHATS_DIR, `${req.params.id}.json`);
-            let chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
-            
-            // Touch the last modified date when a chat is selected
-            chatData.lastModifiedAt = new Date().toISOString();
-            await fs.writeFile(chatPath, JSON.stringify(chatData, null, 2));
-
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
             const chat = new Chat(chatData);
-            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: chat.getSummary() });
             res.json(chat);
         } catch (e) { 
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
@@ -1300,6 +1294,19 @@ class Chat {
     }
     addMessage(msg) { this.messages.push({ id: uuidv4(), timestamp: new Date().toISOString(), ...msg }); }
     getSummary() {
+        const lastMessage = this.messages.at(-1);
+        let snippet = '';
+
+        if (lastMessage) {
+            // Take the first line of the content, up to 100 chars.
+            snippet = lastMessage.content.split('\n')[0].substring(0, 100);
+
+            // Provide a more descriptive snippet for special adventure mode choices.
+            if (lastMessage.content.startsWith('<choice>')) {
+                snippet = `Player chose: ${lastMessage.content.slice(8, -9)}`;
+            }
+        }
+        
         return { 
             id: this.id, 
             name: this.name, 
@@ -1307,7 +1314,8 @@ class Chat {
             createdAt: this.createdAt, 
             lastModifiedAt: this.lastModifiedAt,
             parentId: this.parentId, 
-            childChatIds: this.childChatIds 
+            childChatIds: this.childChatIds,
+            lastMessageSnippet: snippet,
         }; 
     }
 }

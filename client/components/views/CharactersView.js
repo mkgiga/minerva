@@ -14,6 +14,8 @@ class CharactersView extends BaseComponent {
 
         this.handleBackToCharacters = this.handleBackToCharacters.bind(this);
         this.handleResourceChange = this.handleResourceChange.bind(this);
+        this.handleItemAction = this.handleItemAction.bind(this);
+        this.handleListHeaderClick = this.handleListHeaderClick.bind(this);
         this._pendingSelectedId = null; // To hold an ID before data is fetched
     }
 
@@ -22,21 +24,20 @@ class CharactersView extends BaseComponent {
         
         this.itemList = this.shadowRoot.querySelector('item-list');
 
-        this.itemList.addEventListener('item-select', this.handleCharacterSelect.bind(this));
-        this.itemList.addEventListener('item-add', this.handleCharacterAdd.bind(this));
-        this.itemList.addEventListener('item-delete', this.handleCharacterDelete.bind(this));
-        this.itemList.addEventListener('item-set-user', this.handleSetUserPersona.bind(this));
+        this.itemList.addEventListener('item-action', this.handleItemAction);
+        this.shadowRoot.querySelector('#list-header').addEventListener('click', this.handleListHeaderClick);
         this.shadowRoot.querySelector('minerva-character-editor').addEventListener('character-save', this.handleCharacterSave.bind(this));
         this.shadowRoot.querySelector('#back-to-characters-btn').addEventListener('click', this.handleBackToCharacters);
         
         window.addEventListener('minerva-resource-changed', this.handleResourceChange);
 
-        this.addCustomActions();
         await this.fetchData();
     }
     
     disconnectedCallback() {
         window.removeEventListener('minerva-resource-changed', this.handleResourceChange);
+        this.itemList.removeEventListener('item-action', this.handleItemAction);
+        this.shadowRoot.querySelector('#list-header').removeEventListener('click', this.handleListHeaderClick);
     }
     
     handleResourceChange(event) {
@@ -82,15 +83,6 @@ class CharactersView extends BaseComponent {
         this.updateView();
     }
 
-    addCustomActions() {
-        this.itemList.addCustomAction({
-            icon: 'file_upload',
-            name: 'import-characters',
-            title: 'Import',
-            callback: this.handleCharacterImport.bind(this)
-        });
-    }
-
     async fetchData() {
         try {
             // Fetch characters first to populate the list
@@ -131,10 +123,36 @@ class CharactersView extends BaseComponent {
             this._pendingSelectedId = selectedCharacterId;
         }
     }
+    
+    handleListHeaderClick(event) {
+        const actionTarget = event.target.closest('[data-action]');
+        if (!actionTarget) return;
 
-    handleCharacterSelect(event) {
-        this.state.selectedCharacter = event.detail.item;
-        this.updateView();
+        const action = actionTarget.dataset.action;
+        if (action === 'add') {
+            this.handleCharacterAdd();
+        } else if (action === 'import') {
+            this.handleCharacterImport();
+        }
+    }
+
+    handleItemAction(event) {
+        const { id, action } = event.detail;
+        const character = this.state.characters.find(c => c.id === id);
+        if (!character) return;
+
+        switch (action) {
+            case 'select':
+                this.state.selectedCharacter = character;
+                this.updateView();
+                break;
+            case 'delete':
+                this.handleCharacterDelete(character);
+                break;
+            case 'set-user':
+                this.handleSetUserPersona(character);
+                break;
+        }
     }
 
     async handleCharacterAdd() {
@@ -148,9 +166,7 @@ class CharactersView extends BaseComponent {
         }
     }
     
-    async handleCharacterDelete(event) {
-        const { item } = event.detail;
-        
+    async handleCharacterDelete(item) {
         modal.confirm({
             title: 'Delete Character',
             content: `Are you sure you want to delete ${item.name}? This action cannot be undone.`,
@@ -201,8 +217,7 @@ class CharactersView extends BaseComponent {
         }
     }
 
-    async handleSetUserPersona(event) {
-        const { item } = event.detail;
+    async handleSetUserPersona(item) {
         const newPersonaId = this.state.userPersonaCharacterId === item.id ? null : item.id;
 
         try {
@@ -312,6 +327,41 @@ class CharactersView extends BaseComponent {
         });
     }
     
+    _renderCharacterList() {
+        if (!this.itemList) return;
+        
+        const charactersHtml = this.state.characters
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(char => {
+                const isSelected = this.state.selectedCharacter?.id === char.id;
+                const isUser = this.state.userPersonaCharacterId === char.id;
+                
+                const classes = [
+                    isSelected ? 'selected' : '',
+                    isUser ? 'user-persona' : ''
+                ].join(' ').trim();
+
+                const setUserTitle = isUser ? 'Unset as User Persona' : 'Set as User Persona';
+
+                return `
+                    <li data-id="${char.id}" class="${classes}">
+                        <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
+                        <div class="item-name">${char.name}</div>
+                        <div class="actions">
+                            <button class="icon-button user-btn ${isUser ? 'active' : ''}" data-action="set-user" title="${setUserTitle}">
+                                <span class="material-icons">account_circle</span>
+                            </button>
+                            <button class="icon-button delete-btn" data-action="delete" title="Delete">
+                                <span class="material-icons">delete</span>
+                            </button>
+                        </div>
+                    </li>
+                `;
+            }).join('');
+        
+        this.itemList.innerHTML = charactersHtml;
+    }
+
     updateView() {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
         const panelLeft = this.shadowRoot.querySelector('.panel-left');
@@ -334,11 +384,7 @@ class CharactersView extends BaseComponent {
             mobileHeader.style.display = 'none';
         }
 
-        if (this.itemList) {
-            this.itemList.items = this.state.characters;
-            this.itemList.selectedId = this.state.selectedCharacter?.id;
-            this.itemList.userId = this.state.userPersonaCharacterId;
-        }
+        this._renderCharacterList();
 
         const editor = this.shadowRoot.querySelector('minerva-character-editor');
         if (editor) {
@@ -350,13 +396,18 @@ class CharactersView extends BaseComponent {
         super._initShadow(`
             <div style="display: contents;">
                 <div class="panel-left">
-                    <item-list
-                        list-title="Characters"
-                        items-creatable
-                        items-removable
-                        items-user-selectable
-                        has-avatar>
-                    </item-list>
+                    <header id="list-header">
+                        <h3>Characters</h3>
+                        <div class="header-actions">
+                             <button class="icon-button" data-action="import" title="Import Characters">
+                                <span class="material-icons">file_upload</span>
+                            </button>
+                            <button class="icon-button" data-action="add" title="Add New Character">
+                                <span class="material-icons">add</span>
+                            </button>
+                        </div>
+                    </header>
+                    <item-list></item-list>
                 </div>
                 <div class="panel-main">
                     <header class="mobile-editor-header">
@@ -366,39 +417,84 @@ class CharactersView extends BaseComponent {
                     <minerva-character-editor></minerva-character-editor>
                 </div>
             </div>
-        `,
-        `
+        `, this.styles());
+    }
+
+    styles() {
+        return `
+            .panel-left {
+                flex-direction: column;
+            }
+            .panel-left header {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
+                flex-shrink: 0; gap: var(--spacing-sm);
+            }
+            .panel-left header h3 { margin: 0; }
+            .header-actions { display: flex; align-items: center; gap: var(--spacing-xs); }
+            .header-actions .icon-button {
+                background: none; border: none; color: var(--text-secondary); cursor: pointer;
+                transition: var(--transition-fast); display: flex; align-items: center;
+                justify-content: center; padding: var(--spacing-xs); border-radius: var(--radius-sm);
+            }
+            .header-actions .icon-button:hover {
+                color: var(--text-primary); background-color: var(--bg-2);
+            }
+
             .panel-main {
                 display: flex;
                 flex-direction: column;
                 padding: 0;
             }
             .mobile-editor-header {
-                display: none;
-                align-items: center;
-                padding: var(--spacing-sm) var(--spacing-md);
-                border-bottom: 1px solid var(--bg-3);
-                flex-shrink: 0;
-                gap: var(--spacing-md);
+                display: none; align-items: center; padding: var(--spacing-sm) var(--spacing-md);
+                border-bottom: 1px solid var(--bg-3); flex-shrink: 0; gap: var(--spacing-md);
             }
             .mobile-editor-header h2 {
-                margin: 0;
-                font-size: 1.1rem;
-                flex-grow: 1;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                margin: 0; font-size: 1.1rem; flex-grow: 1; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis;
             }
             #back-to-characters-btn {
                 background: none; border: none; color: var(--text-secondary);
                 cursor: pointer; padding: var(--spacing-xs);
             }
             #back-to-characters-btn:hover { color: var(--text-primary); }
-            minerva-character-editor {
-                flex-grow: 1;
-                overflow: hidden;
+            minerva-character-editor { flex-grow: 1; overflow: hidden; }
+
+            /* ItemList Styles */
+            item-list li {
+                position: relative; display: flex; align-items: center; padding: var(--spacing-sm) var(--spacing-md);
+                cursor: pointer; border-bottom: 1px solid var(--bg-3); transition: var(--transition-fast);
+                gap: var(--spacing-sm);
             }
-        `);
+            item-list li:hover { background-color: var(--bg-2); }
+            item-list li.selected { background-color: var(--accent-primary); color: var(--bg-0); }
+            item-list li.selected .item-name { font-weight: 600; }
+            item-list li.user-persona::before {
+                content: 'User'; position: absolute; top: 3px; left: -2px;
+                background-color: var(--accent-warn); color: var(--bg-0); font-size: 0.65rem;
+                font-weight: 600; padding: 2px 5px; border-radius: var(--radius-sm);
+                z-index: 1; line-height: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            }
+            item-list .avatar {
+                width: 40px; height: 40px; border-radius: var(--radius-sm); object-fit: cover;
+                flex-shrink: 0; background-color: var(--bg-3);
+            }
+            item-list .item-name {
+                font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1;
+            }
+            item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
+            item-list .icon-button {
+                background: none; border: none; color: var(--text-secondary); cursor: pointer;
+                transition: var(--transition-fast); display: flex; align-items: center;
+                justify-content: center; padding: var(--spacing-xs); border-radius: var(--radius-sm);
+            }
+            item-list li:not(.selected) .icon-button:hover { color: var(--text-primary); background-color: var(--bg-2); }
+            item-list li.selected .icon-button:hover { color: var(--bg-1); }
+            item-list .delete-btn:hover { color: var(--accent-danger); }
+            item-list .user-btn.active { color: var(--accent-warn); }
+            item-list li.selected .user-btn.active { color: var(--bg-0); }
+        `;
     }
 }
 customElements.define('characters-view', CharactersView);

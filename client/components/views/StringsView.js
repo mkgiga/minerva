@@ -13,6 +13,7 @@ class StringsView extends BaseComponent {
         this._pendingSelectedId = null;
         this.handleBackToStrings = this.handleBackToStrings.bind(this);
         this.handleResourceChange = this.handleResourceChange.bind(this);
+        this.handleItemAction = this.handleItemAction.bind(this);
     }
 
     async connectedCallback() {
@@ -20,9 +21,10 @@ class StringsView extends BaseComponent {
         this.itemList = this.shadowRoot.querySelector('item-list');
         this.editorForm = this.shadowRoot.querySelector('#editor-form');
 
-        this.itemList.addEventListener('item-select', this.handleStringSelect.bind(this));
-        this.itemList.addEventListener('item-add', this.handleStringAdd.bind(this));
-        this.itemList.addEventListener('item-delete', this.handleStringDelete.bind(this));
+        this.itemList.addEventListener('item-action', this.handleItemAction);
+        this.shadowRoot.querySelector('#list-header').addEventListener('click', e => {
+            if (e.target.closest('[data-action="add"]')) this.handleStringAdd();
+        });
         this.editorForm.addEventListener('submit', this.handleStringSave.bind(this));
         this.shadowRoot.querySelector('#back-to-strings-btn').addEventListener('click', this.handleBackToStrings);
         
@@ -33,6 +35,22 @@ class StringsView extends BaseComponent {
 
     disconnectedCallback() {
         window.removeEventListener('minerva-resource-changed', this.handleResourceChange);
+        this.itemList.removeEventListener('item-action', this.handleItemAction);
+    }
+    
+    handleItemAction(event) {
+        const { id, action } = event.detail;
+        const stringItem = this.state.strings.find(s => s.id === id);
+        if (!stringItem) return;
+
+        switch(action) {
+            case 'select':
+                this.handleStringSelect(stringItem);
+                break;
+            case 'delete':
+                this.handleStringDelete(stringItem);
+                break;
+        }
     }
 
     handleResourceChange(event) {
@@ -110,8 +128,8 @@ class StringsView extends BaseComponent {
         }
     }
 
-    handleStringSelect(event) {
-        this.state.selectedString = event.detail.item;
+    handleStringSelect(item) {
+        this.state.selectedString = item;
         this.updateView();
     }
 
@@ -131,8 +149,7 @@ class StringsView extends BaseComponent {
         }
     }
 
-    handleStringDelete(event) {
-        const { item } = event.detail;
+    handleStringDelete(item) {
         modal.confirm({
             title: 'Delete String',
             content: `Are you sure you want to delete "${item.name}"? This will also remove it from any Generation Configs that use it.`,
@@ -171,6 +188,23 @@ class StringsView extends BaseComponent {
             notifier.show({ header: 'Error', message: `Could not save "${updatedString.name}".`, type: 'bad' });
         }
     }
+    
+    #renderStringList() {
+        if (!this.itemList) return;
+
+        const sortedStrings = [...this.state.strings].sort((a, b) => a.name.localeCompare(b.name));
+        this.itemList.innerHTML = sortedStrings.map(s => {
+            const isSelected = this.state.selectedString?.id === s.id;
+            return `
+                <li data-id="${s.id}" class="${isSelected ? 'selected' : ''}">
+                    <div class="item-name">${s.name}</div>
+                    <div class="actions">
+                        <button class="icon-button delete-btn" data-action="delete" title="Delete"><span class="material-icons">delete</span></button>
+                    </div>
+                </li>
+            `;
+        }).join('');
+    }
 
     updateView() {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -194,9 +228,7 @@ class StringsView extends BaseComponent {
             mobileHeader.style.display = 'none';
         }
 
-        const sortedStrings = [...this.state.strings].sort((a, b) => a.name.localeCompare(b.name));
-        this.itemList.items = sortedStrings.map(s => ({...s, avatarUrl: 'assets/images/system_icon.svg'}));
-        this.itemList.selectedId = this.state.selectedString?.id;
+        this.#renderStringList();
         
         const editorWrapper = this.shadowRoot.querySelector('.editor-wrapper');
         const placeholder = this.shadowRoot.querySelector('.placeholder');
@@ -216,12 +248,15 @@ class StringsView extends BaseComponent {
         super._initShadow(`
             <div style="display: contents;">
                 <div class="panel-left">
-                    <item-list
-                        list-title="Strings"
-                        items-creatable
-                        items-removable
-                        has-avatar>
-                    </item-list>
+                    <header id="list-header">
+                        <h3>Strings</h3>
+                        <div class="header-actions">
+                            <button class="icon-button" data-action="add" title="Add New String">
+                                <span class="material-icons">add</span>
+                            </button>
+                        </div>
+                    </header>
+                    <item-list></item-list>
                 </div>
                 <div class="panel-main">
                     <header class="mobile-editor-header">
@@ -254,74 +289,50 @@ class StringsView extends BaseComponent {
 
     styles() {
         return `
-            .panel-main {
-                display: flex;
-                flex-direction: column;
-                padding: 0;
+            .panel-left { flex-direction: column; }
+            .panel-left header {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
+                flex-shrink: 0; gap: var(--spacing-sm);
             }
+            .panel-left header h3 { margin: 0; }
+            .header-actions .icon-button {
+                background: none; border: none; color: var(--text-secondary); cursor: pointer;
+                transition: var(--transition-fast); display: flex; align-items: center;
+                justify-content: center; padding: var(--spacing-xs); border-radius: var(--radius-sm);
+            }
+            .header-actions .icon-button:hover { color: var(--text-primary); background-color: var(--bg-2); }
+
+            .panel-main { display: flex; flex-direction: column; padding: 0; }
             .mobile-editor-header {
-                display: none;
-                align-items: center;
-                padding: var(--spacing-sm) var(--spacing-md);
-                border-bottom: 1px solid var(--bg-3);
-                flex-shrink: 0;
-                gap: var(--spacing-md);
+                display: none; align-items: center; padding: var(--spacing-sm) var(--spacing-md);
+                border-bottom: 1px solid var(--bg-3); flex-shrink: 0; gap: var(--spacing-md);
             }
-            .mobile-editor-header h2 {
-                margin: 0;
-                font-size: 1.1rem;
-                flex-grow: 1;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            #back-to-strings-btn {
-                background: none; border: none; color: var(--text-secondary);
-                cursor: pointer; padding: var(--spacing-xs);
-            }
+            .mobile-editor-header h2 { margin: 0; font-size: 1.1rem; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            #back-to-strings-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
             #back-to-strings-btn:hover { color: var(--text-primary); }
 
-            .editor-container {
-                padding: var(--spacing-lg);
-                overflow-y: auto;
-                height: 100%;
-            }
-
-            .placeholder {
-                text-align: center;
-                height: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-
-            #editor-form {
-                display: flex;
-                flex-direction: column;
-                gap: var(--spacing-lg);
-            }
+            .editor-container { padding: var(--spacing-lg); overflow-y: auto; height: 100%; }
+            .placeholder { text-align: center; height: 100%; display: flex; align-items: center; justify-content: center; }
+            #editor-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
+            #string-data-input { min-height: 300px; resize: vertical; padding: 0.75rem; background-color: var(--bg-1); border: 1px solid var(--bg-3); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--font-size-md); }
+            #string-data-input:focus-within { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-primary-faded, rgba(138, 180, 248, 0.3)); transition: var(--transition-fast); }
+            .field-description { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--spacing-xs); }
             
-            #string-data-input {
-                min-height: 300px;
-                resize: vertical;
-                padding: 0.75rem;
-                background-color: var(--bg-1);
-                border: 1px solid var(--bg-3);
-                border-radius: var(--radius-sm);
-                color: var(--text-primary);
-                font-size: var(--font-size-md);
+            /* ItemList Styles */
+            item-list li {
+                display: flex; align-items: center; padding: var(--spacing-sm) var(--spacing-md);
+                cursor: pointer; border-bottom: 1px solid var(--bg-3); transition: var(--transition-fast); gap: var(--spacing-sm);
             }
-            #string-data-input:focus-within {
-                outline: none;
-                border-color: var(--accent-primary);
-                box-shadow: 0 0 0 2px var(--accent-primary-faded, rgba(138, 180, 248, 0.3));
-                transition: var(--transition-fast);
-            }
-            .field-description {
-                font-size: var(--font-size-sm);
-                color: var(--text-secondary);
-                margin-top: var(--spacing-xs);
-            }
+            item-list li:hover { background-color: var(--bg-2); }
+            item-list li.selected { background-color: var(--accent-primary); color: var(--bg-0); }
+            item-list li.selected .item-name { font-weight: 600; }
+            item-list .item-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
+            item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
+            item-list .icon-button { background: none; border: none; color: var(--text-secondary); cursor: pointer; transition: var(--transition-fast); display: flex; align-items: center; justify-content: center; padding: var(--spacing-xs); border-radius: var(--radius-sm); }
+            item-list li:not(.selected) .icon-button:hover { color: var(--text-primary); background-color: var(--bg-2); }
+            item-list li.selected .icon-button:hover { color: var(--bg-1); }
+            item-list .delete-btn:hover { color: var(--accent-danger); }
         `;
     }
 }

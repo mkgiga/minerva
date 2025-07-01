@@ -14,6 +14,7 @@ class ConnectionConfigView extends BaseComponent {
         };
         this.handleBackToConfigs = this.handleBackToConfigs.bind(this);
         this.handleResourceChange = this.handleResourceChange.bind(this);
+        this.handleItemAction = this.handleItemAction.bind(this);
     }
 
     async connectedCallback() {
@@ -29,6 +30,7 @@ class ConnectionConfigView extends BaseComponent {
 
     disconnectedCallback() {
         window.removeEventListener('minerva-resource-changed', this.handleResourceChange);
+        this.itemList.removeEventListener('item-action', this.handleItemAction);
     }
 
     handleResourceChange(event) {
@@ -75,15 +77,33 @@ class ConnectionConfigView extends BaseComponent {
     }
 
     attachEventListeners() {
-        this.itemList.addEventListener('item-select', e => this.handleSelect(e.detail.item));
-        this.itemList.addEventListener('item-add', () => this.handleAdd());
-        this.itemList.addEventListener('item-delete', e => this.handleDelete(e.detail.item));
-        this.itemList.addEventListener('item-activate', e => this.handleActivate(e.detail.item));
+        this.itemList.addEventListener('item-action', this.handleItemAction);
+        this.shadowRoot.querySelector('#list-header').addEventListener('click', (e) => {
+            if (e.target.closest('[data-action="add"]')) this.handleAdd();
+        });
         
         this.editorForm.addEventListener('submit', e => this.handleSave(e));
         this.shadowRoot.querySelector('#test-btn').addEventListener('click', () => this.handleTest());
         this.schemaForm.addEventListener('change', e => this.handleFormChange(e.detail));
         this.shadowRoot.querySelector('#back-to-configs-btn').addEventListener('click', this.handleBackToConfigs);
+    }
+    
+    handleItemAction(event) {
+        const { id, action } = event.detail;
+        const config = this.state.configs.find(c => c.id === id);
+        if (!config) return;
+
+        switch(action) {
+            case 'select':
+                this.handleSelect(config);
+                break;
+            case 'delete':
+                this.handleDelete(config);
+                break;
+            case 'activate':
+                this.handleActivate(config);
+                break;
+        }
     }
 
     async fetchData() {
@@ -217,6 +237,36 @@ class ConnectionConfigView extends BaseComponent {
             testButton.textContent = 'Test Connection';
         }
     }
+
+    _renderConfigList() {
+        if (!this.itemList) return;
+        
+        const itemsHtml = this.state.configs
+            .sort((a,b) => a.name.localeCompare(b.name))
+            .map(config => {
+                const isSelected = this.state.selectedConfig?.id === config.id;
+                const isActive = this.state.activeConfigId === config.id;
+                const activateTitle = isActive ? 'Currently active' : 'Set as active config';
+                const iconUrl = this.getAdapterIcon(config.adapter);
+
+                return `
+                    <li data-id="${config.id}" class="${isSelected ? 'selected' : ''}">
+                        <div class="adapter-icon" style="--icon-url: url('${iconUrl}')"></div>
+                        <div class="item-name">${config.name}</div>
+                        <div class="actions">
+                            <button class="icon-button activate-btn ${isActive ? 'active' : ''}" data-action="activate" title="${activateTitle}">
+                                <span class="material-icons">${isActive ? 'radio_button_checked' : 'radio_button_off'}</span>
+                            </button>
+                            <button class="icon-button delete-btn" data-action="delete" title="Delete">
+                                <span class="material-icons">delete</span>
+                            </button>
+                        </div>
+                    </li>
+                `;
+            }).join('');
+        
+        this.itemList.innerHTML = itemsHtml;
+    }
     
     updateView() {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -240,10 +290,7 @@ class ConnectionConfigView extends BaseComponent {
             mobileHeader.style.display = 'none';
         }
 
-
-        this.itemList.activeId = this.state.activeConfigId;
-        this.itemList.items = this.state.configs.map(c => ({...c, avatarUrl: this.getAdapterIcon(c.adapter)}));
-        this.itemList.selectedId = this.state.selectedConfig?.id;
+        this._renderConfigList();
         this.updateEditor();
     }
     
@@ -280,21 +327,29 @@ class ConnectionConfigView extends BaseComponent {
     }
     
     getAdapterIcon(adapter) {
-        // TODO: Replace with actual icons for adapters later.
-        return 'assets/images/default_avatar.svg';
+        switch (adapter) {
+            case 'v1':
+                return 'assets/images/providers/v1.svg';
+            case 'gemini':
+                return 'assets/images/providers/gemini.svg';
+            default:
+                return 'assets/images/default_avatar.svg'; // Fallback
+        }
     }
 
     render() {
         super._initShadow(`
             <div style="display: contents;">
                 <div class="panel-left">
-                    <item-list
-                        list-title="Connections"
-                        items-creatable
-                        items-removable
-                        items-activatable
-                        has-avatar>
-                    </item-list>
+                     <header id="list-header">
+                        <h3>Connections</h3>
+                        <div class="header-actions">
+                            <button class="icon-button" data-action="add" title="Add New Connection">
+                                <span class="material-icons">add</span>
+                            </button>
+                        </div>
+                    </header>
+                    <item-list></item-list>
                 </div>
                 <div class="panel-main">
                     <header class="mobile-editor-header">
@@ -325,56 +380,76 @@ class ConnectionConfigView extends BaseComponent {
 
     styles() {
         return `
-            .panel-main {
-                display: flex;
-                flex-direction: column;
-                padding: 0;
+            .panel-left { flex-direction: column; }
+            .panel-left header {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
+                flex-shrink: 0; gap: var(--spacing-sm);
             }
+            .panel-left header h3 { margin: 0; }
+            .header-actions .icon-button {
+                background: none; border: none; color: var(--text-secondary); cursor: pointer;
+                transition: var(--transition-fast); display: flex; align-items: center;
+                justify-content: center; padding: var(--spacing-xs); border-radius: var(--radius-sm);
+            }
+            .header-actions .icon-button:hover { color: var(--text-primary); background-color: var(--bg-2); }
+            
+            .panel-main { display: flex; flex-direction: column; padding: 0; }
             .mobile-editor-header {
-                display: none;
-                align-items: center;
-                padding: var(--spacing-sm) var(--spacing-md);
-                border-bottom: 1px solid var(--bg-3);
-                flex-shrink: 0;
-                gap: var(--spacing-md);
+                display: none; align-items: center; padding: var(--spacing-sm) var(--spacing-md);
+                border-bottom: 1px solid var(--bg-3); flex-shrink: 0; gap: var(--spacing-md);
             }
-            .mobile-editor-header h2 {
-                margin: 0;
-                font-size: 1.1rem;
-                flex-grow: 1;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            #back-to-configs-btn {
-                background: none; border: none; color: var(--text-secondary);
-                cursor: pointer; padding: var(--spacing-xs);
-            }
+            .mobile-editor-header h2 { margin: 0; font-size: 1.1rem; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            #back-to-configs-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
             #back-to-configs-btn:hover { color: var(--text-primary); }
 
             .placeholder { text-align: center; margin-top: 2rem; color: var(--text-secondary); }
             
-            .editor-header {
-                margin-bottom: var(--spacing-lg);
-            }
+            .editor-header { margin-bottom: var(--spacing-lg); }
             .editor-title-input {
-                font-size: 1.5rem;
-                font-weight: 600;
-                background: none;
-                border: none;
-                outline: none;
-                width: 100%;
-                color: var(--text-primary);
-                border-bottom: 1px solid var(--bg-3);
-                padding: var(--spacing-sm) 0;
+                font-size: 1.5rem; font-weight: 600; background: none; border: none; outline: none;
+                width: 100%; color: var(--text-primary); border-bottom: 1px solid var(--bg-3); padding: var(--spacing-sm) 0;
             }
-            .editor-title-input:focus {
-                border-bottom-color: var(--accent-primary);
-            }
+            .editor-title-input:focus { border-bottom-color: var(--accent-primary); }
 
             .button-group { display: flex; gap: var(--spacing-md); margin-top: var(--spacing-lg) }
             .button-group button { font-weight: 500; }
-        `
+
+            /* ItemList Styles */
+            item-list li {
+                display: flex; align-items: center; padding: var(--spacing-sm) var(--spacing-md);
+                cursor: pointer; border-bottom: 1px solid var(--bg-3); transition: var(--transition-fast); gap: var(--spacing-sm);
+            }
+            item-list li:hover { background-color: var(--bg-2); }
+            item-list li.selected { background-color: var(--accent-primary); color: var(--bg-0); }
+            item-list li.selected .item-name { font-weight: 600; }
+            item-list .adapter-icon {
+                width: 40px;
+                height: 40px;
+                flex-shrink: 0;
+                background-color: var(--accent-primary);
+                mask-image: var(--icon-url);
+                -webkit-mask-image: var(--icon-url);
+                mask-size: 80%;
+                mask-repeat: no-repeat;
+                mask-position: center;
+            }
+            item-list li.selected .adapter-icon {
+                background-color: var(--bg-0);
+            }
+            item-list .item-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
+            item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
+            item-list .icon-button {
+                background: none; border: none; color: var(--text-secondary); cursor: pointer;
+                transition: var(--transition-fast); display: flex; align-items: center;
+                justify-content: center; padding: var(--spacing-xs); border-radius: var(--radius-sm);
+            }
+            item-list li:not(.selected) .icon-button:hover { color: var(--text-primary); background-color: var(--bg-2); }
+            item-list li.selected .icon-button:hover { color: var(--bg-1); }
+            item-list .delete-btn:hover { color: var(--accent-danger); }
+            item-list .activate-btn.active { color: var(--accent-primary); }
+            item-list li.selected .activate-btn.active { color: var(--bg-0); }
+        `;
     }
 }
 customElements.define('connection-config-view', ConnectionConfigView);
