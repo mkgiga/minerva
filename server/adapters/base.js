@@ -52,6 +52,15 @@ export class BaseAdapter {
     }
 
     /**
+     * Returns a list of all available models for this provider.
+     * This method must be overridden by concrete adapter implementations.
+     * @returns {Promise<Array<Object>>} A promise that resolves to an array of model objects.
+     */
+    async getModels() {
+        throw new Error("Method 'getModels()' must be implemented.");
+    }
+
+    /**
      * Prepares the message history for the specific API provider's format.
      * Providers might have different role names or content structures,
      * and may require merging consecutive messages of the same role.
@@ -62,4 +71,6 @@ export class BaseAdapter {
     prepareMessages(messages) {
         throw new Error("Method 'prepareMessages()' must be implemented by concrete adapters.");
     }
+
+    
 }

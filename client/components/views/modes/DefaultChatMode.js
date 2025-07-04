@@ -1,3 +1,4 @@
+// client/components/views/modes/DefaultChatMode.js
 import { BaseChatMode } from './BaseChatMode.js';
 import { chatModeRegistry } from '../../../ChatModeRegistry.js';
 import { uuidv4 } from '../../../client.js';
@@ -28,8 +29,7 @@ export class DefaultChatMode extends BaseChatMode {
         this.#codeNavDown = this.shadowRoot.querySelector('#code-nav-down');
         this.#quickRegenButton = this.shadowRoot.querySelector('#quick-regen-btn');
 
-
-        this.#form.addEventListener('submit', this.#handleSend.bind(this));
+        this.#sendButton.addEventListener('click', this.#handleSend.bind(this));
         this.#textbox.addEventListener('keydown', this.#handleTextboxKeydown.bind(this));
         this.#historyContainer.addEventListener('scroll', this.updateCodeNavButtons.bind(this));
         this.#codeNavUp.addEventListener('click', () => this.navigateCodeBlocks('up'));
@@ -38,12 +38,46 @@ export class DefaultChatMode extends BaseChatMode {
         if (this.#quickRegenButton) {
             this.#quickRegenButton.addEventListener('click', this.#handleQuickRegen.bind(this));
         }
-
-        this.refreshChatHistory();
-        // Ensure the history always scrolls to the bottom on initial load or mode switch.
-        this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
-        this.updateInputState();
     }
+    
+    // Lifecycle Hooks
+    onChatSwitched() { this.refreshChatHistory(); }
+    onChatBranched() { this.refreshChatHistory(); }
+    onParticipantsChanged() { this.refreshChatHistory(); }
+    onAllCharactersChanged() { this.refreshChatHistory(); }
+    onUserPersonaChanged() { this.refreshChatHistory(); }
+
+    onMessagesAdded(addedMessages) {
+        const optimisticUserEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="user-"]');
+        const optimisticAssistantEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
+
+        if (optimisticUserEl && optimisticAssistantEl && addedMessages.length >= 2) {
+            const finalUserMsg = addedMessages.at(-2);
+            const finalAssistantMsg = addedMessages.at(-1);
+
+            this.#replaceMessageElement(optimisticUserEl, finalUserMsg);
+            this.#replaceMessageElement(optimisticAssistantEl, finalAssistantMsg);
+        } else {
+            this.refreshChatHistory(); // Fallback
+        }
+    }
+    
+    onMessageUpdated(updatedMessage) {
+        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${updatedMessage.id}"]`);
+        if (messageEl) {
+            this.#replaceMessageElement(messageEl, updatedMessage);
+        }
+    }
+
+    onMessagesDeleted(deletedMessageIds) {
+        for (const id of deletedMessageIds) {
+            this.shadowRoot.querySelector(`.chat-message[data-message-id="${id}"]`)?.remove();
+        }
+        this.updateInputState(this.isSending);
+        this.updateCodeNavButtons();
+    }
+    
+    // Overridden Base Methods
 
     onPromptStart(userMessage) {
         this.appendMessage(userMessage);
@@ -98,7 +132,7 @@ export class DefaultChatMode extends BaseChatMode {
         }
     }
 
-    async #handleQuickRegen() {
+    #handleQuickRegen() {
         if (this.isSending || !this.chat || this.chat.messages.length === 0) {
             return;
         }
@@ -137,7 +171,7 @@ export class DefaultChatMode extends BaseChatMode {
             editor.removeEventListener('blur', onBlur);
 
             if (isCancelled) {
-                this.refreshChatHistory();
+                this.onMessageUpdated(message); // Re-render with original content
                 return;
             }
 
@@ -146,7 +180,7 @@ export class DefaultChatMode extends BaseChatMode {
             if (newContent.trim() !== originalContent.trim()) {
                 this.saveEditedMessage(messageId, newContent);
             } else {
-                this.refreshChatHistory();
+                this.onMessageUpdated(message); // Re-render with original content
             }
         };
 
@@ -187,20 +221,7 @@ export class DefaultChatMode extends BaseChatMode {
 
     onFinish(messageToUpdate) {
         this.updateInputState(false);
-        
-        // Find the specific message element that just finished streaming
-        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageToUpdate.id}"]`);
-        if (messageEl) {
-            // Re-render just this one message to ensure all content is correct and listeners are attached.
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = this.#renderSingleMessageHTML(messageToUpdate);
-            const newMessageEl = tempDiv.firstElementChild;
-            if (newMessageEl) {
-                this.#attachMessageListeners(newMessageEl);
-                messageEl.replaceWith(newMessageEl);
-            }
-        }
-        
+        // The final render is now handled by onMessagesAdded to ensure we use the persisted message from the server.
         this.updateCodeNavButtons();
     }
     
@@ -319,51 +340,6 @@ export class DefaultChatMode extends BaseChatMode {
         this.updateInputState(this.isSending); // Update regen button state
     }
 
-    onStateUpdate({ changed }) {
-        if (changed.includes('selectedChat') || changed.includes('allCharacters')) {
-            this.refreshChatHistory();
-        }
-    }
-
-    onChatUpdate(newChatData) {
-        const oldMessages = this.chat?.messages || [];
-        const newMessages = newChatData.messages;
-        
-        const optimisticUserEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="user-"]');
-        const optimisticAssistantEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
-        const newMsgCount = newMessages.length - oldMessages.length;
-
-        // Heuristic: If we just sent a prompt, only replace the optimistic messages
-        if (optimisticUserEl && optimisticAssistantEl && newMsgCount === 2) {
-            this.chat = newChatData;
-            const finalUserMsg = newMessages.at(-2);
-            const finalAssistantMsg = newMessages.at(-1);
-
-            // Morph the optimistic user message into the final one
-            const tempUserDiv = document.createElement('div');
-            tempUserDiv.innerHTML = this.#renderSingleMessageHTML(finalUserMsg);
-            const newUserEl = tempUserDiv.firstElementChild;
-            if (newUserEl) {
-                this.#attachMessageListeners(newUserEl);
-                optimisticUserEl.replaceWith(newUserEl);
-            }
-
-            // Morph the optimistic assistant message into the final one
-            const tempAssistantDiv = document.createElement('div');
-            tempAssistantDiv.innerHTML = this.#renderSingleMessageHTML(finalAssistantMsg);
-            const newAssistantEl = tempAssistantDiv.firstElementChild;
-            if (newAssistantEl) {
-                this.#attachMessageListeners(newAssistantEl);
-                optimisticAssistantEl.replaceWith(newAssistantEl);
-            }
-            return;
-        }
-        
-        // Fallback for edits, deletions, or other complex updates
-        this.chat = newChatData;
-        this.refreshChatHistory();
-    }
-
     appendMessage(message) {
         if (!this.#historyContainer) return;
         const scrollAtBottom = (this.#historyContainer.scrollHeight - this.#historyContainer.clientHeight) <= this.#historyContainer.scrollTop + 1;
@@ -384,6 +360,17 @@ export class DefaultChatMode extends BaseChatMode {
         this.updateInputState(this.isSending); // Update regen button state
     }
 
+    #replaceMessageElement(oldEl, newMessage) {
+        if (!oldEl) return;
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = this.#renderSingleMessageHTML(newMessage);
+        const newEl = tempDiv.firstElementChild;
+        if (newEl) {
+            this.#attachMessageListeners(newEl);
+            oldEl.replaceWith(newEl);
+        }
+    }
+
     #getMarkdownRenderer() {
         if (!this.#markdownRenderer) {
             this.#markdownRenderer = new window.marked.Renderer();
@@ -399,7 +386,7 @@ export class DefaultChatMode extends BaseChatMode {
         return this.#markdownRenderer;
     }
 
-    // --- Code Block Navigation (copied from MainChatView) ---
+    // Code Block Navigation
     #getBlockRelativePos(block, container) {
         const blockRect = block.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
@@ -484,7 +471,7 @@ export class DefaultChatMode extends BaseChatMode {
                 <button type="button" id="code-nav-up" title="Previous Code Block"><span class="material-icons">arrow_upward</span></button>
                 <button type="button" id="code-nav-down" title="Next Code Block"><span class="material-icons">arrow_downward</span></button>
             </div>
-            <form id="chat-form">
+            <form id="chat-form" action="javascript:void(0);">
                 <button id="quick-regen-btn" type="button" title="Regenerate Last Response">
                     <span class="material-icons">replay</span>
                 </button>
@@ -571,6 +558,7 @@ export class DefaultChatMode extends BaseChatMode {
             /* Message controls (icons per message) */
             .message-header .message-controls { opacity: 0; transition: var(--transition-fast); display: flex; gap: var(--spacing-xs); }
             .message-bubble:hover .message-controls { opacity: 1; }
+            .message-content text-box { outline: 1px solid var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-faded, rgba(138, 180, 248, 0.2)); background-color: var(--bg-0) !important; color: var(--text-primary) !important; padding: var(--spacing-sm); border-radius: var(--radius-sm); }
             
             /* Default styles for icon buttons, ensures they are styled within shadow DOM */
             .icon-btn {

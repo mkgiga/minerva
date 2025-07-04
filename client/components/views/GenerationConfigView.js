@@ -1,3 +1,4 @@
+// client/components/views/GenerationConfigView.js
 import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier } from '../../client.js';
 import '../ItemList.js';
@@ -5,27 +6,32 @@ import '../TextBox.js';
 import '../SchemaForm.js';
 
 class GenerationConfigView extends BaseComponent {
+    #generationConfigs = [];
+    #reusableStrings = [];
+    #selectedGenConfig = null;
+    #activeConnection = null;
+    #adapterParamSchemas = {};
+    #activeGenConfigId = null;
+    #needsSave = false;
+
+    #genConfigList = null; 
+
     constructor() {
         super();
-        this.state = {
-            generationConfigs: [],
-            reusableStrings: [],
-            selectedGenConfig: null,
-            activeConnection: null,
-            adapterParamSchemas: {},
-            activeGenConfigId: null,
-            needsSave: false,
-        };
+        // State is now managed using private class fields
     }
 
     async connectedCallback() {
         this.render();
-        this.genConfigList = this.shadowRoot.querySelector('#gen-config-list');
-        this.attachEventListeners();
-        await this.fetchData();
+        this.#genConfigList = this.shadowRoot.querySelector('#gen-config-list');
+
+        this.#attachEventListeners(); // Use private method
+        await this.#fetchData(); // Use private method
+        this.#setNeedsSave(false); // Initialize save state
     }
 
-    async fetchData() {
+    // Data Fetching
+    async #fetchData() {
         try {
             const [genConfigs, strings, settings, connections, paramSchemas] = await Promise.all([
                 api.get('/api/generation-configs'),
@@ -34,48 +40,48 @@ class GenerationConfigView extends BaseComponent {
                 api.get('/api/connection-configs'),
                 api.get('/api/adapters/generation-schemas'),
             ]);
-            this.state.generationConfigs = genConfigs;
-            this.state.reusableStrings = strings;
-            this.state.adapterParamSchemas = paramSchemas;
-            this.state.activeGenConfigId = settings.activeGenerationConfigId;
+            this.#generationConfigs = genConfigs;
+            this.#reusableStrings = strings;
+            this.#adapterParamSchemas = paramSchemas;
+            this.#activeGenConfigId = settings.activeGenerationConfigId;
             if (settings.activeConnectionConfigId) {
-                this.state.activeConnection = connections.find(c => c.id === settings.activeConnectionConfigId);
+                this.#activeConnection = connections.find(c => c.id === settings.activeConnectionConfigId);
             }
-            this.updateView();
+            this.#updateView(); // Use private method
         } catch (error) {
             console.error("Failed to fetch data for Generation Config view:", error);
             notifier.show({ header: 'Error', message: 'Could not load generation config data.', type: 'bad' });
         }
     }
 
-    attachEventListeners() {
+    // Event Listeners
+    #attachEventListeners() {
         // Left Panel (Generation Configs)
-        this.genConfigList.addEventListener('item-action', e => this.handleGenConfigItemAction(e.detail));
+        this.#genConfigList.addEventListener('item-action', e => this.#handleGenConfigItemAction(e.detail)); // Use private method
         this.shadowRoot.querySelector('#gen-config-list-header').addEventListener('click', e => {
-            if(e.target.closest('[data-action="add"]')) this.handleGenConfigAdd();
+            if(e.target.closest('[data-action="add"]')) this.#handleGenConfigAdd(); // Use private method
         });
 
         // Main Panel (Editor)
-        this.shadowRoot.querySelector('#save-gen-config-btn').addEventListener('click', () => this.saveGenConfig());
-        this.shadowRoot.querySelector('#back-to-configs-btn').addEventListener('click', () => this.handleBackToConfigs());
-        this.shadowRoot.querySelector('#add-string-btn').addEventListener('click', () => this.openAddStringModal());
+        this.shadowRoot.querySelector('#save-gen-config-btn').addEventListener('click', () => this.#saveGenConfig()); // Use private method
+        this.shadowRoot.querySelector('#back-to-configs-btn').addEventListener('click', () => this.#handleBackToConfigs()); // Use private method
+        this.shadowRoot.querySelector('#add-string-btn').addEventListener('click', () => this.#openAddStringModal()); // Use private method
         
-        this.shadowRoot.querySelector('.editor-content').addEventListener('input', e => {
-             if (e.target.closest('schema-form') || e.target.id === 'gen-config-name') {
-                this.setNeedsSave(true);
-            }
-        });
+        // Listen for changes on the name input and the schema form directly
+        this.shadowRoot.querySelector('#gen-config-name').addEventListener('input', () => this.#setNeedsSave(true));
+        this.shadowRoot.querySelector('schema-form').addEventListener('change', () => this.#setNeedsSave(true));
+        this.shadowRoot.querySelector('#merge-strings-checkbox').addEventListener('change', () => this.#setNeedsSave(true));
 
         const promptStringsList = this.shadowRoot.querySelector('#prompt-strings-list');
         promptStringsList.addEventListener('click', e => {
             const button = e.target.closest('button[data-action]');
-            if (!button || !this.state.selectedGenConfig) return;
+            if (!button || !this.#selectedGenConfig) return;
             
             e.stopPropagation();
             const action = button.dataset.action;
             const index = parseInt(button.dataset.index, 10);
             
-            const promptStrings = this.state.selectedGenConfig.promptStrings;
+            const promptStrings = this.#selectedGenConfig.promptStrings;
 
             if (action === 'remove-string') {
                 promptStrings.splice(index, 1);
@@ -90,43 +96,43 @@ class GenerationConfigView extends BaseComponent {
                     state: { selectedStringId: stringId }
                 });
             }
-            this.setNeedsSave(true);
-            this.renderPromptStringsList();
+            this.#setNeedsSave(true); // Use private method
+            this.#renderPromptStringsList(); // Use private method
         });
 
         promptStringsList.addEventListener('change', e => {
             if (e.target.classList.contains('role-select')) {
                 const index = parseInt(e.target.dataset.index, 10);
                 const newRole = e.target.value;
-                this.state.selectedGenConfig.promptStrings[index].role = newRole;
-                this.setNeedsSave(true);
-                this.renderPromptStringsList(); // Re-render to ensure consistency if needed
+                this.#selectedGenConfig.promptStrings[index].role = newRole;
+                this.#setNeedsSave(true); // Use private method
+                this.#renderPromptStringsList(); // Use private method
             }
         });
     }
     
-    // --- State & Update Logic ---
+    // State & Update Logic
     
-    setNeedsSave(needsSave) {
-        this.state.needsSave = needsSave;
+    #setNeedsSave(needsSave) {
+        this.#needsSave = needsSave;
         const saveIndicator = this.shadowRoot.querySelector('.save-indicator');
-        const saveButton = this.shadowRoot.querySelector('#save-gen-config-btn');
+        const actualSaveButton = this.shadowRoot.querySelector('#save-gen-config-btn');
         if (saveIndicator) {
             saveIndicator.style.opacity = needsSave ? '1' : '0';
         }
-        if (saveButton) {
-            saveButton.disabled = !needsSave;
+        if (actualSaveButton) { // Use the correct button reference
+            actualSaveButton.disabled = !needsSave;
         }
     }
 
-    updateView() {
+    #updateView() {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
         const panelLeft = this.shadowRoot.querySelector('.panel-left');
         const panelMain = this.shadowRoot.querySelector('.panel-main');
         const backButton = this.shadowRoot.querySelector('#back-to-configs-btn');
     
         if (isMobile) {
-            if (this.state.selectedGenConfig) {
+            if (this.#selectedGenConfig) {
                 panelLeft.style.display = 'none';
                 panelMain.style.display = 'flex';
                 if (backButton) backButton.style.display = 'flex';
@@ -142,18 +148,18 @@ class GenerationConfigView extends BaseComponent {
             if (backButton) backButton.style.display = 'none';
         }
 
-        this.updateGenConfigList();
-        this.updateMainPanel();
+        this.#updateGenConfigList(); // Use private method
+        this.#updateMainPanel(); // Use private method
     }
 
-    updateGenConfigList() {
-        if (!this.genConfigList) return;
+    #updateGenConfigList() {
+        if (!this.#genConfigList) return;
 
-        const itemsHtml = this.state.generationConfigs
+        const itemsHtml = this.#generationConfigs
             .sort((a,b) => a.name.localeCompare(b.name))
             .map(config => {
-                const isSelected = this.state.selectedGenConfig?.id === config.id;
-                const isActive = this.state.activeGenConfigId === config.id;
+                const isSelected = this.#selectedGenConfig?.id === config.id;
+                const isActive = this.#activeGenConfigId === config.id;
                 const activateTitle = isActive ? 'Currently active' : 'Set as active config';
 
                 return `
@@ -171,39 +177,40 @@ class GenerationConfigView extends BaseComponent {
                 `;
             }).join('');
         
-        this.genConfigList.innerHTML = itemsHtml;
+        this.#genConfigList.innerHTML = itemsHtml;
     }
     
-    updateMainPanel() {
+    #updateMainPanel() {
         const mainPanel = this.shadowRoot.querySelector('.panel-main');
         const editor = mainPanel.querySelector('.editor-content');
         const placeholder = mainPanel.querySelector('.placeholder');
 
-        if (this.state.selectedGenConfig) {
+        if (this.#selectedGenConfig) {
             placeholder.style.display = 'none';
             editor.style.display = 'flex';
-            editor.querySelector('#gen-config-name').value = this.state.selectedGenConfig.name;
-            this.shadowRoot.querySelector('#active-adapter-name').textContent = this.state.activeConnection?.adapter || 'None';
-            this.renderParameterFields();
-            this.renderPromptStringsList();
+            editor.querySelector('#gen-config-name').value = this.#selectedGenConfig.name;
+            this.shadowRoot.querySelector('#active-adapter-name').textContent = this.#activeConnection?.adapter || 'None';
+            this.shadowRoot.querySelector('#merge-strings-checkbox').checked = this.#selectedGenConfig.mergeConsecutiveStrings || false;
+            this.#renderParameterFields(); // Use private method
+            this.#renderPromptStringsList(); // Use private method
         } else {
             placeholder.style.display = 'flex';
             editor.style.display = 'none';
         }
     }
     
-    renderParameterFields() {
+    #renderParameterFields() {
         const schemaForm = this.shadowRoot.querySelector('schema-form');
         const container = this.shadowRoot.querySelector('#param-fields-container');
 
-        if (!this.state.activeConnection) {
+        if (!this.#activeConnection) {
             container.innerHTML = `<p class="notice">No active connection. Please set one in Connection Settings.</p>`;
             schemaForm.style.display = 'none';
             return;
         }
 
-        const adapterId = this.state.activeConnection.adapter;
-        const schema = this.state.adapterParamSchemas[adapterId];
+        const adapterId = this.#activeConnection.adapter;
+        const schema = this.#adapterParamSchemas[adapterId];
         
         if (!schema || schema.length === 0) {
             container.innerHTML = `<p class="notice">Adapter "${adapterId}" has no configurable parameters.</p>`;
@@ -214,22 +221,33 @@ class GenerationConfigView extends BaseComponent {
         container.innerHTML = ''; // Clear any notices
         schemaForm.style.display = 'block';
         
-        const configParams = this.state.selectedGenConfig.parameters[adapterId] || {};
+        // 1. Create a default object from the schema's defaultValues
+        const defaultParams = {};
+        for (const field of schema) {
+            if (field.defaultValue !== undefined) {
+                defaultParams[field.name] = field.defaultValue;
+            }
+        }
+
+        // 2. Merge saved parameters over the defaults
+        // This ensures all schema fields have a value, either default or saved.
+        const savedParamsForAdapter = this.#selectedGenConfig.parameters[adapterId] || {};
+        const finalParams = { ...defaultParams, ...savedParamsForAdapter };
         
+        schemaForm.data = finalParams; 
         schemaForm.schema = schema;
-        schemaForm.data = configParams;
     }
 
-    renderPromptStringsList() {
+    #renderPromptStringsList() {
         const container = this.shadowRoot.querySelector('#prompt-strings-list');
         container.innerHTML = '';
-        if (!this.state.selectedGenConfig || this.state.selectedGenConfig.promptStrings.length === 0) {
+        if (!this.#selectedGenConfig || this.#selectedGenConfig.promptStrings.length === 0) {
             container.innerHTML = '<li class="notice">No strings added. Click "Add String" to build your prompt.</li>';
             return;
         }
 
-        this.state.selectedGenConfig.promptStrings.forEach((promptString, index) => {
-            const string = this.state.reusableStrings.find(s => s.id === promptString.stringId);
+        this.#selectedGenConfig.promptStrings.forEach((promptString, index) => {
+            const string = this.#reusableStrings.find(s => s.id === promptString.stringId);
             if (!string) return; // Should not happen if data is consistent
             
             const isSystemString = string.id === 'system-chat-history';
@@ -264,43 +282,43 @@ class GenerationConfigView extends BaseComponent {
         });
     }
     
-    // --- Event Handlers ---
+    // Event Handlers (renamed to private)
 
-    handleGenConfigItemAction({ id, action }) {
-        const config = this.state.generationConfigs.find(c => c.id === id);
+    #handleGenConfigItemAction({ id, action }) {
+        const config = this.#generationConfigs.find(c => c.id === id);
         if (!config) return;
 
         switch (action) {
             case 'select':
-                if (this.state.selectedGenConfig?.id !== config.id) {
+                if (this.#selectedGenConfig?.id !== config.id) {
                     // Deep copy to prevent mutations from affecting the main list until saved
-                    this.state.selectedGenConfig = JSON.parse(JSON.stringify(config));
-                    this.setNeedsSave(false);
-                    this.updateView();
+                    this.#selectedGenConfig = JSON.parse(JSON.stringify(config));
+                    this.#setNeedsSave(false);
+                    this.#updateView();
                 }
                 break;
             case 'delete':
-                this.handleGenConfigDelete(config);
+                this.#handleGenConfigDelete(config);
                 break;
             case 'activate':
-                this.handleGenConfigActivate(config);
+                this.#handleGenConfigActivate(config);
                 break;
         }
     }
 
-    async handleGenConfigAdd() {
+    async #handleGenConfigAdd() {
         try {
             const newConfig = await api.post('/api/generation-configs', { name: 'New Config' });
-            this.state.generationConfigs.push(newConfig);
-            this.state.selectedGenConfig = newConfig;
-            this.setNeedsSave(false);
-            this.updateView();
+            this.#generationConfigs.push(newConfig);
+            this.#selectedGenConfig = newConfig;
+            this.#setNeedsSave(false);
+            this.#updateView();
         } catch (e) {
             notifier.show({ header: 'Error', message: 'Could not create generation config.', type: 'bad' });
         }
     }
     
-    handleGenConfigDelete(item) {
+    #handleGenConfigDelete(item) {
         modal.confirm({
             title: 'Delete Generation Config',
             content: `Are you sure you want to delete "${item.name}"?`,
@@ -308,15 +326,15 @@ class GenerationConfigView extends BaseComponent {
             onConfirm: async () => {
                 try {
                     await api.delete(`/api/generation-configs/${item.id}`);
-                    this.state.generationConfigs = this.state.generationConfigs.filter(c => c.id !== item.id);
-                    if (this.state.selectedGenConfig?.id === item.id) {
-                        this.state.selectedGenConfig = null;
-                        this.setNeedsSave(false);
+                    this.#generationConfigs = this.#generationConfigs.filter(c => c.id !== item.id);
+                    if (this.#selectedGenConfig?.id === item.id) {
+                        this.#selectedGenConfig = null;
+                        this.#setNeedsSave(false);
                     }
-                    if (this.state.activeGenConfigId === item.id) {
-                        this.state.activeGenConfigId = null;
+                    if (this.#activeGenConfigId === item.id) {
+                        this.#activeGenConfigId = null;
                     }
-                    this.updateView();
+                    this.#updateView();
                     notifier.show({ message: `Deleted "${item.name}".` });
                 } catch (e) {
                     notifier.show({ header: 'Error', message: 'Could not delete config.', type: 'bad' });
@@ -325,12 +343,12 @@ class GenerationConfigView extends BaseComponent {
         });
     }
     
-    async handleGenConfigActivate(item) {
-        const newActiveId = this.state.activeGenConfigId === item.id ? 'null' : item.id;
+    async #handleGenConfigActivate(item) {
+        const newActiveId = this.#activeGenConfigId === item.id ? 'null' : item.id;
         try {
             const settings = await api.post(`/api/generation-configs/${newActiveId}/activate`, {});
-            this.state.activeGenConfigId = settings.activeGenerationConfigId;
-            this.updateGenConfigList();
+            this.#activeGenConfigId = settings.activeGenerationConfigId;
+            this.#updateGenConfigList();
             const message = newActiveId !== 'null' ? `"${item.name}" is now the active config.` : 'Active config cleared.';
             notifier.show({ type: 'good', header: 'Config Activated', message });
         } catch (error) {
@@ -338,40 +356,47 @@ class GenerationConfigView extends BaseComponent {
         }
     }
     
-    async saveGenConfig() {
-        if (!this.state.selectedGenConfig || !this.state.needsSave) return;
+    async #saveGenConfig() {
+        if (!this.#selectedGenConfig || !this.#needsSave) return;
         
-        const paramData = this.shadowRoot.querySelector('schema-form').serialize();
+        const schemaForm = this.shadowRoot.querySelector('schema-form');
+        const paramData = schemaForm.serialize();
 
-        const adapterId = this.state.activeConnection?.adapter;
-        let parameters = this.state.selectedGenConfig.parameters;
+        const adapterId = this.#activeConnection?.adapter;
+        let parameters = this.#selectedGenConfig.parameters;
         if (adapterId) {
             parameters = { ...parameters, [adapterId]: paramData };
         }
         
         const updatedConfig = {
-            ...this.state.selectedGenConfig,
+            ...this.#selectedGenConfig,
             name: this.shadowRoot.querySelector('#gen-config-name').value,
-            promptStrings: this.state.selectedGenConfig.promptStrings,
+            mergeConsecutiveStrings: this.shadowRoot.querySelector('#merge-strings-checkbox').checked,
+            // promptStrings are already updated directly on this.#selectedGenConfig
             parameters,
         };
 
         try {
             const saved = await api.put(`/api/generation-configs/${updatedConfig.id}`, updatedConfig);
-            const index = this.state.generationConfigs.findIndex(c => c.id === saved.id);
-            this.state.generationConfigs[index] = saved;
-            this.state.selectedGenConfig = JSON.parse(JSON.stringify(saved)); // Update with saved version
+            const index = this.#generationConfigs.findIndex(c => c.id === saved.id);
+            if (index !== -1) {
+                this.#generationConfigs[index] = saved;
+            } else {
+                this.#generationConfigs.push(saved);
+            }
+            // Update selectedGenConfig with the fresh data from the server
+            this.#selectedGenConfig = JSON.parse(JSON.stringify(saved)); 
             
-            this.updateGenConfigList(); // Update name in list
+            this.#updateGenConfigList();
             notifier.show({ header: 'Saved', message: `"${saved.name}" has been updated.`, type: 'good'});
-            this.setNeedsSave(false);
+            this.#setNeedsSave(false);
         } catch (e) {
             notifier.show({ header: 'Save Error', message: 'Could not save generation config.', type: 'bad' });
         }
     }
     
-    openAddStringModal() {
-        if (!this.state.selectedGenConfig) return;
+    #openAddStringModal() {
+        if (!this.#selectedGenConfig) return;
 
         const modalContent = document.createElement('div');
         modalContent.style.height = '60vh';
@@ -381,7 +406,7 @@ class GenerationConfigView extends BaseComponent {
         const itemList = document.createElement('item-list');
         modalContent.append(itemList);
         
-        const sortedStrings = [...this.state.reusableStrings].sort((a, b) => a.name.localeCompare(b.name));
+        const sortedStrings = [...this.#reusableStrings].sort((a, b) => a.name.localeCompare(b.name));
         
         const renderStringList = () => {
             itemList.innerHTML = sortedStrings.map(s => `
@@ -394,15 +419,15 @@ class GenerationConfigView extends BaseComponent {
         
         const handleAction = e => {
             const { id } = e.detail;
-            const selectedString = this.state.reusableStrings.find(s => s.id === id);
+            const selectedString = this.#reusableStrings.find(s => s.id === id);
             if (!selectedString) return;
 
-            this.state.selectedGenConfig.promptStrings.push({
+            this.#selectedGenConfig.promptStrings.push({
                 stringId: id,
                 role: 'system' // Default role
             });
-            this.setNeedsSave(true);
-            this.renderPromptStringsList();
+            this.#setNeedsSave(true);
+            this.#renderPromptStringsList();
             modal.hide();
             notifier.show({ type: 'good', message: `Added "${selectedString.name}"` });
             itemList.removeEventListener('item-action', handleAction);
@@ -419,10 +444,10 @@ class GenerationConfigView extends BaseComponent {
         renderStringList(); // Initial render
     }
 
-    handleBackToConfigs() {
-        this.state.selectedGenConfig = null;
-        this.setNeedsSave(false);
-        this.updateView();
+    #handleBackToConfigs() {
+        this.#selectedGenConfig = null;
+        this.#setNeedsSave(false);
+        this.#updateView();
     }
 
     render() {
@@ -458,7 +483,13 @@ class GenerationConfigView extends BaseComponent {
                                 <schema-form></schema-form>
                             </section>
                             <section>
-                                <h3>Prompt Sequence</h3>
+                                <div class="section-header-with-controls">
+                                    <h3>Prompt Sequence</h3>
+                                    <div class="form-group-inline checkbox-group">
+                                        <input type="checkbox" id="merge-strings-checkbox">
+                                        <label for="merge-strings-checkbox">Merge consecutive strings of same role</label>
+                                    </div>
+                                </div>
                                 <p class="section-desc">Strings are combined in this order to form the final prompt.</p>
                                 <button id="add-string-btn" class="button-secondary">Add String</button>
                                 <ul id="prompt-strings-list"></ul>
@@ -528,6 +559,12 @@ class GenerationConfigView extends BaseComponent {
             .editor-body { display: flex; flex-direction: column; gap: var(--spacing-lg); flex-grow: 1; overflow-y: auto; padding: var(--spacing-lg); background-color: var(--bg-1); border-radius: var(--radius-md); }
             section { margin-bottom: var(--spacing-lg); }
             section:last-of-type { margin-bottom: 0; }
+            .section-header-with-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs); }
+            .section-header-with-controls h3 { margin-bottom: 0; }
+            .form-group-inline { display: flex; align-items: center; gap: var(--spacing-sm); }
+            .checkbox-group label { font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: 400; cursor: pointer; }
+            .checkbox-group input[type="checkbox"] { margin: 0; }
+            
             section h3 { margin-bottom: var(--spacing-xs); }
             .section-desc { font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--spacing-md); }
             .notice { color: var(--text-disabled); font-style: italic; background-color: var(--bg-0); padding: var(--spacing-sm); }
@@ -553,6 +590,7 @@ class GenerationConfigView extends BaseComponent {
             @media (max-width: 768px) {
                 .editor-body { padding: var(--spacing-md); }
                 .editor-content header { padding: var(--spacing-sm) var(--spacing-md); gap: var(--spacing-sm); }
+                .section-header-with-controls { flex-direction: column; align-items: flex-start; gap: var(--spacing-xs); }
             }
         `;
     }

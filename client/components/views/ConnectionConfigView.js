@@ -36,6 +36,7 @@ class ConnectionConfigView extends BaseComponent {
     handleResourceChange(event) {
         const { resourceType, eventType, data } = event.detail;
         let changed = false;
+        let selectedConfigWasDeleted = false;
 
         if (resourceType === 'connection_config') {
             switch (eventType) {
@@ -43,7 +44,7 @@ class ConnectionConfigView extends BaseComponent {
                     this.state.configs.push(data);
                     changed = true;
                     break;
-                case 'update':
+                case 'update': {
                     const index = this.state.configs.findIndex(c => c.id === data.id);
                     if (index !== -1) {
                         this.state.configs[index] = data;
@@ -53,16 +54,19 @@ class ConnectionConfigView extends BaseComponent {
                         changed = true;
                     }
                     break;
-                case 'delete':
+                }
+                case 'delete': {
                     const initialLength = this.state.configs.length;
+                    if (this.state.selectedConfig?.id === data.id) {
+                        this.state.selectedConfig = null;
+                        selectedConfigWasDeleted = true;
+                    }
                     this.state.configs = this.state.configs.filter(c => c.id !== data.id);
                     if (this.state.configs.length < initialLength) {
-                        if (this.state.selectedConfig?.id === data.id) {
-                            this.state.selectedConfig = null;
-                        }
                         changed = true;
                     }
                     break;
+                }
             }
         } else if (resourceType === 'setting') {
             if (this.state.activeConfigId !== data.activeConnectionConfigId) {
@@ -72,7 +76,14 @@ class ConnectionConfigView extends BaseComponent {
         }
 
         if (changed) {
-            this.updateView();
+            const editorForm = this.shadowRoot.querySelector('schema-form');
+            const editorHasFocus = editorForm && editorForm.shadowRoot.contains(document.activeElement);
+
+            if (editorHasFocus && !selectedConfigWasDeleted) {
+                this._renderConfigList();
+            } else {
+                this.updateView();
+            }
         }
     }
 

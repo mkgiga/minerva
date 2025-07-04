@@ -1,3 +1,4 @@
+// client/components/views/modes/BaseChatMode.js
 import { BaseComponent } from '../../BaseComponent.js';
 
 /**
@@ -7,6 +8,7 @@ import { BaseComponent } from '../../BaseComponent.js';
  * Child classes must implement the rendering and interaction logic.
  */
 export class BaseChatMode extends BaseComponent {
+    #isSending = false;
     constructor() {
         super();
         if (this.constructor === BaseChatMode) {
@@ -18,6 +20,24 @@ export class BaseChatMode extends BaseComponent {
         this.userPersona = null;
         this.mainView = null;
         this.rendererType = 'raw';
+        this.settings = {}; // To hold mode-specific settings
+    }
+
+    /**
+     * Child classes can override this static getter to define a schema for their settings.
+     * This schema will be used by UserPreferencesView to generate a settings form.
+     * @returns {Array<object>} A schema compatible with the SchemaForm component.
+     */
+    static getSettingsSchema() {
+        return [];
+    }
+
+    /**
+     * Child classes can override this static getter to define default values for their settings.
+     * @returns {object} An object with default setting values.
+     */
+    static getDefaultSettings() {
+        return {};
     }
 
     /**
@@ -28,6 +48,7 @@ export class BaseChatMode extends BaseComponent {
      * @param {object|null} data.userPersona - The current user persona character.
      * @param {HTMLElement} data.mainView - A reference to the MainChatView instance.
      * @param {string} data.rendererType - The type of renderer ('raw', 'markdown', etc.).
+     * @param {object} data.settings - Mode-specific settings from global config.
      */
     initialize(data) {
         this.chat = data.chat;
@@ -35,8 +56,13 @@ export class BaseChatMode extends BaseComponent {
         this.userPersona = data.userPersona;
         this.mainView = data.mainView;
         this.rendererType = data.rendererType;
+        // Merge defaults with provided settings
+        this.settings = { ...this.constructor.getDefaultSettings(), ...data.settings };
         this.onInitialize();
     }
+    
+    get isSending() { return this.#isSending; }
+    set isSending(value) { this.#isSending = value; }
 
     /**
      * @abstract
@@ -53,7 +79,7 @@ export class BaseChatMode extends BaseComponent {
      * The mode is responsible for adding the user's message to the display
      * and showing a loading/spinner state for the upcoming assistant response.
      * @param {object} userMessage - The user message object created by the controller.
-     * @returns {object} The temporary assistant message object created by the mode, which will be updated by the stream.
+     * @returns {string} The ID of the temporary assistant message element, which will be updated by the stream.
      */
     onPromptStart(userMessage) {
         throw new Error('Method "onPromptStart()" must be implemented.');
@@ -62,11 +88,10 @@ export class BaseChatMode extends BaseComponent {
     /**
      * @abstract
      * Called by MainChatView when a regeneration/resend is triggered.
-     * The mode is responsible for updating its UI to show a loading state.
-     * @param {object} messageToRegen - The message object to regenerate from (can be 'user' or 'assistant').
-     * @returns {object|null} The message object (either existing or new) that should be updated by the stream. Returns null if action can't be handled.
+     * The mode is responsible for updating its UI to show a loading state for the specified message.
+     * @param {string} messageId - The ID of the message to regenerate from.
      */
-    onRegenerateStart(messageToRegen) {
+    onRegenerateStart(messageId) {
         throw new Error('Method "onRegenerateStart()" must be implemented.');
     }
 
@@ -90,44 +115,122 @@ export class BaseChatMode extends BaseComponent {
         // Optional implementation in child classes
     }
 
+    // New Lifecycle Hooks for Fine-Grained Updates
+
     /**
-     * @abstract
-     * Called by MainChatView whenever the underlying state changes.
-     * The mode should use this to perform targeted DOM updates.
-     * @param {object} detail - Information about what changed.
-     * @param {Array<string>} detail.changed - A list of top-level state properties that were updated (e.g., ['selectedChat', 'allCharacters']).
+     * Called when the active chat is switched entirely, or when a refresh is forced.
+     * The mode should completely re-render its history.
      */
-    onStateUpdate(detail) {
-        throw new Error('Method "onStateUpdate()" must be implemented.');
+    onChatSwitched() {
+        /* No-op by default. Child classes should implement this, typically by calling a full refresh method. */
+    }
+    
+    /**
+     * Called when the list of participants in the current chat changes.
+     * The `this.chat.participants` property is already updated.
+     */
+    onParticipantsChanged() {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when new messages are added to the end of the current chat's history.
+     * This is typically a user prompt and an assistant response pair from the backend.
+     * @param {Array<object>} addedMessages - An array of the new message objects that were added.
+     */
+    onMessagesAdded(addedMessages) {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when a single message's content or properties have been updated (e.g., after an edit).
+     * @param {object} updatedMessage - The full message object with updated content/properties.
+     */
+    onMessageUpdated(updatedMessage) {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when one or more messages have been deleted from the history.
+     * @param {Array<string>} deletedMessageIds - An array of IDs of the deleted messages.
+     */
+    onMessagesDeleted(deletedMessageIds) {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when a chat is branched. The mode should clear and re-render for the new branch.
+     * The `this.chat` property will have already been updated to the new chat object.
+     */
+    onChatBranched() {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when the global list of all available characters changes.
+     * The `this.allCharacters` property is already updated.
+     */
+    onAllCharactersChanged() {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when the global user persona character is changed.
+     * The `this.userPersona` property is already updated.
+     */
+    onUserPersonaChanged() {
+        /* No-op by default. */
+    }
+    
+    /**
+     * Called by MainChatView when this mode's specific settings are changed.
+     * The `this.settings` property is already updated with the new values.
+     * @param {object} newSettings - The new settings object for this mode.
+     */
+    onSettingsChanged(newSettings) {
+        /* No-op by default. Child classes can implement this. */
+    }
+    
+    // Stream Lifecycle Hooks
+
+    /**
+     * Called by MainChatView before the streaming response begins.
+     * @param {string} messageId - The ID of the message that will be updated.
+     */
+    onStreamStart(messageId) {
+        // Optional implementation in child classes.
     }
     
     /**
      * @abstract
-     * Called directly when the chat object itself is updated (e.g., after an edit).
-     * @param {object} newChatData - The new, complete chat object from the server.
-     */
-    onChatUpdate(newChatData) {
-        throw new Error('Method "onChatUpdate()" must be implemented.');
-    }
-
-    /**
-     * @abstract
      * Called by MainChatView for each token received from the streaming response.
      * @param {string} token - The new token string.
-     * @param {object} messageToUpdate - The message object from the chat state being updated.
+     * @param {string} messageId - The ID of the message being updated.
      */
-    onToken(token, messageToUpdate) {
+    onToken(token, messageId) {
         throw new Error('Method "onToken()" must be implemented.');
     }
 
     /**
      * @abstract
      * Called by MainChatView when the streaming response is complete.
-     * @param {object} messageToUpdate - The final message object.
+     * @param {string} messageId - The ID of the message that was updated.
      */
-    onFinish(messageToUpdate) {
-        throw new Error('Method "onFinish()" must be implemented.');
+    onStreamFinish(messageId) {
+        throw new Error('Method "onStreamFinish()" must be implemented.');
     }
+    
+    /**
+     * Called by MainChatView if the streaming response fails.
+     * @param {Error} error - The error object.
+     * @param {string} messageId - The ID of the message that failed to update.
+     */
+    onStreamError(error, messageId) {
+        // Optional implementation in child classes.
+        console.error(`Stream error for message ${messageId}:`, error);
+    }
+    
+    // End of Stream Hooks
 
     /**
      * @abstract
@@ -155,7 +258,7 @@ export class BaseChatMode extends BaseComponent {
         throw new Error('Method "updateInputState()" must be implemented.');
     }
 
-    // --- API for Mode-to-Controller Communication ---
+    // API for Mode-to-Controller Communication
 
     /**
      * A helper to quickly find a character from the main list by their ID.
@@ -221,5 +324,12 @@ export class BaseChatMode extends BaseComponent {
      */
     copyMessageContent(content) {
         this.dispatch('chat-mode-copy-message', { content });
+    }
+    
+    /**
+     * Requests the main controller to abort the current generation stream.
+     */
+    abortGeneration() {
+        this.dispatch('chat-mode-abort-generation');
     }
 }

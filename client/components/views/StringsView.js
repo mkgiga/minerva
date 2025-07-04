@@ -61,12 +61,14 @@ class StringsView extends BaseComponent {
         if (data.id === 'system-chat-history') return;
 
         let changed = false;
+        let selectedStringWasDeleted = false;
+
         switch (eventType) {
             case 'create':
                 this.state.strings.push(data);
                 changed = true;
                 break;
-            case 'update':
+            case 'update': {
                 const index = this.state.strings.findIndex(s => s.id === data.id);
                 if (index !== -1) {
                     this.state.strings[index] = data;
@@ -76,20 +78,30 @@ class StringsView extends BaseComponent {
                     changed = true;
                 }
                 break;
-            case 'delete':
+            }
+            case 'delete': {
                 const initialLength = this.state.strings.length;
+                if (this.state.selectedString?.id === data.id) {
+                    this.state.selectedString = null;
+                    selectedStringWasDeleted = true;
+                }
                 this.state.strings = this.state.strings.filter(s => s.id !== data.id);
                 if (this.state.strings.length < initialLength) {
-                    if (this.state.selectedString?.id === data.id) {
-                        this.state.selectedString = null;
-                    }
                     changed = true;
                 }
                 break;
+            }
         }
 
         if (changed) {
-            this.updateView();
+            const editorForm = this.shadowRoot.querySelector('#editor-form');
+            const editorHasFocus = editorForm && editorForm.contains(document.activeElement);
+
+            if (editorHasFocus && !selectedStringWasDeleted) {
+                this.#renderStringList();
+            } else {
+                this.updateView();
+            }
         }
     }
 

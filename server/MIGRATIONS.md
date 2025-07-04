@@ -65,7 +65,7 @@ export async function up(paths, utils) {
             const content = await fs.readFile(file, 'utf-8');
             const data = JSON.parse(content);
 
-            // --- YOUR MIGRATION LOGIC FOR THE FILE GOES HERE ---
+            // YOUR MIGRATION LOGIC FOR THE FILE GOES HERE
             // Example: Rename 'greeting' to 'first_message'
             if ('greeting' in data) {
                 data.first_message = data.greeting;
@@ -94,7 +94,7 @@ export const transform = {
      * @returns {object} The migrated character data object for revision 2.
      */
     character: (data) => {
-        // --- YOUR MIGRATION LOGIC FOR AN IN-MEMORY OBJECT GOES HERE ---
+        // YOUR MIGRATION LOGIC FOR AN IN-MEMORY OBJECT GOES HERE
         // Example: Rename 'greeting' to 'first_message'
         if ('greeting' in data) {
             data.first_message = data.greeting;

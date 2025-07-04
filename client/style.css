@@ -34,7 +34,7 @@
     --transition-fast: all 0.15s ease-in-out;
 }
 
-/* --- Global Resets & Defaults --- */
+/* Global Resets & Defaults */
 * {
     box-sizing: border-box;
     font-size: 16px; /* Base font size */
@@ -70,7 +70,7 @@ h3 {
     color: var(--text-secondary);
 }
 
-/* --- Custom Scrollbar --- */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -90,7 +90,7 @@ h3 {
     background: transparent;
 }
 
-/* --- Main App Layout --- */
+/* Main App Layout */
 minerva-app {
     display: block;
     position: relative;
@@ -145,7 +145,7 @@ minerva-app {
     cursor: not-allowed;
 
     /* It's 2025 - Modern browsers support nested selectors now. */
-    .item-name {
+    & .item-name {
         opacity: 0.25;
     }
 }
@@ -162,7 +162,7 @@ minerva-app {
     grid-template-columns: 1fr;
 }
 
-/* --- Main View Panels --- */
+/* Main View Panels */
 .panel-left,
 .panel-main,
 .panel-right {
@@ -180,7 +180,7 @@ minerva-app {
     background-color: var(--bg-0);
 }
 
-/* --- Global Overlay Elements --- */
+/* Global Overlay Elements */
 #notification-container {
     position: fixed;
     bottom: var(--spacing-md);
@@ -194,7 +194,7 @@ minerva-app {
     pointer-events: none; /* Let clicks pass through the container to the UI below */
 }
 
-/* --- Component-specific Styles --- */
+/* Component-specific Styles */
 .view-container {
     padding: var(--spacing-lg);
     flex-grow: 1;
@@ -237,7 +237,7 @@ minerva-app {
     resize: vertical;
 }
 
-/* --- Custom Form Elements --- */
+/* Custom Form Elements */
 input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
@@ -371,7 +371,7 @@ input[type="checkbox"]:focus-visible {
     min-height: 150px;
 }
 
-/* --- Mobile Support --- */
+/* Mobile Support */
 @media (max-width: 768px) {
     /* Move main nav bar to the bottom of the screen */
     .app-layout-container {

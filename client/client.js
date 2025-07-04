@@ -5,6 +5,7 @@ import './components/views/ConnectionConfigView.js';
 import './components/views/GenerationConfigView.js';
 import './components/views/UserPreferencesView.js';
 import './components/views/StringsView.js';
+import './components/views/ScenariosView.js';
 import './components/views/modes/index.js';
 import { BaseComponent } from './components/BaseComponent.js';
 import './components/Notification.js';
@@ -75,7 +76,7 @@ export const api = {
     },
 };
 
-// --- Global Services ---
+// Global Services
 
 class NotificationService {
     constructor() { this.container = null; }
@@ -228,6 +229,9 @@ class MinervaApp extends BaseComponent {
                     <button class="nav-button" data-view="strings" title="Strings">
                         <span class="material-icons">text_fields</span>
                     </button>
+                     <button class="nav-button" data-view="scenarios" title="Scenarios">
+                        <span class="material-icons">menu_book</span>
+                    </button>
                     <button class="nav-button" data-view="characters" title="Characters">
                         <span class="material-icons">people</span>
                     </button>
@@ -237,6 +241,7 @@ class MinervaApp extends BaseComponent {
                 </aside>
                 <div class="main-view-wrapper">
                     <characters-view data-view="characters" style="display: none;"></characters-view>
+                    <scenarios-view data-view="scenarios" style="display: none;"></scenarios-view>
                     <main-chat-view data-view="chat" style="display: none;"></main-chat-view>
                     <connection-config-view data-view="connection-config" style="display: none;"></connection-config-view>
                     <generation-config-view data-view="generation-config" style="display: none;"></generation-config-view>
@@ -298,6 +303,7 @@ class MinervaApp extends BaseComponent {
             case 'connection-config':
             case 'generation-config':
             case 'strings':
+            case 'scenarios':
                 return ''; // Default two-panel layout (left and main)
             default:
                 return '';
@@ -307,7 +313,7 @@ class MinervaApp extends BaseComponent {
 
 customElements.define('minerva-app', MinervaApp);
 
-// --- PWA Service Worker Registration ---
+// PWA Service Worker Registration
 window.addEventListener('load', () => {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')

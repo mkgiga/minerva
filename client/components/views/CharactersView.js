@@ -43,36 +43,56 @@ class CharactersView extends BaseComponent {
     handleResourceChange(event) {
         const { resourceType, eventType, data } = event.detail;
         
+        let stateChanged = false;
+        let selectedCharacterWasDeleted = false;
+
         if (resourceType === 'character') {
-            let changed = false;
             switch (eventType) {
                 case 'create':
                     this.state.characters.push(data);
-                    changed = true;
+                    stateChanged = true;
                     break;
-                case 'update':
+                case 'update': {
                     const index = this.state.characters.findIndex(c => c.id === data.id);
                     if (index !== -1) {
                         this.state.characters[index] = data;
                         if (this.state.selectedCharacter?.id === data.id) {
                             this.state.selectedCharacter = data;
                         }
-                        changed = true;
+                        stateChanged = true;
                     }
                     break;
-                case 'delete':
-                    this.state.characters = this.state.characters.filter(c => c.id !== data.id);
+                }
+                case 'delete': {
+                    const initialLength = this.state.characters.length;
                     if (this.state.selectedCharacter?.id === data.id) {
                         this.state.selectedCharacter = null;
+                        selectedCharacterWasDeleted = true;
                     }
-                    changed = true;
+                    this.state.characters = this.state.characters.filter(c => c.id !== data.id);
+                    if (this.state.characters.length < initialLength) {
+                        stateChanged = true;
+                    }
                     break;
+                }
             }
-            if (changed) this.updateView();
-
         } else if (resourceType === 'setting') {
             if (this.state.userPersonaCharacterId !== data.userPersonaCharacterId) {
                 this.state.userPersonaCharacterId = data.userPersonaCharacterId;
+                stateChanged = true;
+            }
+        }
+
+        if (stateChanged) {
+            const characterEditor = this.shadowRoot.querySelector('minerva-character-editor');
+            const editorHasFocus = characterEditor && characterEditor.shadowRoot.contains(document.activeElement);
+
+            if (editorHasFocus && !selectedCharacterWasDeleted) {
+                // User is typing in the editor. To avoid interrupting them, we only update
+                // the list on the left, not the main editor panel.
+                this._renderCharacterList();
+            } else {
+                // Otherwise, perform a full update of the view.
                 this.updateView();
             }
         }

@@ -12,8 +12,46 @@ export class AdventureChatMode extends BaseChatMode {
     #sendButton = null;
     #quickRegenButton = null;
     #lastUnansweredPromptEl = null;
-    #abortController = null;
     #isAnimating = false;
+    #settings = {};
+    #streamingContent = new Map(); // New: Map to hold content during streaming
+
+    static getSettingsSchema() {
+        return [
+            {
+                name: 'scrollSpeed',
+                label: 'Typewriter Speed (ms per character)',
+                type: 'range',
+                min: 0,
+                max: 100,
+                step: 1,
+                description: 'The delay between each character appearing in the typewriter effect. Set to 0 for instant text.'
+            },
+            {
+                name: 'blockGap',
+                label: 'Gap Between Blocks (rem)',
+                type: 'range',
+                min: 0,
+                max: 4,
+                step: 0.25,
+                description: 'The vertical spacing between action, dialogue, and other blocks.'
+            },
+            {
+                name: 'autoScroll',
+                label: 'Enable Auto-Scrolling',
+                type: 'checkbox',
+                description: 'Automatically scroll to the newest content as it is being generated during live responses.'
+            }
+        ];
+    }
+
+    static getDefaultSettings() {
+        return {
+            scrollSpeed: 30,
+            blockGap: 1.5, // Corresponds to --spacing-lg
+            autoScroll: true,
+        };
+    }
 
     onInitialize() {
         this.render();
@@ -22,6 +60,10 @@ export class AdventureChatMode extends BaseChatMode {
         this.#textbox = this.#form.querySelector('text-box');
         this.#sendButton = this.#form.querySelector('.send-button');
         this.#quickRegenButton = this.shadowRoot.querySelector('#quick-regen-btn');
+
+        // Apply initial settings
+        this.#settings = this.settings;
+        this.#applySettings();
 
         // Listen to the click event on the button directly for better mobile reliability.
         this.#sendButton.addEventListener('click', this.#handleSend.bind(this));
@@ -42,10 +84,71 @@ export class AdventureChatMode extends BaseChatMode {
 
         // New: Listener for collapsible prompts
         this.#historyContainer.addEventListener('click', this.#handlePromptHeaderClick.bind(this));
+    }
+    
+    // Lifecycle Hooks
 
-        this.refreshChatHistory();
+    onSettingsChanged(newSettings) {
+        this.#settings = { ...this.#settings, ...newSettings };
+        this.#applySettings();
+        // For a purely visual change like this, we can avoid a full re-render.
+        // If a setting required re-rendering the HTML, we'd call `this.refreshChatHistory()` here.
+    }
+
+    #applySettings() {
+        this.style.setProperty('--adventure-block-gap', `${this.#settings.blockGap}rem`);
+    }
+
+    onChatSwitched() { this.refreshChatHistory(); }
+    onChatBranched() { this.refreshChatHistory(); }
+    onParticipantsChanged() { this.refreshChatHistory(); }
+    onAllCharactersChanged() { this.refreshChatHistory(); }
+    onUserPersonaChanged() { this.refreshChatHistory(); }
+
+    onMessagesAdded(addedMessages) {
+        // This event is fired after a prompt/response cycle from the backend.
+        // We can confidently assume the last messages are the ones to update.
+        const optimisticUserEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="user-"]');
+        const optimisticAssistantEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
+
+        if (optimisticUserEl && optimisticAssistantEl && addedMessages.length >= 2) {
+            const finalUserMsg = addedMessages.at(-2);
+            const finalAssistantMsg = addedMessages.at(-1);
+
+            // User message is updated immediately as it doesn't animate itself
+            this.#updateMessageContent(optimisticUserEl, finalUserMsg);
+            
+            // For the assistant message, if an animation is NOT active, ensure the content is up-to-date.
+            if (!this.#isAnimating) {
+                this.#updateMessageContent(optimisticAssistantEl, finalAssistantMsg);
+            }
+            // Update the ID to the final server ID regardless.
+            optimisticAssistantEl.dataset.messageId = finalAssistantMsg.id;
+        } else {
+            // Fallback for unexpected cases (e.g., if optimistic elements not found, or less than 2 messages)
+            this.refreshChatHistory();
+        }
+    }
+
+    onMessageUpdated(updatedMessage) {
+        // This is for existing messages (e.g., regeneration, edit) that were updated by the server.
+        // We only apply updates if no animation is currently in progress to avoid conflicts.
+        if (this.#isAnimating) return;
+        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${updatedMessage.id}"]`);
+        if (messageEl) {
+            this.#updateMessageContent(messageEl, updatedMessage);
+        }
+    }
+
+    onMessagesDeleted(deletedMessageIds) {
+        if (this.#isAnimating) return;
+        for (const id of deletedMessageIds) {
+            this.shadowRoot.querySelector(`.chat-message[data-message-id="${id}"]`)?.remove();
+        }
         this.updateInputState();
     }
+    
+    // Overridden BaseChatMode Methods
     
     onPromptStart(userMessage) {
         this.appendMessage(userMessage);
@@ -59,18 +162,22 @@ export class AdventureChatMode extends BaseChatMode {
         this.appendMessage(assistantSpinnerMessage);
 
         this.clearUserInput();
-        return assistantSpinnerMessage;
+        return assistantSpinnerMessage.id;
     }
 
-    onRegenerateStart(messageToRegen) {
-        if (messageToRegen.role === 'assistant') {
-            const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageToRegen.id}"]`);
+    onRegenerateStart(messageId) {
+        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+        const messageData = this.chat.messages.find(m => m.id === messageId);
+        
+        if (!messageData) return;
+
+        if (messageData.role === 'assistant') {
             if (messageEl) {
-                const spinnerMessage = { ...messageToRegen, content: '<minerva-spinner mode="infinite"></minerva-spinner>' };
+                const spinnerMessage = { ...messageData, content: '<minerva-spinner mode="infinite"></minerva-spinner>' };
                 this.#updateMessageContent(messageEl, spinnerMessage);
             }
-            return messageToRegen;
-        } else if (messageToRegen.role === 'user') {
+        } else if (messageData.role === 'user') {
+            // For resending a user prompt, we add a new spinner message below it.
             const assistantSpinnerMessage = {
                 id: `assistant-${uuidv4()}`,
                 role: 'assistant',
@@ -78,75 +185,21 @@ export class AdventureChatMode extends BaseChatMode {
                 timestamp: new Date().toISOString()
             };
             this.appendMessage(assistantSpinnerMessage);
-            return assistantSpinnerMessage;
-        }
-        return null;
-    }
-    
-    onStateUpdate({ changed }) {
-        if (this.#isAnimating) return; // Don't disrupt ongoing animations
-        if (changed.includes('allCharacters') || changed.includes('userPersona')) {
-            this.refreshChatHistory();
+            // This case doesn't need a specific messageId to update, a new one will be created.
         }
     }
 
-    onChatUpdate(newChatData) {
-        if (this.#isAnimating) return; // Don't disrupt ongoing animations
-
-        const oldMessages = this.chat?.messages || [];
-        const newMessages = newChatData.messages;
-
-        // If a prompt was just answered, the DOM structure changes significantly. A full refresh is required.
-        if (newMessages.length > oldMessages.length) {
-            const justAddedUserMessage = newMessages.at(-2);
-            if (justAddedUserMessage?.role === 'user' && justAddedUserMessage.content.startsWith('<choice>')) {
-                const correspondingPromptMessage = newMessages.at(-3);
-                if (correspondingPromptMessage?.role === 'assistant' && correspondingPromptMessage.content.includes('<prompt>')) {
-                    this.chat = newChatData;
-                    this.refreshChatHistory();
-                    return;
-                }
-            }
-        }
-
-        const optimisticUserEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="user-"]');
-        const optimisticAssistantEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
-        const newMsgCount = newMessages.length - oldMessages.length;
-
-        // Heuristic: If we just sent a prompt, only morph the optimistic messages
-        if (optimisticUserEl && optimisticAssistantEl && newMsgCount === 2) {
-            this.chat = newChatData;
-            const finalUserMsg = newMessages.at(-2);
-            const finalAssistantMsg = newMessages.at(-1);
-            
-            this.#updateMessageContent(optimisticUserEl, finalUserMsg);
-            // The final state update should not trigger animation, so we don't call #animateVnResponse here.
-            this.#updateMessageContent(optimisticAssistantEl, finalAssistantMsg);
-            
-            return;
-        }
-        
-        // Fallback for edits, deletions, or other complex updates
-        this.chat = newChatData;
-        this.refreshChatHistory();
-    }
-    
-    // --- Overridden BaseChatMode Methods ---
-
-    sendPrompt(promptText) { this.#sendMessage(promptText); }
-    regenerateMessage(messageId) { this.#regenerateMessage(messageId); }
-
-    // --- Generation and UI Logic ---
+    // User Input and UI Logic
 
     #handleSend(event) {
         event.preventDefault();
         if (this.isSending) {
-            if (this.#abortController) this.#abortController.abort();
+            this.dispatch('chat-mode-abort-generation');
             return;
         }
         const promptText = this.getUserInput();
         if (promptText && !this.#sendButton.disabled) {
-            this.#sendMessage(promptText);
+            this.sendPrompt(promptText);
         }
     }
 
@@ -159,12 +212,12 @@ export class AdventureChatMode extends BaseChatMode {
         }
     }
 
-    async #handleQuickRegen() {
+    #handleQuickRegen() {
         if (this.isSending || this.#isAnimating || !this.chat || this.chat.messages.length === 0) {
             return;
         }
         const lastMessage = this.chat.messages.at(-1);
-        this.#regenerateMessage(lastMessage.id);
+        this.regenerateMessage(lastMessage.id);
     }
 
     #handlePromptHeaderClick(event) {
@@ -250,115 +303,51 @@ export class AdventureChatMode extends BaseChatMode {
         }
     }
     
-    onToken(token, messageToUpdate) {
-        // Defer rendering until the stream is complete to allow for full-response animation.
-        this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
+    // Stream Lifecycle Hooks
+    
+    onStreamStart(messageId) {
+        this.#streamingContent.set(messageId, '');
     }
 
-    async onFinish(messageToUpdate) {
-        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageToUpdate.id}"]`);
+    onToken(token, messageId) {
+        if (this.#streamingContent.has(messageId)) {
+            this.#streamingContent.set(messageId, this.#streamingContent.get(messageId) + token);
+        }
+        
+        if (this.#settings.autoScroll) {
+            this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
+        }
+    }
+
+    async onStreamFinish(messageId) {
+        const finalContent = this.#streamingContent.get(messageId);
+        if (finalContent === undefined) return;
+
+        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
         
         if (messageEl) {
-            // This is a live response, so we animate it. The animation function handles re-enabling input.
-            await this.#animateVnResponse(messageEl, messageToUpdate);
-        } else {
-            // Should not happen, but as a fallback, ensure input is re-enabled.
-            this.updateInputState(false);
+            // Create a temporary message object for the animation function
+            const messageToAnimate = { id: messageId, content: finalContent };
+            await this.#animateVnResponse(messageEl, messageToAnimate);
         }
+        
+        this.#streamingContent.delete(messageId);
     }
     
-    // --- Network and Message Handling ---
-    
-    async #sendMessage(promptText) {
-        if (this.isSending || !this.chat) return;
-        const message = promptText.trim();
-        if (!message) return;
-        
-        this.updateInputState(true);
-        const userMessage = { id: `user-${uuidv4()}`, role: 'user', content: message, timestamp: new Date().toISOString(), characterId: this.userPersona?.id || null };
-        const messageToUpdate = this.onPromptStart(userMessage);
-        
-        this.#abortController = new AbortController();
-        const fetchPromise = fetch(`/api/chats/${this.chat.id}/prompt`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message }), signal: this.#abortController.signal,
-        });
+    onStreamError(error, messageId) {
+        const content = error.name === 'AbortError' 
+            ? `${this.#streamingContent.get(messageId) || ''}\n\n---\n*Generation stopped by user.*`
+            : `**Error:** Could not get response.\n*${error.message}*`;
 
-        await this.#handleStreamedResponse(fetchPromise, messageToUpdate, 'Prompt Error');
-    }
-
-    async #regenerateMessage(messageId) {
-        if (this.isSending || !this.chat) return;
-
-        const messageToRegen = this.chat.messages.find(m => m.id === messageId);
-        if (!messageToRegen) return;
-
-        const originalContent = messageToRegen.content;
-        let fetchPromise;
-        this.updateInputState(true);
-        const messageToUpdate = this.onRegenerateStart(messageToRegen);
-        if (!messageToUpdate) { this.updateInputState(false); return; }
-
-        this.#abortController = new AbortController();
-        const { signal } = this.#abortController;
-
-        if (messageToRegen.role === 'assistant') {
-            fetchPromise = fetch(`/api/chats/${this.chat.id}/regenerate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId: messageId }), signal });
-        } else if (messageToRegen.role === 'user') {
-            fetchPromise = fetch(`/api/chats/${this.chat.id}/resend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), signal });
-        } else { this.updateInputState(false); return; }
-        
-        await this.#handleStreamedResponse(fetchPromise, messageToUpdate, 'Regeneration Error', originalContent);
-    }
-
-    async #handleStreamedResponse(fetchPromise, messageToUpdate, errorHeader, originalContentOnError = null) {
-        try {
-            const response = await fetchPromise;
-            if (!response.ok) {
-                const errorBody = await response.json().catch(() => ({ message: response.statusText }));
-                throw new Error(`Server error: ${errorBody.message || response.statusText}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let isFirstToken = true;
-            
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const eventMessages = buffer.split('\n\n');
-                buffer = eventMessages.pop(); 
-
-                for (const msg of eventMessages) {
-                    if (!msg.startsWith('data:')) continue;
-                    try {
-                        const payload = JSON.parse(msg.substring(6));
-                        if (payload.token) {
-                            if (isFirstToken) { messageToUpdate.content = ''; isFirstToken = false; }
-                            messageToUpdate.content += payload.token;
-                            this.onToken(payload.token, messageToUpdate);
-                        }
-                    } catch (e) { console.error("Error parsing SSE data chunk:", e, msg); }
-                }
-            }
-        } catch (error) {
-            if (error.name === 'AbortError') {
-                messageToUpdate.content = messageToUpdate.content ? `${messageToUpdate.content}\n\n---\n*Generation stopped by user.*` : '*Generation stopped by user.*';
-            } else {
-                console.error(`${errorHeader} failed:`, error);
-                messageToUpdate.content = `**Error:** Could not get response.\n*${error.message}*`;
-                if (originalContentOnError) messageToUpdate.content += `\n\n--- (Previous content) ---\n\n${originalContentOnError}`;
-                notifier.show({ header: errorHeader, message: error.message, type: 'bad' });
-            }
-        } finally {
-            this.#abortController = null;
-            await this.onFinish(messageToUpdate);
+        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+        if (messageEl) {
+            const errorMsg = { id: messageId, role: 'assistant', content };
+            this.#updateMessageContent(messageEl, errorMsg);
         }
+        this.#streamingContent.delete(messageId);
     }
     
-    // --- Rendering and View Logic ---
+    // Rendering and View Logic
 
     refreshChatHistory() {
         if (!this.#historyContainer || !this.chat) {
@@ -486,7 +475,7 @@ export class AdventureChatMode extends BaseChatMode {
                     const errorDetails = document.createElement('div');
                     errorDetails.className = 'adventure-parse-error';
                     errorDetails.innerHTML = '<strong>Parse Error:</strong><pre>' + this._escapeHtml(parserError.textContent) + '</pre>';
-                    messageEl.appendChild(errorDetails);
+                    messageEl.querySelector('.message-bubble').appendChild(errorDetails);
                 }
             } else {
                 messageEl.className = 'chat-message assistant adventure-mode';
@@ -498,12 +487,12 @@ export class AdventureChatMode extends BaseChatMode {
         this.#attachListenersToElement(messageEl);
     }
     
-    // --- Animation Logic ---
+    // Animation Logic
 
     #sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
-    async #typewriter(element, speed = 30) {
-        const childNodes = Array.from(element.childNodes);
+    async #typewriter(element, childNodes) {
+        const speed = this.#settings.scrollSpeed;
         element.innerHTML = '';
     
         const part = element.closest('.adventure-speech-part');
@@ -514,15 +503,33 @@ export class AdventureChatMode extends BaseChatMode {
                 const text = node.textContent;
                 const textNode = document.createTextNode('');
                 element.appendChild(textNode);
-                for (const char of text) {
-                    if (this.#abortController?.signal.aborted) { textNode.nodeValue = text; return; }
-                    textNode.nodeValue += char;
-                    this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
-                    await this.#sleep(speed);
+                if (speed > 0) {
+                    for (const char of text) {
+                        textNode.nodeValue += char;
+                        if (this.#settings.autoScroll) {
+                            const containerRect = this.#historyContainer.getBoundingClientRect();
+                            const elementRect = element.getBoundingClientRect();
+                            if (elementRect.bottom > containerRect.bottom) {
+                                element.scrollIntoView({ behavior: "auto", block: "end", inline: "nearest" });
+                            }
+                        }
+                        await this.#sleep(speed);
+                    }
+                } else {
+                    textNode.nodeValue = text;
+                    if (this.#settings.autoScroll) {
+                        element.scrollIntoView({ behavior: "auto", block: "end", inline: "nearest" });
+                    }
                 }
             } else {
                 element.appendChild(node.cloneNode(true));
-                this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
+                if (this.#settings.autoScroll) {
+                    const containerRect = this.#historyContainer.getBoundingClientRect();
+                    const elementRect = element.getBoundingClientRect();
+                    if (elementRect.bottom > containerRect.bottom) {
+                        element.scrollIntoView({ behavior: "auto", block: "end", inline: "nearest" });
+                    }
+                }
             }
         }
     }
@@ -531,62 +538,81 @@ export class AdventureChatMode extends BaseChatMode {
         this.#isAnimating = true;
         this.updateInputState(this.isSending);
         messageEl.innerHTML = '';
-
+    
         const content = msg.content || '';
         const parser = new DOMParser();
         const doc = parser.parseFromString(content, 'application/xml');
         const outputNode = doc.querySelector('output');
         const parserError = doc.querySelector('parsererror');
-
+    
         if (parserError || !outputNode) {
+            // If content is invalid, render it as plain text instead of animating
             this.#updateMessageContent(messageEl, msg);
             this.#isAnimating = false;
             this.updateInputState(false);
             return;
         }
-
+    
         messageEl.className = 'chat-message assistant adventure-mode';
         messageEl.innerHTML = `<div class="message-controls">${this.#renderMessageControlsHTML(msg)}</div>`;
-
+    
         const allBlocks = [];
+        const contentsToType = new Map();
+    
         for (const node of Array.from(outputNode.children)) {
             const block = this.#createVnBlock(node, msg);
             if (block) {
+                const elementsToTypeInBlock = [];
+                if (block.classList.contains('adventure-action')) {
+                    elementsToTypeInBlock.push(block);
+                } else if (block.classList.contains('adventure-dialogue')) {
+                    elementsToTypeInBlock.push(...block.querySelectorAll('.adventure-speech-part'));
+                } else if (block.classList.contains('adventure-show')) {
+                    elementsToTypeInBlock.push(...block.querySelectorAll('.adventure-action, .adventure-speech-part'));
+                }
+                
+                for (const element of elementsToTypeInBlock) {
+                    contentsToType.set(element, Array.from(element.childNodes));
+                    element.innerHTML = '';
+                }
+    
                 block.style.opacity = 0;
                 messageEl.appendChild(block);
                 allBlocks.push(block);
             }
         }
-
+    
         for (const block of allBlocks) {
             block.classList.add('adventure-fade-in');
-            this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
-            await this.#sleep(400);
-
-            if (this.#abortController?.signal.aborted) break;
-
-            if (block.classList.contains('adventure-dialogue') || block.classList.contains('adventure-show')) {
-                const speechParts = block.querySelectorAll('.adventure-speech-part');
-                for (const part of speechParts) {
-                    const delayMs = parseFloat(part.style.animationDelay || 0) * 1000;
+            await this.#sleep(400); // Wait for fade-in animation to complete
+    
+            const elementsToType = [];
+            if (block.classList.contains('adventure-action')) {
+                elementsToType.push(block);
+            } else if (block.classList.contains('adventure-dialogue')) {
+                elementsToType.push(...block.querySelectorAll('.adventure-speech-part'));
+            } else if (block.classList.contains('adventure-show')) {
+                elementsToType.push(...block.querySelectorAll('.adventure-action, .adventure-speech-part'));
+            }
+    
+            for (const element of elementsToType) {
+                if (element.classList.contains('adventure-speech-part')) {
+                    element.style.animation = 'none';
+                    element.style.opacity = '1';
+                    const delayMs = parseFloat(element.style.animationDelay || 0) * 1000;
                     if (delayMs > 0) await this.#sleep(delayMs);
-                    await this.#typewriter(part);
-                    if (this.#abortController?.signal.aborted) break;
                 }
+    
+                await this.#typewriter(element, contentsToType.get(element));
             }
         }
-        
-        // If aborted, quickly render the full final content without animations
-        if (this.#abortController?.signal.aborted) {
-            this.#updateMessageContent(messageEl, msg);
-        }
-
+    
         this.#isAnimating = false;
         this.updateInputState(false);
         this.#attachListenersToElement(messageEl);
     }
 
-    // --- VN Block Rendering ---
+    // VN Block Rendering
     
     #renderVnOutput(outputNode, msg) {
         const fragment = document.createDocumentFragment();
@@ -845,8 +871,9 @@ export class AdventureChatMode extends BaseChatMode {
             .chat-message.assistant.adventure-mode:hover .message-controls { opacity: 1; }
             .chat-message:not(.assistant.adventure-mode) { display: flex; gap: var(--spacing-md); max-width: 100%; }
             .chat-message .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 5px; background-color: var(--bg-3); }
-            .chat-message.system { margin: 0 auto; color: var(--text-secondary); max-width: 100%; }
-            .chat-message.system .message-bubble { background: none; }
+            .chat-message.system, .chat-message.player-choice { margin: 0 auto; color: var(--text-secondary); max-width: 100%; }
+            .chat-message.system .message-bubble, .chat-message.player-choice .message-bubble { background: none; }
+            .chat-message.player-choice .message-bubble { text-align: center; font-style: italic; }
             .message-bubble { background-color: var(--bg-1); border-radius: var(--radius-md); padding: var(--spacing-sm) var(--spacing-md); flex-grow: 1; position: relative; }
             .chat-message.user .message-bubble { background-color: var(--accent-primary); color: var(--bg-0); }
             .chat-message.user .message-bubble .icon-btn { color: var(--bg-1); }
@@ -863,10 +890,11 @@ export class AdventureChatMode extends BaseChatMode {
             @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             .adventure-fade-in { animation: fadeIn 0.4s ease-out both; }
             .adventure-speech-part { animation: fadeIn 0.3s ease-out both; opacity: 0; }
+            .adventure-speech-part:not(:first-child)::before { content: ' '; }
             
             .adventure-parse-error { border: 2px solid var(--accent-danger); background: rgba(242, 139, 130, 0.1); padding: var(--spacing-md); border-radius: var(--radius-md); margin-top: var(--spacing-md); }
             .adventure-parse-error pre { background: var(--bg-0); padding: var(--spacing-sm); border-radius: var(--radius-sm); white-space: pre-wrap; word-break: break-all; }
-            .adventure-block { margin-bottom: var(--spacing-lg); padding-top: 0; transition: opacity 0.4s ease-out; }
+            .adventure-block { margin-bottom: var(--adventure-block-gap, var(--spacing-lg)); padding-top: 0; transition: opacity 0.4s ease-out; }
             .adventure-action { font-style: italic; color: var(--text-secondary); text-align: justify; padding: var(--spacing-sm) 0; }
             .adventure-action:not(:last-child) { border-bottom: 1px dashed var(--bg-3); }
             .adventure-action:nth-child(2) { border-top: 1px dashed var(--bg-3); }
@@ -874,7 +902,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-speaker-avatar { border-radius: var(--radius-md); object-fit: cover; background-color: var(--bg-3); grid-area: avatar; column-span: 1; height: 192px; width: 128px; }
             .adventure-dialogue-content { grid-area: content; }
             .adventure-speaker-name { font-size: 1.2rem; font-weight: 600; color: var(--text-primary); grid-area: name; padding-bottom: var(--spacing-xs); border-bottom: 1px solid var(--bg-3); margin-bottom: var(--spacing-sm); }
-            .adventure-speech { line-height: 1.6; text-align: justify; }
+            .adventure-speech { line-height: 1.6; }
             .adventure-speech-part { display: inline; }
             .adventure-speech-yell { text-transform: uppercase; font-weight: bold; }
             .adventure-speech-monologue { font-style: italic; color: var(--text-secondary); }
@@ -907,7 +935,7 @@ export class AdventureChatMode extends BaseChatMode {
             @media (max-width: 768px) {
                 #chat-history { padding: var(--spacing-md); }
                 .chat-message .message-controls, .chat-message.assistant.adventure-mode .message-controls { opacity: 1; pointer-events: auto; }
-                .adventure-block { margin-bottom: var(--spacing-sm); padding-bottom: var(--spacing-sm); padding-top: 0; }
+                .adventure-block { margin-bottom: var(--adventure-block-gap, var(--spacing-sm)); padding-bottom: var(--spacing-sm); padding-top: 0; }
                 .adventure-action { padding-left: var(--spacing-xs); padding-right: var(--spacing-xs); font-size: var(--font-size-md); }
                 .adventure-dialogue { gap: var(--spacing-xs) var(--spacing-sm); grid-template-columns: auto 1fr; }
                 .adventure-speaker-avatar { width: 64px; height: 96px; border-radius: var(--radius-sm); }
@@ -923,5 +951,6 @@ export class AdventureChatMode extends BaseChatMode {
         `;
     }
 }
+
 customElements.define('adventure-chat-mode', AdventureChatMode);
 chatModeRegistry.register('vn', 'adventure-chat-mode');

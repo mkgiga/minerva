@@ -1,4 +1,3 @@
-// server.js
 import express from 'express';
 import { createServer } from 'http';
 import { v4 as uuidv4 } from 'uuid';
@@ -24,9 +23,10 @@ const REUSABLE_STRINGS_DIR = path.join(DATA_DIR, 'reusable_strings');
 const GENERATION_CONFIGS_DIR = path.join(DATA_DIR, 'generation_configs');
 const CONNECTION_CONFIGS_DIR = path.join(DATA_DIR, 'connection_configs');
 const CHATS_DIR = path.join(DATA_DIR, 'chats');
+const SCENARIOS_DIR = path.join(DATA_DIR, 'scenarios');
 const SETTINGS_FILE_PATH = path.join(DATA_DIR, 'settings.json');
 
-// --- CORS ---
+// CORS
 const corsEnabled = serverConfig.server.cors?.enabled || false;
 const corsAllowOrigins = corsEnabled ? serverConfig.server.cors?.allow_origins : [`http://${HOST}:${PORT}`, 'http://localhost:3000'];
 const corsAllowMethods = serverConfig.server.cors?.allow_methods || ['GET', 'POST', 'PUT', 'DELETE'];
@@ -43,7 +43,7 @@ const app = express();
 app.use(cors(corsOptions));
 const server = createServer(app);
 
-// --- SSE Clients ---
+// SSE Clients
 const sseClients = new Set();
 
 function broadcastEvent(type, data) {
@@ -53,7 +53,7 @@ function broadcastEvent(type, data) {
     }
 }
 
-// --- Adapter Mapping ---
+// Adapter Mapping
 const ADAPTERS = {
     'v1': OpenAIV1Adapter,
     'gemini': GoogleGeminiAdapter,
@@ -93,6 +93,7 @@ const state = {
     reusableStrings: [],
     generationConfigs: [],
     chats: [],
+    scenarios: [],
     settings: {},
 };
 
@@ -105,9 +106,10 @@ async function main() {
     await fs.mkdir(GENERATION_CONFIGS_DIR, { recursive: true });
     await fs.mkdir(CONNECTION_CONFIGS_DIR, { recursive: true });
     await fs.mkdir(CHATS_DIR, { recursive: true });
+    await fs.mkdir(SCENARIOS_DIR, { recursive: true });
     
     // Run migrations before loading any data.
-    await runMigrations({ CHARACTERS_DIR, REUSABLE_STRINGS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR });
+    await runMigrations({ CHARACTERS_DIR, REUSABLE_STRINGS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR, SCENARIOS_DIR });
 
     await initializeData();
     initHttp();
@@ -121,10 +123,11 @@ async function initializeData() {
         state.settings = await loadSettings();
         state.characters = await loadCharacters();
         state.chats = (await loadJsonFilesFromDir(CHATS_DIR, Chat)).map(chatData => new Chat(chatData));
+        state.scenarios = await loadJsonFilesFromDir(SCENARIOS_DIR, Scenario);
         
         // Load user-created strings and prepend the system-defined ones.
         const userReusableStrings = await loadJsonFilesFromDir(REUSABLE_STRINGS_DIR, ReusableString);
-        state.reusableStrings = [CHAT_HISTORY_STRING, ...userReusableStrings];
+        state.reusableStrings = [CHAT_HISTORY_STRING, SCENARIO_STRING, ...userReusableStrings];
 
         state.generationConfigs = await loadJsonFilesFromDir(GENERATION_CONFIGS_DIR, GenerationConfig);
         state.connectionConfigs = await loadJsonFilesFromDir(CONNECTION_CONFIGS_DIR, ConnectionConfig);
@@ -132,6 +135,7 @@ async function initializeData() {
         console.log('Data loaded successfully.');
         console.log(`- ${state.characters.length} characters`);
         console.log(`- ${state.chats.length} chats`);
+        console.log(`- ${state.scenarios.length} scenarios`);
         console.log(`- ${state.connectionConfigs.length} connection configs`);
         console.log(`- ${state.reusableStrings.length} reusable strings (including system)`);
         console.log(`- ${state.generationConfigs.length} generation configs`);
@@ -155,13 +159,17 @@ async function loadSettings() {
             activeGenerationConfigId: null,
             chat: {
                 renderer: 'raw' // Default renderer
-            }
+            },
+            chatModes: {}
         };
         
-        // Deep merge for nested objects like 'chat'
+        // Deep merge for nested objects like 'chat' and 'chatModes'
         const mergedSettings = { ...defaultSettings, ...loadedSettings };
         if (loadedSettings.chat) {
             mergedSettings.chat = { ...defaultSettings.chat, ...loadedSettings.chat };
+        }
+        if (loadedSettings.chatModes) {
+            mergedSettings.chatModes = { ...defaultSettings.chatModes, ...loadedSettings.chatModes };
         }
 
         return mergedSettings;
@@ -174,7 +182,8 @@ async function loadSettings() {
                 activeGenerationConfigId: null,
                 chat: {
                     renderer: 'raw'
-                }
+                },
+                chatModes: {}
             };
             await fs.writeFile(SETTINGS_FILE_PATH, JSON.stringify(defaultSettings, null, 2));
             return defaultSettings;
@@ -261,7 +270,7 @@ function start() {
 // Helper function for macro resolution
 function resolveMacros(text, context) {
     if (!text) return '';
-    const { allCharacters = [], userPersonaCharacterId = null, chatCharacterIds = [] } = context;
+    const { allCharacters = [], userPersonaCharacterId = null, chatCharacterIds = [], activeScenarioIds = [] } = context;
 
     // Helper to escape XML special characters
     function escapeXml(unsafe) {
@@ -315,6 +324,17 @@ function resolveMacros(text, context) {
                     });
                     if (imageLines.length > 0) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
+                    }
+                }
+                if (props.includes('scenario')) {
+                    const activeScenarios = state.scenarios.filter(s => activeScenarioIds.includes(s.id));
+                    const scenarioOverrides = activeScenarios
+                        .map(s => s.characterOverrides?.[c.id])
+                        .filter(Boolean);
+                    
+                    if (scenarioOverrides.length > 0) {
+                        const scenarioLines = scenarioOverrides.map(override => `        <override>${escapeXml(override)}</override>`);
+                        characterLines.push(`    <scenario>\n${scenarioLines.join('\n')}\n    </scenario>`);
                     }
                 }
                 
@@ -393,13 +413,13 @@ function resolveMacros(text, context) {
 
 
 function initHttp() {
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
+    app.use(express.json({ limit: '50mb' })); // Increased limit
+    app.use(express.urlencoded({ limit: '50mb', extended: true })); // Increased limit
     app.use(express.static(STATIC_DIR));
     app.use('/data', express.static(path.join(process.cwd(), 'data')));
     app.get('/', (req, res) => res.sendFile('index.html', { root: 'client' }));
 
-    // --- SSE Endpoint for real-time updates ---
+    // SSE Endpoint for real-time updates
     app.get('/api/events', (req, res) => {
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -417,7 +437,7 @@ function initHttp() {
         });
     });
 
-    // --- API Endpoints ---
+    // API Endpoints
     app.get('/api/settings', (req, res) => res.json(state.settings));
     app.post('/api/settings', async (req, res) => {
         try {
@@ -425,6 +445,12 @@ function initHttp() {
             const newSettings = { ...state.settings, ...req.body };
             if (req.body.chat) {
                 newSettings.chat = { ...state.settings.chat, ...req.body.chat };
+            }
+            if (req.body.chatModes) {
+                newSettings.chatModes = { ...(state.settings.chatModes || {}) };
+                for (const [mode, modeSettings] of Object.entries(req.body.chatModes)) {
+                    newSettings.chatModes[mode] = { ...(state.settings.chatModes?.[mode] || {}), ...modeSettings };
+                }
             }
             
             state.settings = newSettings;
@@ -454,7 +480,7 @@ function initHttp() {
         }
     });
     
-    // --- Characters API ---
+    // Characters API
     app.get('/api/characters', async (req, res) => {
         try {
             state.characters = await loadCharacters();
@@ -657,7 +683,53 @@ function initHttp() {
         } catch (error) { res.status(500).json({ message: 'Failed to delete character' }); }
     });
 
-    // --- Chats API ---
+    // Scenarios API
+    app.get('/api/scenarios', (req, res) => res.json(state.scenarios));
+    app.post('/api/scenarios', async (req, res) => {
+        try {
+            const scenario = new Scenario(req.body);
+            await fs.writeFile(path.join(SCENARIOS_DIR, `${scenario.id}.json`), JSON.stringify(scenario, null, 2));
+            state.scenarios.push(scenario);
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'create', data: scenario });
+            res.status(201).json(scenario);
+        } catch (e) { res.status(500).json({ message: 'Failed to create scenario.' }); }
+    });
+    app.put('/api/scenarios/:id', async (req, res) => {
+        try {
+            const { id } = req.params;
+            const index = state.scenarios.findIndex(s => s.id === id);
+            if (index === -1) return res.status(404).json({ message: 'Scenario not found.' });
+            const updatedScenario = new Scenario({ ...req.body, id });
+            await fs.writeFile(path.join(SCENARIOS_DIR, `${id}.json`), JSON.stringify(updatedScenario, null, 2));
+            state.scenarios[index] = updatedScenario;
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'update', data: updatedScenario });
+            res.json(updatedScenario);
+        } catch (e) { res.status(500).json({ message: 'Failed to update scenario.' }); }
+    });
+    app.delete('/api/scenarios/:id', async (req, res) => {
+        try {
+            const { id } = req.params;
+            if (!state.scenarios.some(s => s.id === id)) return res.status(404).json({ message: 'Scenario not found.' });
+            
+            await fs.unlink(path.join(SCENARIOS_DIR, `${id}.json`));
+            state.scenarios = state.scenarios.filter(s => s.id !== id);
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'delete', data: { id } });
+
+            // Also remove this scenario from any chats that use it
+            const allChats = await loadJsonFilesFromDir(CHATS_DIR, Chat);
+            for (const chat of allChats) {
+                const initialLength = chat.scenarioIds.length;
+                chat.scenarioIds = chat.scenarioIds.filter(scenarioId => scenarioId !== id);
+                if (chat.scenarioIds.length < initialLength) {
+                    await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
+                    broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+                }
+            }
+            res.status(204).send();
+        } catch (e) { res.status(500).json({ message: 'Failed to delete scenario.' }); }
+    });
+
+    // Chats API
     app.get('/api/chats', async (req, res) => {
         const chats = await loadJsonFilesFromDir(CHATS_DIR, Chat);
         // Ensure new Chat objects are instantiated to apply defaults like systemInstruction
@@ -771,6 +843,7 @@ function initHttp() {
             const newChat = new Chat({
                 name: `[Branch from "${originalChat.name}"]`, // More descriptive name
                 participants: originalChat.participants,
+                scenarioIds: originalChat.scenarioIds, // Copy scenarios to branch
                 parentId: originalChat.id, // Set parent ID
                 systemInstruction: originalChat.systemInstruction,
                 messages: originalChat.messages.slice(0, branchIndex + 1)
@@ -796,7 +869,7 @@ function initHttp() {
         }
     });
 
-    // --- Adapters API ---
+    // Adapters API
     app.get('/api/adapters/schemas', (req, res) => {
         const schemas = {};
         for (const [id, adapterClass] of Object.entries(ADAPTERS)) {
@@ -817,7 +890,7 @@ function initHttp() {
         res.json(schemas);
     });
 
-    // --- Connection Config API ---
+    // Connection Config API
     app.get('/api/connection-configs', (req, res) => res.json(state.connectionConfigs));
     app.post('/api/connection-configs', async (req, res) => {
         const config = new ConnectionConfig(req.body);
@@ -876,7 +949,7 @@ function initHttp() {
         }
     });
 
-    // --- Generation Configs API ---
+    // Generation Configs API
     app.get('/api/generation-configs', (req, res) => res.json(state.generationConfigs));
     app.post('/api/generation-configs', async (req, res) => {
         const config = new GenerationConfig(req.body);
@@ -923,7 +996,7 @@ function initHttp() {
         res.json(state.settings);
     });
 
-    // --- Reusable Strings API ---
+    // Reusable Strings API
     app.get('/api/reusable-strings', (req, res) => res.json(state.reusableStrings));
     app.post('/api/reusable-strings', async (req, res) => {
         const newString = new ReusableString(req.body);
@@ -934,7 +1007,7 @@ function initHttp() {
     });
     app.put('/api/reusable-strings/:id', async (req, res) => {
         const { id } = req.params;
-        if (id === CHAT_HISTORY_STRING.id) {
+        if (id === CHAT_HISTORY_STRING.id || id === SCENARIO_STRING.id) {
             return res.status(403).json({ message: 'System strings are not editable.' });
         }
         const index = state.reusableStrings.findIndex(s => s.id === id);
@@ -947,7 +1020,7 @@ function initHttp() {
     });
     app.delete('/api/reusable-strings/:id', async (req, res) => {
         const { id } = req.params;
-        if (id === CHAT_HISTORY_STRING.id) {
+        if (id === CHAT_HISTORY_STRING.id || id === SCENARIO_STRING.id) {
             return res.status(403).json({ message: 'System strings cannot be deleted.' });
         }
         if (!state.reusableStrings.some(s => s.id === id)) return res.status(404).json({ message: 'String not found.' });
@@ -968,7 +1041,7 @@ function initHttp() {
         res.status(204).send();
     });
     
-    // --- Prompting API ---
+    // Prompting API
     function sendSse(res, event, data) {
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -1006,54 +1079,99 @@ function initHttp() {
             };
         }
         
-        const macroContext = { allCharacters: state.characters, userPersonaCharacterId, chatCharacterIds: chat.participants.map(p => p.id) };
+        const macroContext = { 
+            allCharacters: state.characters, 
+            userPersonaCharacterId, 
+            chatCharacterIds: chat.participants.map(p => p.id),
+            activeScenarioIds: chat.scenarioIds || []
+        };
 
         // 3. Assemble Prompt from Generation Config
         let finalMessageList = [];
         let systemParts = [];
         let generationParameters = {};
         
-        if (chat.systemInstruction) systemParts.push(resolveMacros(chat.systemInstruction, macroContext));
+        const genConfig = activeGenerationConfigId ? state.generationConfigs.find(c => c.id === activeGenerationConfigId) : null;
 
-        if (activeGenerationConfigId) {
-            const genConfig = state.generationConfigs.find(c => c.id === activeGenerationConfigId);
-            if (genConfig) {
-                if (genConfig.parameters && genConfig.parameters[config.adapter]) {
-                    generationParameters = genConfig.parameters[config.adapter];
-                }
-                
-                let historyInjected = false;
+        if (chat.systemInstruction) {
+            systemParts.push(resolveMacros(chat.systemInstruction, macroContext));
+        }
 
-                for (const ps of genConfig.promptStrings) {
-                    if (ps.stringId === CHAT_HISTORY_STRING.id) {
-                        historyInjected = true;
-                        // For regeneration, we only want the history *before* the message being regenerated.
-                        // For a normal prompt, we want the history *and* the new user message.
-                        finalMessageList.push(...historyForPrompt);
-                        if (userMessageToAppend) {
-                            finalMessageList.push(userMessageToAppend);
+        if (genConfig) {
+            if (genConfig.parameters && genConfig.parameters[config.adapter]) {
+                generationParameters = genConfig.parameters[config.adapter];
+            }
+            
+            // NEW PROMPT ASSEMBLY LOGIC
+
+            // 1. Build a flat list of all message parts, including chat history where the placeholder is.
+            let fullPromptSequence = [];
+            const hasHistoryPlaceholder = genConfig.promptStrings.some(ps => ps.stringId === CHAT_HISTORY_STRING.id);
+
+            for (const ps of genConfig.promptStrings) {
+                if (ps.stringId === CHAT_HISTORY_STRING.id) {
+                    fullPromptSequence.push(...historyForPrompt);
+                    if (userMessageToAppend) {
+                        fullPromptSequence.push(userMessageToAppend);
+                    }
+                } else if (ps.stringId === SCENARIO_STRING.id) {
+                    const activeScenarios = state.scenarios.filter(s => (chat.scenarioIds || []).includes(s.id));
+                    if (activeScenarios.length > 0) {
+                        const scenarioContent = activeScenarios.map(s => s.description).filter(Boolean).join('\n\n');
+                        if (scenarioContent) {
+                            fullPromptSequence.push({ role: ps.role, content: scenarioContent });
                         }
-                    } else {
-                        const reusableString = state.reusableStrings.find(s => s.id === ps.stringId);
-                        if (reusableString) {
-                            const resolvedContent = resolveMacros(reusableString.data, macroContext);
-                            if (ps.role === 'system') {
-                                systemParts.push(resolvedContent);
-                            } else {
-                                finalMessageList.push({ role: ps.role, content: resolvedContent });
-                            }
+                    }
+                } else {
+                    const reusableString = state.reusableStrings.find(s => s.id === ps.stringId);
+                    if (reusableString) {
+                        const resolvedContent = resolveMacros(reusableString.data, macroContext);
+                        if (resolvedContent) {
+                            fullPromptSequence.push({ role: ps.role, content: resolvedContent });
                         }
                     }
                 }
-                
-                // If the user sent a message but the gen config has no history placeholder,
-                // add the user's message at the end to prevent it from being lost.
-                if (!historyInjected && userMessageToAppend) {
-                    finalMessageList.push(userMessageToAppend);
-                }
-
             }
+            
+            // Fallback: If no history placeholder was in the sequence, append history and user message at the end.
+            if (!hasHistoryPlaceholder) {
+                fullPromptSequence.push(...historyForPrompt);
+                if (userMessageToAppend) {
+                    fullPromptSequence.push(userMessageToAppend);
+                }
+            }
+
+            // 2. Separate system messages and prepare the main message list.
+            for (const msg of fullPromptSequence) {
+                if (msg.role === 'system') {
+                    systemParts.push(msg.content);
+                } else {
+                    finalMessageList.push({ ...msg }); // Add non-system messages
+                }
+            }
+            
+            // 3. Merge consecutive messages in the final list if the flag is set.
+            if (genConfig.mergeConsecutiveStrings && finalMessageList.length > 1) {
+                const mergedList = [];
+                if (finalMessageList.length > 0) {
+                    let currentGroup = { ...finalMessageList[0] };
+    
+                    for (let i = 1; i < finalMessageList.length; i++) {
+                        const nextMsg = finalMessageList[i];
+                        if (nextMsg.role === currentGroup.role) {
+                            currentGroup.content += '\n\n' + nextMsg.content;
+                        } else {
+                            mergedList.push(currentGroup);
+                            currentGroup = { ...nextMsg };
+                        }
+                    }
+                    mergedList.push(currentGroup); // Add the last group
+                    finalMessageList = mergedList;
+                }
+            }
+
         } else {
+             // Default behavior if no generation config is active
              finalMessageList.push(...historyForPrompt);
              if (userMessageToAppend) {
                 finalMessageList.push(userMessageToAppend);
@@ -1082,18 +1200,27 @@ function initHttp() {
 
             const { stream, chat } = await processPrompt(chatId, null, true, messageId);
 
-            const regeneratedAssistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
+            let newContent = '';
             for await (const token of stream) {
-                regeneratedAssistantMessage.content += token;
+                newContent += token;
                 sendSse(res, 'token', { token });
             }
 
             const regenIndex = chat.messages.findIndex(m => m.id === messageId);
-            chat.messages[regenIndex] = regeneratedAssistantMessage;
+            if (regenIndex === -1) {
+                throw new Error(`Message with ID "${messageId}" not found in chat "${chat.id}" for regeneration.`);
+            }
+            
+            // Update the existing message object instead of replacing it.
+            // This preserves the message ID, simplifying client-side logic.
+            const messageToUpdate = chat.messages[regenIndex];
+            messageToUpdate.content = newContent;
+            messageToUpdate.timestamp = new Date().toISOString();
+
             chat.lastModifiedAt = new Date().toISOString();
             await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
             broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
-            sendSse(res, 'done', { messageId: regeneratedAssistantMessage.id });
+            sendSse(res, 'done', { messageId: messageToUpdate.id });
 
         } catch (error) {
             console.error('Error during regeneration:', error);
@@ -1174,7 +1301,7 @@ function initHttp() {
     });
 }
 
-// --- Helper Functions for Data Handling ---
+// Helper Functions for Data Handling
 async function loadSingleCharacter(id) {
     const charDirPath = path.join(CHARACTERS_DIR, id);
     try {
@@ -1226,9 +1353,26 @@ async function updateCharacterIdReferences(oldId, newId) {
             console.error(`Failed to update character ID in chat file ${chatFile}:`, e);
         }
     }
+    
+    // 3. Update scenarios
+    const scenarioFiles = await glob(path.join(SCENARIOS_DIR, '*.json').replace(/\\/g, '/'));
+    for (const scenarioFile of scenarioFiles) {
+        try {
+            const scenarioData = JSON.parse(await fs.readFile(scenarioFile, 'utf-8'));
+            if (scenarioData.characterOverrides && scenarioData.characterOverrides[oldId]) {
+                scenarioData.characterOverrides[newId] = scenarioData.characterOverrides[oldId];
+                delete scenarioData.characterOverrides[oldId];
+                await fs.writeFile(scenarioFile, JSON.stringify(scenarioData, null, 2));
+                const scenarioInState = state.scenarios.find(s => s.id === scenarioData.id);
+                if (scenarioInState) scenarioInState.characterOverrides = scenarioData.characterOverrides;
+            }
+        } catch (e) {
+            console.error(`Failed to update character ID in scenario file ${scenarioFile}:`, e);
+        }
+    }
 }
 
-// --- Data Models ---
+// Data Models
 class Character {
     id = uuidv4();
     name = '';
@@ -1270,6 +1414,7 @@ class Chat {
     name = 'New Chat';
     messages = [];
     participants = []; // { id: string }
+    scenarioIds = [];
     parentId = null;
     childChatIds = [];
     createdAt = new Date().toISOString();
@@ -1284,6 +1429,7 @@ class Chat {
             name: 'New Chat',
             messages: [],
             participants: [],
+            scenarioIds: [],
             parentId: null,
             childChatIds: [],
             createdAt: now,
@@ -1355,7 +1501,7 @@ class ReusableString {
     }
 }
 
-// --- System-Defined Constants ---
+// System-Defined Constants
 const CHAT_HISTORY_STRING = new ReusableString({
     id: 'system-chat-history',
     name: 'Chat History',
@@ -1363,12 +1509,37 @@ const CHAT_HISTORY_STRING = new ReusableString({
     _rev: 1, // System strings should be pinned to a revision
 });
 
+const SCENARIO_STRING = new ReusableString({
+    id: 'system-scenario',
+    name: 'Scenario',
+    data: '[This will be replaced by the active scenarios content]',
+    _rev: 1,
+});
+
+class Scenario {
+    id = uuidv4();
+    name = 'New Scenario';
+    description = ''; // General scenario text
+    characterOverrides = {}; // { [characterId]: "character-specific text" }
+    _rev = CURRENT_REV;
+
+    constructor(data = {}) {
+        Object.assign(this, {
+            id: uuidv4(),
+            name: 'New Scenario',
+            description: '',
+            characterOverrides: {},
+            _rev: CURRENT_REV
+        }, data);
+    }
+}
 
 class GenerationConfig {
     id = uuidv4();
     name = 'New Generation Config';
     promptStrings = []; // Array of { stringId: string, role: string }
     parameters = {}; // e.g. { v1: { temperature: 0.7 }, gemini: { temperature: 0.8 } }
+    mergeConsecutiveStrings = false;
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
@@ -1377,6 +1548,7 @@ class GenerationConfig {
             name: 'New Generation Config',
             promptStrings: [],
             parameters: {},
+            mergeConsecutiveStrings: false,
             _rev: CURRENT_REV,
         }, data);
     }
