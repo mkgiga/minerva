@@ -1,3 +1,4 @@
+// client/components/views/ScenariosView.js
 import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier } from '../../client.js';
 import '../ItemList.js';
@@ -85,17 +86,21 @@ class ScenariosView extends BaseComponent {
             
             switch (eventType) {
                 case 'create':
+                    // Only add if it's truly new to prevent duplicates if optimistic updates were somehow still present
                     if (!this.#state.scenarios.some(s => s.id === data.id)) {
                         this.#state.scenarios.push(data);
-                        stateChanged = true;
                     }
+                    // Always select the new scenario and mark as saved (it came from the server)
+                    this.#selectedScenario = JSON.parse(JSON.stringify(data)); // Deep copy to prevent direct mutation
+                    this.#setNeedsSave(false);
+                    stateChanged = true;
                     break;
                 case 'update': {
                     const index = this.#state.scenarios.findIndex(s => s.id === data.id);
                     if (index > -1) {
                         this.#state.scenarios[index] = data;
                         if (this.#selectedScenario?.id === data.id) {
-                            this.#selectedScenario = data;
+                            this.#selectedScenario = JSON.parse(JSON.stringify(data)); // Deep copy updated data
                         }
                         stateChanged = true;
                     }
@@ -115,10 +120,13 @@ class ScenariosView extends BaseComponent {
                 }
             }
             if (stateChanged) {
+                // Determine if editor has focus to avoid interrupting user input
                 const hasFocus = this.shadowRoot.activeElement && this.shadowRoot.activeElement.closest('.editor-wrapper');
                 if (hasFocus && !selectedScenarioWasDeleted) {
+                    // If editor has focus and the selected item wasn't deleted, just re-render the list
                     this.#renderScenarioList();
                 } else {
+                    // Otherwise, perform a full view update (re-renders editor too)
                     this.#updateView();
                 }
             }
@@ -157,6 +165,7 @@ class ScenariosView extends BaseComponent {
     }
 
     #performSelection(item) {
+        // Deep copy the item to ensure editor changes don't affect the list until saved
         this.#selectedScenario = JSON.parse(JSON.stringify(item));
         this.#setNeedsSave(false);
         this.#updateView();
@@ -164,9 +173,9 @@ class ScenariosView extends BaseComponent {
 
     async handleScenarioAdd() {
         try {
-            const newScenario = await api.post('/api/scenarios', { name: 'New Scenario', description: '' });
-            this.#state.scenarios.push(newScenario);
-            this.#performSelection(newScenario);
+            // Just trigger the API call. The SSE event will handle adding to list and selecting.
+            await api.post('/api/scenarios', { name: 'New Scenario', description: '' });
+            notifier.show({ message: 'New scenario created.' });
         } catch (error) {
             console.error('Failed to add scenario:', error);
             notifier.show({ header: 'Error', message: 'Failed to create a new scenario.' });
@@ -210,15 +219,8 @@ class ScenariosView extends BaseComponent {
         };
 
         try {
-            const savedScenario = await api.put(`/api/scenarios/${scenarioData.id}`, scenarioData);
-            this.#selectedScenario = savedScenario;
-            
-            const index = this.#state.scenarios.findIndex(s => s.id === savedScenario.id);
-            if (index > -1) {
-                this.#state.scenarios[index] = savedScenario;
-            }
-            this.#renderScenarioList();
-            this.#setNeedsSave(false);
+            // The SSE handler will pick this up and update the state
+            await api.put(`/api/scenarios/${scenarioData.id}`, scenarioData);
             notifier.show({ type: 'good', message: 'Scenario saved.' });
 
         } catch (error) {
