@@ -766,23 +766,39 @@ class MainChatView extends BaseComponent {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+
+            const processChunk = (chunk) => {
+                // A chunk can be a multi-line string like "event: token\ndata: {...}"
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data:')) {
+                        const dataString = line.substring(5).trim();
+                        if (!dataString) continue;
+                        try {
+                            const payload = JSON.parse(dataString);
+                            if (payload.token) {
+                                this.#activeChatMode?.onToken(payload.token, messageId);
+                            }
+                        } catch (e) { console.error("Error parsing SSE data chunk:", e, line); }
+                    }
+                }
+            };
             
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
                 buffer += decoder.decode(value, { stream: true });
                 const eventMessages = buffer.split('\n\n');
-                buffer = eventMessages.pop(); 
+                buffer = eventMessages.pop() || ''; 
                 for (const msg of eventMessages) {
-                    if (!msg.startsWith('data:')) continue;
-                    try {
-                        const payload = JSON.parse(msg.substring(6));
-                        if (payload.token) {
-                            this.#activeChatMode?.onToken(payload.token, messageId);
-                        }
-                    } catch (e) { console.error("Error parsing SSE data chunk:", e, msg); }
+                    if (msg) processChunk(msg);
                 }
             }
+            
+            if (buffer) {
+                processChunk(buffer);
+            }
+
             this.#activeChatMode?.onStreamFinish(messageId);
 
         } catch (error) {

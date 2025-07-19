@@ -13,6 +13,7 @@ export class AdventureChatMode extends BaseChatMode {
     #quickRegenButton = null;
     #lastUnansweredPromptEl = null;
     #isAnimating = false;
+    #justAnimatedMessageIds = new Set();
     #settings = {};
     #streamingContent = new Map(); // New: Map to hold content during streaming
 
@@ -54,6 +55,7 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     onInitialize() {
+        console.log('[AdventureChatMode] onInitialize');
         this.render();
         this.#historyContainer = this.shadowRoot.querySelector('#chat-history');
         this.#form = this.shadowRoot.querySelector('#chat-form');
@@ -65,10 +67,11 @@ export class AdventureChatMode extends BaseChatMode {
         this.#settings = this.settings;
         this.#applySettings();
 
-        // Listen to the click event on the button directly for better mobile reliability.
+        // Unify form submission and button clicks into a single handler
+        // to prevent a race condition from double-sends.
+        this.#form.addEventListener('submit', this.#handleSend.bind(this));
         this.#sendButton.addEventListener('click', this.#handleSend.bind(this));
 
-        // Prevent the form from submitting through other means (e.g., 'Go' on mobile keyboard)
         this.#textbox.addEventListener('keydown', this.#handleTextboxKeydown.bind(this));
 
         // Enable/disable send button based on input
@@ -89,6 +92,7 @@ export class AdventureChatMode extends BaseChatMode {
     // Lifecycle Hooks
 
     onSettingsChanged(newSettings) {
+        console.log('[AdventureChatMode] onSettingsChanged', newSettings);
         this.#settings = { ...this.#settings, ...newSettings };
         this.#applySettings();
         // For a purely visual change like this, we can avoid a full re-render.
@@ -106,8 +110,10 @@ export class AdventureChatMode extends BaseChatMode {
     onUserPersonaChanged() { this.refreshChatHistory(); }
 
     onMessagesAdded(addedMessages) {
+        console.log('[AdventureChatMode] onMessagesAdded', addedMessages);
         // This event is fired after a prompt/response cycle from the backend.
-        // We can confidently assume the last messages are the ones to update.
+        // We find the optimistically-created elements and update them with the final
+        // data from the server.
         const optimisticUserEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="user-"]');
         const optimisticAssistantEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
 
@@ -115,24 +121,33 @@ export class AdventureChatMode extends BaseChatMode {
             const finalUserMsg = addedMessages.at(-2);
             const finalAssistantMsg = addedMessages.at(-1);
 
-            // User message is updated immediately as it doesn't animate itself
+            // Update the user message with its final ID and content.
             this.#updateMessageContent(optimisticUserEl, finalUserMsg);
             
-            // For the assistant message, if an animation is NOT active, ensure the content is up-to-date.
-            if (!this.#isAnimating) {
-                this.#updateMessageContent(optimisticAssistantEl, finalAssistantMsg);
-            }
-            // Update the ID to the final server ID regardless.
+            // For the assistant message, we assume the streaming animation has already
+            // rendered the correct content. We ONLY update its dataset to the final
+            // server ID so that future interactions (edit, delete, regen) work correctly.
+            // We do NOT re-render its content here, as that would overwrite the animation.
             optimisticAssistantEl.dataset.messageId = finalAssistantMsg.id;
         } else {
-            // Fallback for unexpected cases (e.g., if optimistic elements not found, or less than 2 messages)
+            // Fallback for unexpected cases (e.g., if optimistic elements not found).
             this.refreshChatHistory();
         }
     }
 
     onMessageUpdated(updatedMessage) {
-        // This is for existing messages (e.g., regeneration, edit) that were updated by the server.
-        // We only apply updates if no animation is currently in progress to avoid conflicts.
+        console.log('[AdventureChatMode] onMessageUpdated', updatedMessage);
+        // If this message was just animated by a stream finishing, we must not touch
+        // its content, as the animation is the source of truth. We consume the flag
+        // and prevent the re-render. This allows future, legitimate updates (e.g., an edit)
+        // to proceed normally.
+        if (this.#justAnimatedMessageIds.has(updatedMessage.id)) {
+            this.#justAnimatedMessageIds.delete(updatedMessage.id);
+            return;
+        }
+
+        // This handles non-animated updates, like edits, but respects any
+        // ongoing (but separate) animation.
         if (this.#isAnimating) return;
         const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${updatedMessage.id}"]`);
         if (messageEl) {
@@ -141,6 +156,7 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     onMessagesDeleted(deletedMessageIds) {
+        console.log('[AdventureChatMode] onMessagesDeleted', deletedMessageIds);
         if (this.#isAnimating) return;
         for (const id of deletedMessageIds) {
             this.shadowRoot.querySelector(`.chat-message[data-message-id="${id}"]`)?.remove();
@@ -151,6 +167,7 @@ export class AdventureChatMode extends BaseChatMode {
     // Overridden BaseChatMode Methods
     
     onPromptStart(userMessage) {
+        console.log('[AdventureChatMode] onPromptStart', userMessage);
         this.appendMessage(userMessage);
         
         const assistantSpinnerMessage = {
@@ -166,6 +183,7 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     onRegenerateStart(messageId) {
+        console.log('[AdventureChatMode] onRegenerateStart', messageId);
         const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
         const messageData = this.chat.messages.find(m => m.id === messageId);
         
@@ -207,7 +225,7 @@ export class AdventureChatMode extends BaseChatMode {
         if (event.key === 'Enter' && event.ctrlKey) {
             event.preventDefault();
             if (this.#sendButton && !this.#sendButton.disabled) {
-                this.#sendButton.click();
+                this.#handleSend(event);
             }
         }
     }
@@ -306,28 +324,39 @@ export class AdventureChatMode extends BaseChatMode {
     // Stream Lifecycle Hooks
     
     onStreamStart(messageId) {
+        console.log(`[AdventureChatMode] onStreamStart for messageId: ${messageId}`);
         this.#streamingContent.set(messageId, '');
     }
 
     onToken(token, messageId) {
+        console.log(`[AdventureChatMode] onToken for messageId: ${messageId}`, token);
+        // During streaming, we just append the new token to our buffer for that messageId.
+        // We do not touch the DOM here. The rendering will happen once in onStreamFinish.
         if (this.#streamingContent.has(messageId)) {
             this.#streamingContent.set(messageId, this.#streamingContent.get(messageId) + token);
         }
         
+        // We can still perform actions that don't involve rendering the content, like auto-scrolling.
         if (this.#settings.autoScroll) {
             this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
         }
     }
 
     async onStreamFinish(messageId) {
+        console.log(`[AdventureChatMode] onStreamFinish for messageId: ${messageId}`);
         const finalContent = this.#streamingContent.get(messageId);
         if (finalContent === undefined) return;
 
         const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
         
         if (messageEl) {
-            // Create a temporary message object for the animation function
-            const messageToAnimate = { id: messageId, content: finalContent };
+            // Flag this message as having been animated. The onMessageUpdated event that
+            // follows shortly after will see this flag, consume it, and avoid overwriting the content.
+            this.#justAnimatedMessageIds.add(messageId);
+
+            // The message being streamed is always from the assistant.
+            // We create a temporary message object for the animation function, ensuring role is set.
+            const messageToAnimate = { id: messageId, role: 'assistant', content: finalContent };
             await this.#animateVnResponse(messageEl, messageToAnimate);
         }
         
@@ -335,6 +364,7 @@ export class AdventureChatMode extends BaseChatMode {
     }
     
     onStreamError(error, messageId) {
+        console.log(`[AdventureChatMode] onStreamError for messageId: ${messageId}`, error);
         const content = error.name === 'AbortError' 
             ? `${this.#streamingContent.get(messageId) || ''}\n\n\n*Generation stopped by user.*`
             : `**Error:** Could not get response.\n*${error.message}*`;
@@ -350,6 +380,7 @@ export class AdventureChatMode extends BaseChatMode {
     // Rendering and View Logic
 
     refreshChatHistory() {
+        console.log('[AdventureChatMode] refreshChatHistory');
         if (!this.#historyContainer || !this.chat) {
             this.#historyContainer.innerHTML = '';
             return;
