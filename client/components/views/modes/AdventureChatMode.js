@@ -336,7 +336,7 @@ export class AdventureChatMode extends BaseChatMode {
     
     onStreamError(error, messageId) {
         const content = error.name === 'AbortError' 
-            ? `${this.#streamingContent.get(messageId) || ''}\n\n---\n*Generation stopped by user.*`
+            ? `${this.#streamingContent.get(messageId) || ''}\n\n\n*Generation stopped by user.*`
             : `**Error:** Could not get response.\n*${error.message}*`;
 
         const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);

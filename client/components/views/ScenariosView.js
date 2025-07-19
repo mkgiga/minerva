@@ -204,6 +204,7 @@ class ScenariosView extends BaseComponent {
             ...this.#selectedScenario,
             id: this.#selectedScenario.id,
             name: this.shadowRoot.querySelector('#scenario-name-input').value,
+            describes: this.shadowRoot.querySelector('#scenario-type-input').value,
             description: this.shadowRoot.querySelector('#description-input').value,
             characterOverrides: overrides,
         };
@@ -285,6 +286,7 @@ class ScenariosView extends BaseComponent {
             editorWrapper.style.display = 'flex';
             placeholder.style.display = 'none';
             this.shadowRoot.querySelector('#scenario-name-input').value = this.#selectedScenario.name || '';
+            this.shadowRoot.querySelector('#scenario-type-input').value = this.#selectedScenario.describes || '';
             this.shadowRoot.querySelector('#description-input').value = this.#selectedScenario.description || '';
             this.#renderOverridesList();
         } else {
@@ -406,6 +408,10 @@ class ScenariosView extends BaseComponent {
                             <header class="editor-header">
                                 <div class="editor-header-main">
                                     <input type="text" id="scenario-name-input" class="editor-title-input" placeholder="Scenario Name">
+                                    <div class="form-group-inline">
+                                        <label for="scenario-type-input">Type</label>
+                                        <input type="text" id="scenario-type-input" placeholder="e.g., Output Formatting" class="type-input">
+                                    </div>
                                 </div>
                                 <div class="header-controls">
                                     <span class="save-indicator">Unsaved changes</span>
@@ -476,13 +482,17 @@ class ScenariosView extends BaseComponent {
             .placeholder { text-align: center; height: 100%; display: flex; align-items: center; justify-content: center; flex-grow: 1; color: var(--text-secondary); }
             
             .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg); }
-            .editor-header-main { flex-grow: 1; }
+            .editor-header-main { flex-grow: 1; display: flex; flex-direction: column; gap: var(--spacing-sm); }
             .header-controls { display: flex; align-items: center; gap: var(--spacing-md); }
             .save-indicator { font-size: var(--font-size-sm); color: var(--accent-warn); opacity: 0; transition: opacity 0.3s; }
             #save-scenario-btn:disabled { background-color: var(--bg-2); color: var(--text-disabled); cursor: not-allowed; opacity: 1; }
 
-            .editor-title-input { font-size: 1.5rem; font-weight: 600; background: none; border: none; outline: none; width: 100%; color: var(--text-primary); border-bottom: 1px solid var(--bg-3); padding: var(--spacing-sm) 0; }
-            .editor-title-input:focus { border-bottom-color: var(--accent-primary); }
+            .editor-title-input { font-size: 1.5rem; font-weight: 600; background: none; border: none; outline: none; width: 100%; color: var(--text-primary); padding: 0; }
+
+            .form-group-inline { display: flex; align-items: center; gap: var(--spacing-sm); font-size: var(--font-size-sm); }
+            .form-group-inline label { margin: 0; font-weight: 500; color: var(--text-secondary); }
+            .type-input { flex-grow: 1; background: none; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-secondary); padding: var(--spacing-xs); font-size: 0.9em; }
+            .type-input:focus { background: var(--bg-0); border-color: var(--bg-3); color: var(--text-primary); }
 
             #editor-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
             .form-section { margin-bottom: var(--spacing-lg); }

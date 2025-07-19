@@ -43,7 +43,7 @@ const app = express();
 app.use(cors(corsOptions));
 const server = createServer(app);
 
-// SSE Clients
+// Keeping track of SSE clients for real-time updates
 const sseClients = new Set();
 
 function broadcastEvent(type, data) {
@@ -59,6 +59,20 @@ const ADAPTERS = {
     'gemini': GoogleGeminiAdapter,
 };
 
+// Helper to escape XML special characters
+function escapeXML(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe.replace(/[<>&'"]/g, c => {
+        switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case "'": return "&apos;";
+            case '"': return '&quot;';
+            default: return c;
+        }
+    });
+}
 
 const createCharacterStorage = (subfolder = '') => {
     return multer.diskStorage({
@@ -272,21 +286,6 @@ function resolveMacros(text, context) {
     if (!text) return '';
     const { allCharacters = [], userPersonaCharacterId = null, chatCharacterIds = [], activeScenarioIds = [] } = context;
 
-    // Helper to escape XML special characters
-    function escapeXml(unsafe) {
-        if (typeof unsafe !== 'string') return '';
-        return unsafe.replace(/[<>&'"]/g, c => {
-            switch (c) {
-                case '<': return '<';
-                case '>': return '>';
-                case '&': return '&';
-                case "'": return "'";
-                case '"': return '"';
-                default: return c;
-            }
-        });
-    }
-
     // New complex macro handler: {{characters[name,description,...]}}
     text = text.replace(/{{\s*([a-zA-Z0-9_]+)\[(.*?)\]\s*}}/g, (match, resourceName, propsString) => {
         const props = propsString.split(',').map(p => p.trim().toLowerCase());
@@ -313,14 +312,14 @@ function resolveMacros(text, context) {
                 
                 const characterLines = [];
                 if (props.includes('name') && c.name) {
-                    characterLines.push(`    <name>\n        ${escapeXml(c.name)}\n    </name>`);
+                    characterLines.push(`    <name>\n        ${escapeXML(c.name)}\n    </name>`);
                 }
                 if (props.includes('description') && c.description) {
-                    characterLines.push(`    <description>\n        ${escapeXml(c.description)}\n    </description>`);
+                    characterLines.push(`    <description>\n        ${escapeXML(c.description)}\n    </description>`);
                 }
                 if (props.includes('images') && c.gallery && c.gallery.length > 0) {
                     const imageLines = c.gallery.map(img => {
-                        return `        <image>\n            <filename>${escapeXml(img.src)}</filename>\n            <alt>${escapeXml(img.alt || '')}</alt>\n        </image>`;
+                        return `        <image>\n            <filename>${escapeXML(img.src)}</filename>\n            <alt>${escapeXML(img.alt || '')}</alt>\n        </image>`;
                     });
                     if (imageLines.length > 0) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
@@ -328,18 +327,20 @@ function resolveMacros(text, context) {
                 }
                 if (props.includes('scenario')) {
                     const activeScenarios = state.scenarios.filter(s => activeScenarioIds.includes(s.id));
-                    const scenarioOverrides = activeScenarios
-                        .map(s => s.characterOverrides?.[c.id])
-                        .filter(Boolean);
-                    
-                    if (scenarioOverrides.length > 0) {
-                        const scenarioLines = scenarioOverrides.map(override => `        <override>${escapeXml(override)}</override>`);
-                        characterLines.push(`    <scenario>\n${scenarioLines.join('\n')}\n    </scenario>`);
+                    const characterScenarioXmlString = activeScenarios.map(s => {
+                        const overrideText = s.characterOverrides?.[c.id];
+                        if (!overrideText?.trim()) return null;
+                        const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
+                        return `    <scenario${describesAttr}>\n        <override>${escapeXML(overrideText)}</override>\n    </scenario>`;
+                    }).filter(Boolean).join('\n');
+
+                    if (characterScenarioXmlString) {
+                        characterLines.push(characterScenarioXmlString);
                     }
                 }
                 
                 if (characterLines.length > 0) {
-                    return `<character id="${escapeXml(c.id)}"${playerAttr}>\n${characterLines.join('\n')}\n</character>`;
+                    return `<character id="${escapeXML(c.id)}"${playerAttr}>\n${characterLines.join('\n')}\n</character>`;
                 }
                 return '';
             }).filter(Boolean).join('\n\n');
@@ -358,9 +359,21 @@ function resolveMacros(text, context) {
             if (!chatCharacters || chatCharacters.length === 0) return '';
             
             return chatCharacters.map(c => {
-                // IMPROVEMENT: Include character ID to help the LLM use it.
+                // Include character ID to help the LLM use it.
                 return `${c.name} (ID: ${c.id})\n${c.description}`;
-            }).join('\n\n---\n\n');
+            }).join('\n\n\n\n');
+        },
+        scenarios: () => {
+            if (!activeScenarioIds || activeScenarioIds.length === 0) return '';
+            
+            const activeScenarios = state.scenarios.filter(s => activeScenarioIds.includes(s.id));
+            if (!activeScenarios || activeScenarios.length === 0) return '';
+            
+            return activeScenarios.map(s => {
+                if (!s.description?.trim()) return null;
+                const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
+                return `<scenario${describesAttr}>${escapeXML(s.description)}</scenario>`;
+            }).filter(Boolean).join('\n\n');
         },
         player: () => {
             if (!playerCharacter) return '';
@@ -398,7 +411,7 @@ function resolveMacros(text, context) {
                             if (!targetCharacter.gallery || targetCharacter.gallery.length === 0) return '';
                             const imagesXml = targetCharacter.gallery.map(img => {
                                 const fullUrl = `/data/characters/${targetCharacter.id}/images/${img.src}`;
-                                return `<image src="${fullUrl}" alt="${escapeXml(img.alt || '')}" />`;
+                                return `<image src="${fullUrl}" alt="${escapeXML(img.alt || '')}" />`;
                             }).join('');
                             return `<images>${imagesXml}</images>`;
                     }
@@ -1117,7 +1130,11 @@ function initHttp() {
                 } else if (ps.stringId === SCENARIO_STRING.id) {
                     const activeScenarios = state.scenarios.filter(s => (chat.scenarioIds || []).includes(s.id));
                     if (activeScenarios.length > 0) {
-                        const scenarioContent = activeScenarios.map(s => s.description).filter(Boolean).join('\n\n');
+                        const scenarioContent = activeScenarios.map(s => {
+                            if (!s.description?.trim()) return null;
+                            const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
+                            return `<scenario${describesAttr}>${escapeXML(s.description)}</scenario>`;
+                        }).filter(Boolean).join('\n\n');
                         if (scenarioContent) {
                             fullPromptSequence.push({ role: ps.role, content: scenarioContent });
                         }
@@ -1519,6 +1536,7 @@ const SCENARIO_STRING = new ReusableString({
 class Scenario {
     id = uuidv4();
     name = 'New Scenario';
+    describes = '';
     description = ''; // General scenario text
     characterOverrides = {}; // { [characterId]: "character-specific text" }
     _rev = CURRENT_REV;
@@ -1527,6 +1545,7 @@ class Scenario {
         Object.assign(this, {
             id: uuidv4(),
             name: 'New Scenario',
+            describes: '',
             description: '',
             characterOverrides: {},
             _rev: CURRENT_REV
