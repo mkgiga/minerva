@@ -1,13 +1,13 @@
 # common cache files
+.DS_Store
+Thumbs.db
 .cache/
 node_modules/
 dist/
-DS_Store
-.DS_Store
 
 # Dev tools and environment
-.vscode/
-.idea/
+.vscode
+.idea
 .env
 *.env.*
 

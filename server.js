@@ -53,13 +53,18 @@ function broadcastEvent(type, data) {
     }
 }
 
-// Adapter Mapping
+/** Maps provider id to their respective adapter class. */
 const ADAPTERS = {
-    'v1': OpenAIV1Adapter,
-    'gemini': GoogleGeminiAdapter,
+    v1: OpenAIV1Adapter,
+    gemini: GoogleGeminiAdapter,
 };
 
-// Helper to escape XML special characters
+// Helper to escape XML special characters to prevent XSS
+// `&` -> `&amp;`,
+// `<` -> `&lt;`,
+// `>` -> `&gt;`,
+// `'` -> `&apos;`,
+// `"` -> `&quot;`
 function escapeXML(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe.replace(/[<>&'"]/g, c => {

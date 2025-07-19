@@ -217,36 +217,53 @@ class MainChatView extends BaseComponent {
     #diffChatAndUpdateMode(oldChat, newChat) {
         if (!this.#activeChatMode || !oldChat || !newChat) return;
     
-        const oldMessages = oldChat.messages || [];
-        const newMessages = newChat.messages || [];
-    
+        // Participant changes are simple and can be handled first.
         const oldParticipants = (oldChat.participants || []).map(p => p.id).sort();
         const newParticipants = (newChat.participants || []).map(p => p.id).sort();
-    
-        // Check for participant changes
         if (JSON.stringify(oldParticipants) !== JSON.stringify(newParticipants)) {
             this.#activeChatMode.onParticipantsChanged();
-            return;
         }
     
-        // Check for message changes
-        if (newMessages.length > oldMessages.length) {
-            const addedCount = newMessages.length - oldMessages.length;
-            const addedMessages = newMessages.slice(-addedCount);
-            this.#activeChatMode.onMessagesAdded(addedMessages);
-        } else if (newMessages.length < oldMessages.length) {
-            const oldIds = new Set(oldMessages.map(m => m.id));
-            const newIds = new Set(newMessages.map(m => m.id));
-            const deletedIds = [...oldIds].filter(id => !newIds.has(id));
-            this.#activeChatMode.onMessagesDeleted(deletedIds);
-        } else if (newMessages.length === oldMessages.length && newMessages.length > 0) {
-            // Check for a single message update (e.g., from edit or regeneration completion)
-            for (let i = 0; i < newMessages.length; i++) {
-                if (newMessages[i].content !== oldMessages[i].content) {
-                    this.#activeChatMode.onMessageUpdated(newMessages[i]);
-                    break;
-                }
+        // More robust message diffing to handle complex cases like regeneration
+        // (which is a combination of message update and message deletion).
+        const oldMessages = oldChat.messages || [];
+        const newMessages = newChat.messages || [];
+        const oldMsgMap = new Map(oldMessages.map(m => [m.id, m]));
+        const newMsgMap = new Map(newMessages.map(m => [m.id, m]));
+    
+        const deletedIds = [];
+        const updatedMessages = [];
+        const addedMessages = [];
+    
+        // Check for deleted and updated messages by iterating old messages
+        for (const oldMsg of oldMessages) {
+            const newMsg = newMsgMap.get(oldMsg.id);
+            if (!newMsg) {
+                deletedIds.push(oldMsg.id);
+            } else if (newMsg.content !== oldMsg.content) {
+                updatedMessages.push(newMsg);
             }
+        }
+    
+        // Check for added messages by iterating new messages
+        for (const newMsg of newMessages) {
+            if (!oldMsgMap.has(newMsg.id)) {
+                addedMessages.push(newMsg);
+            }
+        }
+    
+        // Call hooks in a logical order: deletions, then updates, then additions.
+        // This ensures the DOM is in a clean state before updates/additions happen.
+        if (deletedIds.length > 0) {
+            this.#activeChatMode.onMessagesDeleted(deletedIds);
+        }
+        if (updatedMessages.length > 0) {
+            for (const msg of updatedMessages) {
+                this.#activeChatMode.onMessageUpdated(msg);
+            }
+        }
+        if (addedMessages.length > 0) {
+            this.#activeChatMode.onMessagesAdded(addedMessages);
         }
     }
 
