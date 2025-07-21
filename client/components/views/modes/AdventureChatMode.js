@@ -1,7 +1,7 @@
 // client/components/views/modes/AdventureChatMode.js
 import { BaseChatMode } from './BaseChatMode.js';
 import { chatModeRegistry } from '../../../ChatModeRegistry.js';
-import { notifier, uuidv4 } from '../../../client.js';
+import { notifier, uuidv4, imagePreview } from '../../../client.js';
 import '../../TextBox.js';
 import '../../Spinner.js';
 
@@ -85,8 +85,8 @@ export class AdventureChatMode extends BaseChatMode {
             this.#quickRegenButton.addEventListener('click', this.#handleQuickRegen.bind(this));
         }
 
-        // New: Listener for collapsible prompts
-        this.#historyContainer.addEventListener('click', this.#handlePromptHeaderClick.bind(this));
+        // New: Listener for collapsible prompts and image previews
+        this.#historyContainer.addEventListener('click', this.#handleHistoryClick.bind(this));
     }
     
     // Lifecycle Hooks
@@ -238,16 +238,62 @@ export class AdventureChatMode extends BaseChatMode {
         this.regenerateMessage(lastMessage.id);
     }
 
-    #handlePromptHeaderClick(event) {
+    #handleHistoryClick(event) {
+        // Handle prompt collapse/expand
         const header = event.target.closest('.adventure-prompt-header');
-        if (!header) return;
-    
-        const promptBlock = header.closest('.adventure-prompt');
-        if (promptBlock) {
-            promptBlock.classList.toggle('collapsed');
-            const icon = header.querySelector('.expand-icon');
-            if (icon) {
-                icon.textContent = promptBlock.classList.contains('collapsed') ? 'unfold_more' : 'unfold_less';
+        if (header) {
+            const promptBlock = header.closest('.adventure-prompt');
+            if (promptBlock) {
+                promptBlock.classList.toggle('collapsed');
+                const icon = header.querySelector('.expand-icon');
+                if (icon) {
+                    icon.textContent = promptBlock.classList.contains('collapsed') ? 'unfold_more' : 'unfold_less';
+                }
+            }
+            return; // Exit after handling prompt header click
+        }
+
+        // Handle avatar click for image preview
+        const avatarImg = event.target.closest('.adventure-speaker-avatar');
+        if (avatarImg && avatarImg.tagName === 'IMG') {
+            imagePreview.show({ src: avatarImg.src, alt: avatarImg.alt });
+            return; // Exit after handling avatar click
+        }
+        
+        // Handle show image click for image preview
+        const showImage = event.target.closest('.adventure-show-image');
+        if (showImage && showImage.tagName === 'IMG') {
+            imagePreview.show({ src: showImage.src, alt: showImage.alt });
+            return; // Exit after handling show image click
+        }
+        
+        // Handle other action buttons if needed
+        for (const button of event.composedPath()) { // Use composedPath for elements inside shadow DOM
+            if (button.tagName === 'BUTTON' && button.dataset.action) {
+                const messageId = button.closest('.chat-message')?.dataset.messageId;
+                if (!messageId) continue;
+
+                const action = button.dataset.action;
+                if (action === 'adventure-choice') {
+                    event.preventDefault();
+                    this.sendPrompt(`<choice>${button.dataset.choiceText}</choice>`);
+                    return; // Handled choice button
+                } else if (action === 'navigate-to-character') {
+                    event.preventDefault();
+                    this.dispatch('navigate-to-view', { view: 'characters', state: { selectedCharacterId: button.dataset.characterId } });
+                    return; // Handled character navigation
+                } else if (button.closest('.message-controls')) {
+                    // It's one of the common message controls (delete, branch, regen, edit, copy)
+                    event.preventDefault();
+                    switch(action) {
+                        case 'delete': this.deleteMessage(messageId); break;
+                        case 'branch': this.branchFromMessage(messageId); break;
+                        case 'regenerate': this.regenerateMessage(messageId); break;
+                        case 'edit': this.#handleEditMessage(messageId, button.closest('.chat-message')); break;
+                        case 'copy': { const msg = this.chat.messages.find(m => m.id === messageId); if (msg) this.copyMessageContent(msg.content); break; }
+                    }
+                    return; // Handled message control
+                }
             }
         }
     }
@@ -347,16 +393,22 @@ export class AdventureChatMode extends BaseChatMode {
         const finalContent = this.#streamingContent.get(messageId);
         if (finalContent === undefined) return;
 
-        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+        // FIX: Handle race condition where onMessagesAdded updates the element ID before this runs.
+        let messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+        if (!messageEl) {
+            // The optimistic element ID was likely updated. Find it by its unique prefix.
+            // This is safe because there should only ever be one optimistic assistant message at a time.
+            messageEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
+        }
         
         if (messageEl) {
-            // Flag this message as having been animated. The onMessageUpdated event that
-            // follows shortly after will see this flag, consume it, and avoid overwriting the content.
-            this.#justAnimatedMessageIds.add(messageId);
+            // Flag this message as having been animated. We use the element's *current* ID,
+            // which might be the final ID from the server if the race condition occurred.
+            this.#justAnimatedMessageIds.add(messageEl.dataset.messageId);
 
             // The message being streamed is always from the assistant.
             // We create a temporary message object for the animation function, ensuring role is set.
-            const messageToAnimate = { id: messageId, role: 'assistant', content: finalContent };
+            const messageToAnimate = { id: messageEl.dataset.messageId, role: 'assistant', content: finalContent };
             await this.#animateVnResponse(messageEl, messageToAnimate);
         }
         
@@ -434,28 +486,12 @@ export class AdventureChatMode extends BaseChatMode {
     }
     
     #attachListenersToElement(element) {
-        const messageId = element.dataset.messageId;
-        if (!messageId) return;
-        
-        for (const button of element.querySelectorAll('[data-action="adventure-choice"]')) {
-            button.addEventListener('click', (e) => { e.preventDefault(); this.sendPrompt(`<choice>${button.dataset.choiceText}</choice>`); });
-        }
-        for (const link of element.querySelectorAll('[data-action="navigate-to-character"]')) {
-            link.addEventListener('click', (e) => { e.preventDefault(); this.dispatch('navigate-to-view', { view: 'characters', state: { selectedCharacterId: link.dataset.characterId } }); });
-        }
-        for (const button of element.querySelectorAll('.message-controls button[data-action]')) {
-            const action = button.dataset.action;
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                switch(action) {
-                    case 'delete': this.deleteMessage(messageId); break;
-                    case 'branch': this.branchFromMessage(messageId); break;
-                    case 'regenerate': this.regenerateMessage(messageId); break;
-                    case 'edit': this.#handleEditMessage(messageId, element); break;
-                    case 'copy': { const msg = this.chat.messages.find(m => m.id === messageId); if (msg) this.copyMessageContent(msg.content); break; }
-                }
-            });
-        }
+        // All listeners are now attached via the single #handleHistoryClick delegator.
+        // This method only needs to be called if you dynamically create new interactive elements
+        // AFTER the initial render or after content is animated.
+        // For this mode, the core elements are rendered by #updateMessageContent and then
+        // the #handleHistoryClick is set up on the container.
+        // This function is now implicitly handled by the one listener on `#historyContainer`.
     }
 
     #updateMessageContent(messageEl, msg) {
@@ -482,7 +518,7 @@ export class AdventureChatMode extends BaseChatMode {
             if (content.includes('<minerva-spinner')) {
                 messageEl.className = 'chat-message assistant adventure-mode';
                 messageEl.innerHTML = `<div class="message-controls">${this.#renderMessageControlsHTML(msg)}</div><div class="message-content">${content}</div>`;
-                this.#attachListenersToElement(messageEl);
+                // No need to attach specific listeners here, #handleHistoryClick handles it.
                 return;
             }
 
@@ -515,7 +551,7 @@ export class AdventureChatMode extends BaseChatMode {
                 messageEl.appendChild(contentFragment);
             }
         }
-        this.#attachListenersToElement(messageEl);
+        // No need to attach specific listeners here, #handleHistoryClick handles it.
     }
     
     // Animation Logic
@@ -640,7 +676,7 @@ export class AdventureChatMode extends BaseChatMode {
     
         this.#isAnimating = false;
         this.updateInputState(false);
-        this.#attachListenersToElement(messageEl);
+        // No need to attach specific listeners here, #handleHistoryClick handles it.
     }
 
     // VN Block Rendering
@@ -696,7 +732,7 @@ export class AdventureChatMode extends BaseChatMode {
             const img = document.createElement('img');
             img.src = imageItem.url;
             img.alt = imageItem.alt || `Image from ${character.name}`;
-            img.className = 'adventure-show-image';
+            img.className = 'adventure-show-image'; // Added class for click handling
             imgContainer.appendChild(img);
             block.appendChild(imgContainer);
         }
@@ -778,7 +814,7 @@ export class AdventureChatMode extends BaseChatMode {
         nameEl.className = 'adventure-speaker-name';
         nameEl.textContent = speakerName;
         const avatarEl = document.createElement('img');
-        avatarEl.className = 'adventure-speaker-avatar';
+        avatarEl.className = 'adventure-speaker-avatar'; // Added class for click handling
         avatarEl.src = avatarUrl;
         avatarEl.alt = speakerName;
         const contentEl = document.createElement('div');
@@ -930,7 +966,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-action:not(:last-child) { border-bottom: 1px dashed var(--bg-3); }
             .adventure-action:nth-child(2) { border-top: 1px dashed var(--bg-3); }
             .adventure-dialogue { display: grid; grid-template-areas: "avatar name" "avatar content"; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; gap: 0 var(--spacing-md); }
-            .adventure-speaker-avatar { border-radius: var(--radius-md); object-fit: cover; background-color: var(--bg-3); grid-area: avatar; column-span: 1; height: 192px; width: 128px; }
+            .adventure-speaker-avatar { border-radius: var(--radius-md); object-fit: cover; background-color: var(--bg-3); grid-area: avatar; column-span: 1; height: 192px; width: 128px; cursor: pointer; } /* NEW: Added cursor: pointer */
             .adventure-dialogue-content { grid-area: content; }
             .adventure-speaker-name { font-size: 1.2rem; font-weight: 600; color: var(--text-primary); grid-area: name; padding-bottom: var(--spacing-xs); border-bottom: 1px solid var(--bg-3); margin-bottom: var(--spacing-sm); }
             .adventure-speech { line-height: 1.6; }
@@ -958,7 +994,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-char-link-text { line-height: 1; }
             .adventure-show { display: flex; flex-direction: column; align-items: center; gap: var(--spacing-md); background-color: var(--bg-0); border-radius: var(--radius-md); padding: var(--spacing-md); border: 1px solid var(--bg-3); overflow: hidden; }
             .adventure-show-image-container { width: 100%; max-height: 500px; display: flex; justify-content: center; align-items: center; margin-bottom: var(--spacing-sm); }
-            .adventure-show-image { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-sm); }
+            .adventure-show-image { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-sm); cursor: pointer; } /* NEW: Added cursor: pointer */
             .adventure-show-content { width: 100%; }
             .adventure-show-content .adventure-block { margin-bottom: 0; }
             .adventure-show-content .adventure-action { border: none; padding: 0; text-align: center; }

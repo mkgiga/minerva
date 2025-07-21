@@ -1,7 +1,7 @@
 // client/components/views/modes/DefaultChatMode.js
 import { BaseChatMode } from './BaseChatMode.js';
 import { chatModeRegistry } from '../../../ChatModeRegistry.js';
-import { uuidv4 } from '../../../client.js';
+import { uuidv4, imagePreview } from '../../../client.js';
 import '../../TextBox.js';
 import '../../Spinner.js';
 
@@ -15,6 +15,7 @@ export class DefaultChatMode extends BaseChatMode {
     #codeNavUp = null;
     #codeNavDown = null;
     #quickRegenButton = null;
+    #streamingContent = new Map();
 
 
     onInitialize() {
@@ -38,6 +39,8 @@ export class DefaultChatMode extends BaseChatMode {
         if (this.#quickRegenButton) {
             this.#quickRegenButton.addEventListener('click', this.#handleQuickRegen.bind(this));
         }
+
+        this.#historyContainer.addEventListener('click', this.#handleAvatarClick.bind(this));
     }
     
     // Lifecycle Hooks
@@ -92,17 +95,20 @@ export class DefaultChatMode extends BaseChatMode {
         this.appendMessage(assistantSpinnerMessage);
         this.clearUserInput();
 
-        return assistantSpinnerMessage;
+        return assistantSpinnerMessage.id;
     }
 
-    onRegenerateStart(messageToRegen) {
-        if (messageToRegen.role === 'assistant') {
-            const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageToRegen.id}"] .message-content`);
+    onRegenerateStart(messageId) {
+        const messageData = this.chat.messages.find(m => m.id === messageId);
+        if (!messageData) return null;
+
+        if (messageData.role === 'assistant') {
+            const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"] .message-content`);
             if (messageEl) {
                 messageEl.innerHTML = '<minerva-spinner mode="infinite"></minerva-spinner>';
             }
-            return messageToRegen;
-        } else if (messageToRegen.role === 'user') {
+            return messageId;
+        } else if (messageData.role === 'user') {
             const assistantSpinnerMessage = {
                 id: `assistant-${uuidv4()}`,
                 role: 'assistant',
@@ -110,10 +116,66 @@ export class DefaultChatMode extends BaseChatMode {
                 timestamp: new Date().toISOString()
             };
             this.appendMessage(assistantSpinnerMessage);
-            return assistantSpinnerMessage;
+            return assistantSpinnerMessage.id;
         }
         return null;
     }
+
+    // Stream Lifecycle Hooks
+    
+    onStreamStart(messageId) {
+        this.#streamingContent.set(messageId, '');
+        const messageContentEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"] .message-content`);
+        if (messageContentEl) {
+            // Clear the spinner before streaming starts
+            messageContentEl.innerHTML = '';
+        }
+    }
+
+    onToken(token, messageId) {
+        if (!this.#streamingContent.has(messageId)) return;
+
+        const newContent = this.#streamingContent.get(messageId) + token;
+        this.#streamingContent.set(messageId, newContent);
+
+        const messageContentEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"] .message-content`);
+        if (!messageContentEl) return;
+
+        if (this.rendererType === 'markdown' && window.marked) {
+            messageContentEl.innerHTML = window.marked.parse(newContent, { renderer: this.#getMarkdownRenderer(), gfm: true });
+        } else {
+            const textNode = document.createTextNode(newContent);
+            const div = document.createElement('div');
+            div.appendChild(textNode);
+            messageContentEl.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
+        }
+        
+        this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
+    }
+
+    onStreamFinish(messageId) {
+        this.updateInputState(false);
+        this.updateCodeNavButtons();
+        this.#streamingContent.delete(messageId);
+    }
+    
+    onStreamError(error, messageId) {
+        const streamContent = this.#streamingContent.get(messageId) || '';
+        const content = error.name === 'AbortError' 
+            ? `${streamContent}\n\n\n*Generation stopped by user.*`
+            : `**Error:** Could not get response.\n*${error.message}*`;
+        
+        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+        if (messageEl) {
+            const errorMsg = { id: messageId, role: 'assistant', content };
+            this.#replaceMessageElement(messageEl, errorMsg);
+        }
+        
+        this.#streamingContent.delete(messageId);
+        this.updateInputState(false);
+    }
+
+    // Event Handlers & UI Logic
 
     #handleSend(event) {
         event.preventDefault();
@@ -188,6 +250,13 @@ export class DefaultChatMode extends BaseChatMode {
         editor.addEventListener('blur', onBlur);
     }
 
+    #handleAvatarClick(event) {
+        const avatarImg = event.target.closest('.chat-message .avatar');
+        if (avatarImg && avatarImg.tagName === 'IMG') {
+            imagePreview.show({ src: avatarImg.src, alt: avatarImg.alt });
+        }
+    }
+
     getUserInput() {
         return this.#textbox.value;
     }
@@ -204,25 +273,6 @@ export class DefaultChatMode extends BaseChatMode {
         if (this.#quickRegenButton) {
             this.#quickRegenButton.disabled = isSending || !this.chat || this.chat.messages.length === 0;
         }
-    }
-
-    onToken(token, messageToUpdate) {
-        const messageContentEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageToUpdate.id}"] .message-content`);
-        if (!messageContentEl) return;
-
-        // Just update the HTML of the content block. This preserves listeners on the message header.
-        if (this.rendererType === 'markdown' && window.marked) {
-            messageContentEl.innerHTML = window.marked.parse(messageToUpdate.content, { renderer: this.#getMarkdownRenderer(), gfm: true });
-        } else {
-            messageContentEl.textContent = messageToUpdate.content;
-        }
-        this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
-    }
-
-    onFinish(messageToUpdate) {
-        this.updateInputState(false);
-        // The final render is now handled by onMessagesAdded to ensure we use the persisted message from the server.
-        this.updateCodeNavButtons();
     }
     
     #attachMessageListeners(messageEl) {
@@ -547,6 +597,7 @@ export class DefaultChatMode extends BaseChatMode {
                 flex-shrink: 0; /* Prevents shrinking in flex layout */
                 margin-top: 5px; /* Adjust vertical alignment with message bubble */
                 background-color: var(--bg-3); /* Placeholder background */
+                cursor: pointer; /* NEW: Indicate avatar is clickable */
             }
             .message-bubble { background-color: var(--bg-1); border-radius: var(--radius-md); padding: var(--spacing-sm) var(--spacing-md); flex-grow: 1; position: relative; }
             .chat-message.user .message-bubble { background-color: var(--accent-primary); color: var(--bg-0); }

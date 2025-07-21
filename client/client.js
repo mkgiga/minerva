@@ -13,6 +13,7 @@ import './components/Modal.js';
 import './components/TextBox.js';
 import './components/Spinner.js';
 import './components/SchemaForm.js';
+import './components/ImagePreview.js'; // NEW: Import the ImagePreview component
 
 /**
  * A simple, dependency-free UUID v4 generator.
@@ -137,6 +138,26 @@ class ModalService {
 
 export const modal = new ModalService();
 
+class ImagePreviewService {
+    #imagePreviewElement = null;
+
+    constructor() { this.#imagePreviewElement = null; }
+    setElement(element) { this.#imagePreviewElement = element; }
+    show({ src, alt = '' }) {
+        if (this.#imagePreviewElement) {
+            this.#imagePreviewElement.show({ src, alt });
+        }
+    }
+    hide() {
+        if (this.#imagePreviewElement) {
+            this.#imagePreviewElement.hide();
+        }
+    }
+}
+
+export const imagePreview = new ImagePreviewService();
+
+
 /**
  * The root application component: <minerva-app>
  * Manages the main layout and view switching.
@@ -160,6 +181,7 @@ class MinervaApp extends BaseComponent {
         // Link services to their UI elements
         notifier.setContainer(this.shadowRoot.querySelector('#notification-container'));
         modal.setModal(this.shadowRoot.querySelector('minerva-modal'));
+        imagePreview.setElement(this.shadowRoot.querySelector('minerva-image-preview')); // NEW: Link imagePreview service
 
         this.updateActiveView();
         this.#connectToSse();
@@ -253,6 +275,7 @@ class MinervaApp extends BaseComponent {
             <!-- Global Overlay Elements -->
             <div id="notification-container"></div>
             <minerva-modal></minerva-modal>
+            <minerva-image-preview></minerva-image-preview> <!-- NEW: Image Preview Element -->
         `;
         const styles = `
             .app-layout-container {
@@ -325,3 +348,5 @@ window.addEventListener('load', () => {
             });
     }
 });
+
+export default { MinervaApp, api, notifier, modal, imagePreview, uuidv4 };

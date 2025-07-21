@@ -18,16 +18,21 @@ class GenerationConfigView extends BaseComponent {
 
     constructor() {
         super();
-        // State is now managed using private class fields
+        this.handleResourceChange = this.#handleResourceChange.bind(this);
     }
 
     async connectedCallback() {
         this.render();
         this.#genConfigList = this.shadowRoot.querySelector('#gen-config-list');
 
-        this.#attachEventListeners(); // Use private method
-        await this.#fetchData(); // Use private method
-        this.#setNeedsSave(false); // Initialize save state
+        this.#attachEventListeners();
+        window.addEventListener('minerva-resource-changed', this.handleResourceChange);
+        await this.#fetchData();
+        this.#setNeedsSave(false);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener('minerva-resource-changed', this.handleResourceChange);
     }
 
     // Data Fetching
@@ -47,7 +52,7 @@ class GenerationConfigView extends BaseComponent {
             if (settings.activeConnectionConfigId) {
                 this.#activeConnection = connections.find(c => c.id === settings.activeConnectionConfigId);
             }
-            this.#updateView(); // Use private method
+            this.#updateView();
         } catch (error) {
             console.error("Failed to fetch data for Generation Config view:", error);
             notifier.show({ header: 'Error', message: 'Could not load generation config data.', type: 'bad' });
@@ -57,15 +62,15 @@ class GenerationConfigView extends BaseComponent {
     // Event Listeners
     #attachEventListeners() {
         // Left Panel (Generation Configs)
-        this.#genConfigList.addEventListener('item-action', e => this.#handleGenConfigItemAction(e.detail)); // Use private method
+        this.#genConfigList.addEventListener('item-action', e => this.#handleGenConfigItemAction(e.detail));
         this.shadowRoot.querySelector('#gen-config-list-header').addEventListener('click', e => {
-            if(e.target.closest('[data-action="add"]')) this.#handleGenConfigAdd(); // Use private method
+            if(e.target.closest('[data-action="add"]')) this.#handleGenConfigAdd();
         });
 
         // Main Panel (Editor)
-        this.shadowRoot.querySelector('#save-gen-config-btn').addEventListener('click', () => this.#saveGenConfig()); // Use private method
-        this.shadowRoot.querySelector('#back-to-configs-btn').addEventListener('click', () => this.#handleBackToConfigs()); // Use private method
-        this.shadowRoot.querySelector('#add-string-btn').addEventListener('click', () => this.#openAddStringModal()); // Use private method
+        this.shadowRoot.querySelector('#save-gen-config-btn').addEventListener('click', () => this.#saveGenConfig());
+        this.shadowRoot.querySelector('#back-to-configs-btn').addEventListener('click', () => this.#handleBackToConfigs());
+        this.shadowRoot.querySelector('#add-string-btn').addEventListener('click', () => this.#openAddStringModal());
         
         // Listen for changes on the name input and the schema form directly
         this.shadowRoot.querySelector('#gen-config-name').addEventListener('input', () => this.#setNeedsSave(true));
@@ -96,8 +101,8 @@ class GenerationConfigView extends BaseComponent {
                     state: { selectedStringId: stringId }
                 });
             }
-            this.#setNeedsSave(true); // Use private method
-            this.#renderPromptStringsList(); // Use private method
+            this.#setNeedsSave(true);
+            this.#renderPromptStringsList();
         });
 
         promptStringsList.addEventListener('change', e => {
@@ -105,10 +110,89 @@ class GenerationConfigView extends BaseComponent {
                 const index = parseInt(e.target.dataset.index, 10);
                 const newRole = e.target.value;
                 this.#selectedGenConfig.promptStrings[index].role = newRole;
-                this.#setNeedsSave(true); // Use private method
-                this.#renderPromptStringsList(); // Use private method
+                this.#setNeedsSave(true);
+                this.#renderPromptStringsList();
             }
         });
+    }
+
+    #handleResourceChange(event) {
+        const detail = event.detail;
+        let needsFullUpdate = false;
+
+        if (detail.resourceType === 'reusable_string') {
+            let stringsChanged = false;
+            switch (detail.eventType) {
+                case 'create':
+                    if (!this.#reusableStrings.some(s => s.id === detail.data.id)) {
+                        this.#reusableStrings.push(detail.data);
+                        stringsChanged = true;
+                    }
+                    break;
+                case 'update': {
+                    const index = this.#reusableStrings.findIndex(s => s.id === detail.data.id);
+                    if (index > -1) {
+                        this.#reusableStrings[index] = detail.data;
+                        stringsChanged = true;
+                    }
+                    break;
+                }
+                case 'delete': {
+                    const initialLength = this.#reusableStrings.length;
+                    this.#reusableStrings = this.#reusableStrings.filter(s => s.id !== detail.data.id);
+                    if (this.#reusableStrings.length < initialLength) {
+                        stringsChanged = true;
+                    }
+                    break;
+                }
+            }
+            if (stringsChanged) {
+                this.#renderPromptStringsList();
+            }
+        } else if (detail.resourceType === 'generation_config') {
+            switch (detail.eventType) {
+                case 'create':
+                    this.#generationConfigs.push(detail.data);
+                    needsFullUpdate = true;
+                    break;
+                case 'update': {
+                    const index = this.#generationConfigs.findIndex(c => c.id === detail.data.id);
+                    if (index > -1) {
+                        this.#generationConfigs[index] = detail.data;
+                        if (this.#selectedGenConfig?.id === detail.data.id) {
+                            this.#selectedGenConfig = JSON.parse(JSON.stringify(detail.data));
+                        }
+                        needsFullUpdate = true;
+                    }
+                    break;
+                }
+                case 'delete': {
+                    const initialLength = this.#generationConfigs.length;
+                    this.#generationConfigs = this.#generationConfigs.filter(c => c.id !== detail.data.id);
+                    if (this.#generationConfigs.length < initialLength) {
+                        if (this.#selectedGenConfig?.id === detail.data.id) {
+                            this.#selectedGenConfig = null;
+                            this.#setNeedsSave(false);
+                        }
+                        needsFullUpdate = true;
+                    }
+                    break;
+                }
+            }
+        } else if (detail.resourceType === 'setting') {
+            if (detail.data.activeGenerationConfigId !== this.#activeGenConfigId) {
+                this.#activeGenConfigId = detail.data.activeGenerationConfigId;
+                this.#updateGenConfigList();
+            }
+            if (detail.data.activeConnectionConfigId !== this.#activeConnection?.id) {
+                this.#fetchData();
+                return;
+            }
+        }
+
+        if (needsFullUpdate) {
+            this.#updateView();
+        }
     }
     
     // State & Update Logic
@@ -120,7 +204,7 @@ class GenerationConfigView extends BaseComponent {
         if (saveIndicator) {
             saveIndicator.style.opacity = needsSave ? '1' : '0';
         }
-        if (actualSaveButton) { // Use the correct button reference
+        if (actualSaveButton) {
             actualSaveButton.disabled = !needsSave;
         }
     }
@@ -148,8 +232,8 @@ class GenerationConfigView extends BaseComponent {
             if (backButton) backButton.style.display = 'none';
         }
 
-        this.#updateGenConfigList(); // Use private method
-        this.#updateMainPanel(); // Use private method
+        this.#updateGenConfigList();
+        this.#updateMainPanel();
     }
 
     #updateGenConfigList() {
@@ -191,8 +275,8 @@ class GenerationConfigView extends BaseComponent {
             editor.querySelector('#gen-config-name').value = this.#selectedGenConfig.name;
             this.shadowRoot.querySelector('#active-adapter-name').textContent = this.#activeConnection?.adapter || 'None';
             this.shadowRoot.querySelector('#merge-strings-checkbox').checked = this.#selectedGenConfig.mergeConsecutiveStrings || false;
-            this.#renderParameterFields(); // Use private method
-            this.#renderPromptStringsList(); // Use private method
+            this.#renderParameterFields();
+            this.#renderPromptStringsList();
         } else {
             placeholder.style.display = 'flex';
             editor.style.display = 'none';
@@ -250,7 +334,7 @@ class GenerationConfigView extends BaseComponent {
             const string = this.#reusableStrings.find(s => s.id === promptString.stringId);
             if (!string) return; // Should not happen if data is consistent
             
-            const isSystemString = string.id === 'system-chat-history';
+            const isSystemString = string.id.startsWith('system-');
             const itemClass = isSystemString ? 'system-defined' : '';
 
             const roleSelectorHtml = isSystemString ? '' : `
@@ -399,26 +483,57 @@ class GenerationConfigView extends BaseComponent {
         if (!this.#selectedGenConfig) return;
 
         const modalContent = document.createElement('div');
+        const style = document.createElement('style');
+        style.textContent = `
+            #string-modal-list .avatar {
+                width: 24px;
+                height: 24px;
+                background-color: var(--bg-3);
+                border-radius: var(--radius-sm);
+                flex-shrink: 0;
+            }
+            #string-modal-list li {
+                display: flex;
+                align-items: center;
+                gap: var(--spacing-md);
+                padding: var(--spacing-sm) var(--spacing-md);
+                cursor: pointer;
+            }
+            #string-modal-list li:hover {
+                background-color: var(--bg-2);
+            }
+        `;
+        modalContent.appendChild(style);
+
         modalContent.style.height = '60vh';
         modalContent.style.display = 'flex';
         modalContent.style.flexDirection = 'column';
 
         const itemList = document.createElement('item-list');
+        itemList.id = 'string-modal-list';
         modalContent.append(itemList);
         
         const sortedStrings = [...this.#reusableStrings].sort((a, b) => a.name.localeCompare(b.name));
         
         const renderStringList = () => {
-            itemList.innerHTML = sortedStrings.map(s => `
-                <li data-id="${s.id}">
+            itemList.innerHTML = sortedStrings.map(s => {
+                const isSystem = s.id.startsWith('system-');
+                return `
+                <li data-id="${s.id}" class="${isSystem ? 'system-defined' : ''}">
                     <img class="avatar" src="assets/images/system_icon.svg" alt="String icon">
                     <div class="item-name">${s.name}</div>
                 </li>
-            `).join('');
+            `}).join('');
         };
         
         const handleAction = e => {
-            const { id } = e.detail;
+            const { id, listItem } = e.detail;
+            
+            if (listItem && listItem.classList.contains('system-defined')) {
+                notifier.show({ type: 'warn', message: 'System strings are managed automatically and cannot be added manually.' });
+                return;
+            }
+
             const selectedString = this.#reusableStrings.find(s => s.id === id);
             if (!selectedString) return;
 

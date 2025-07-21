@@ -1,5 +1,5 @@
 import { BaseComponent } from './BaseComponent.js';
-import { api, modal, notifier } from '../../client.js';
+import { api, modal, notifier, imagePreview } from '../../client.js'; // NEW: Import imagePreview
 
 class CharacterEditor extends BaseComponent {
     constructor() {
@@ -53,6 +53,14 @@ class CharacterEditor extends BaseComponent {
                     }
                 }
             });
+            return; // NEW: Added return here to prevent further processing
+        }
+
+        // NEW: Handle clicks on gallery item previews
+        const previewImage = event.target.closest('.gallery-item-preview');
+        if (previewImage) {
+            imagePreview.show({ src: previewImage.src, alt: previewImage.alt });
+            return; // NEW: Added return here
         }
     }
 
@@ -430,6 +438,7 @@ class CharacterEditor extends BaseComponent {
                 object-fit: cover;
                 border-radius: var(--radius-sm);
                 background-color: var(--bg-0);
+                cursor: pointer; /* Indicate it's clickable */
             }
             .alt-text-input { width: 100%; margin: 0; }
             .delete-gallery-item-btn { 
