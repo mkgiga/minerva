@@ -104,7 +104,9 @@ class MainChatView extends BaseComponent {
 
         const modeContainer = this.shadowRoot.querySelector('#chat-mode-container');
         modeContainer.addEventListener('chat-mode-send-prompt', e => this.#handleSendMessage(e.detail.promptText));
+        modeContainer.addEventListener('chat-mode-send-custom-prompt', e => this.#handleSendCustomMessage(e.detail));
         modeContainer.addEventListener('chat-mode-regenerate-message', e => this.#handleRegenerateMessage(e.detail.messageId));
+        modeContainer.addEventListener('chat-mode-regenerate-with-history', e => this.#handleRegenerateWithHistory(e.detail));
         modeContainer.addEventListener('chat-mode-branch-message', e => this.#handleBranchMessage(e.detail.messageId));
         modeContainer.addEventListener('chat-mode-edit-message', e => this.#saveEditedMessage(e.detail.messageId, e.detail.newContent));
         modeContainer.addEventListener('chat-mode-delete-message', e => this.#handleDeleteMessage(e.detail.messageId));
@@ -596,6 +598,37 @@ class MainChatView extends BaseComponent {
     handleModalSearch() {
         this.updateModalListView();
     }
+    
+    /**
+     * Finds a message by its ID from the currently selected chat.
+     * @param {string} messageId The ID of the message to find.
+     * @returns {object|undefined} The message object or undefined if not found.
+     */
+    getMessageById(messageId) {
+        return this.state.selectedChat?.messages.find(m => m.id === messageId);
+    }
+
+    async #handleSendCustomMessage({ userMessage, messages }) {
+        if (this.state.isSending || !this.state.selectedChat || !this.#activeChatMode) return;
+
+        this.state.isSending = true;
+        this.#activeChatMode.updateInputState(true);
+
+        const assistantMessageId = this.#activeChatMode.onPromptStart(userMessage);
+
+        this.#abortController = new AbortController();
+        const fetchPromise = fetch(`/api/chats/${this.state.selectedChat.id}/prompt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: userMessage.content,
+                history: messages
+            }),
+            signal: this.#abortController.signal,
+        });
+
+        await this.#handleStreamedResponse(fetchPromise, assistantMessageId, 'Prompt Error');
+    }
 
     async #handleSendMessage(promptText) {
         if (this.state.isSending || !this.state.selectedChat || !this.#activeChatMode) return;
@@ -721,11 +754,15 @@ class MainChatView extends BaseComponent {
 
     async #handleRegenerateMessage(messageId) {
         if (this.state.isSending || !this.state.selectedChat || !this.#activeChatMode) return;
-        const messageIndex = this.state.selectedChat.messages.findIndex(m => m.id === messageId);
-        if (messageIndex === -1) return;
         
-        const messageToRegen = this.state.selectedChat.messages[messageIndex];
-        let fetchPromise;
+        await this.#handleRegenerateWithHistory({ messageId, history: null });
+    }
+    
+    async #handleRegenerateWithHistory({ messageId, history }) {
+        if (this.state.isSending || !this.state.selectedChat || !this.#activeChatMode) return;
+        
+        const messageToRegen = this.getMessageById(messageId);
+        if (!messageToRegen) return;
 
         this.state.isSending = true;
         this.#activeChatMode.updateInputState(true);
@@ -734,25 +771,28 @@ class MainChatView extends BaseComponent {
         this.#abortController = new AbortController();
         const { signal } = this.#abortController;
         
+        let endpoint, body;
+
         if (messageToRegen.role === 'assistant') {
-            fetchPromise = fetch(`/api/chats/${this.state.selectedChat.id}/regenerate`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messageId: messageId }), signal,
-            });
+            endpoint = `/api/chats/${this.state.selectedChat.id}/regenerate`;
+            body = { messageId, history }; // history can be null
         } else if (messageToRegen.role === 'user') {
-            fetchPromise = fetch(`/api/chats/${this.state.selectedChat.id}/resend`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({}), signal
-            });
+            endpoint = `/api/chats/${this.state.selectedChat.id}/resend`;
+            body = { history }; // history can be null
         } else {
             this.state.isSending = false;
             this.#activeChatMode.updateInputState(false);
             return;
         }
 
+        const fetchPromise = fetch(endpoint, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body), signal
+        });
+
         await this.#handleStreamedResponse(fetchPromise, messageId, 'Regeneration Error');
     }
-    
+
     async #copyMessageContent(content) {
         try {
             await navigator.clipboard.writeText(content);

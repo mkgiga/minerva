@@ -1068,7 +1068,7 @@ function initHttp() {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
     }
 
-    async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null) {
+    async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null, historyOverride = null) {
         // 1. Get Active Connection and Adapter
         const { activeConnectionConfigId, userPersonaCharacterId, activeGenerationConfigId } = state.settings;
         if (!activeConnectionConfigId) throw new Error('No active connection configuration set.');
@@ -1084,7 +1084,8 @@ function initHttp() {
         const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
         const chat = new Chat(JSON.parse(await fs.readFile(chatPath, 'utf-8')));
 
-        let historyForPrompt = [...chat.messages];
+        // Use the history override if provided, otherwise use the chat's actual messages.
+        let historyForPrompt = historyOverride ? [...historyOverride] : [...chat.messages];
         let userMessageToAppend = null;
         
         if (isRegen) {
@@ -1206,8 +1207,9 @@ function initHttp() {
         const resolvedSystemInstruction = systemParts.join('\n\n');
         // save final prompt message to temp file for debugging
         const TEMP_DIR = path.join(__dirname, 'temp');
+        await fs.mkdir(TEMP_DIR, { recursive: true });
         const tempPromptPath = path.join(TEMP_DIR, `prompt-${chatId}-${Date.now()}.json`);
-        await fs.writeFile(tempPromptPath, JSON.stringify(finalMessageList, null, 2));
+        await fs.writeFile(tempPromptPath, JSON.stringify({system: resolvedSystemInstruction, messages: finalMessageList}, null, 2));
         console.log('Final prompt messages:', resolvedSystemInstruction, finalMessageList);
 
         // 5. Stream response from adapter
@@ -1223,10 +1225,10 @@ function initHttp() {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
         try {
             const { id: chatId } = req.params;
-            const { messageId } = req.body;
+            const { messageId, history } = req.body;
             if (!messageId) throw new Error('messageId for regeneration is required.');
 
-            const { stream, chat } = await processPrompt(chatId, null, true, messageId);
+            const { stream, chat } = await processPrompt(chatId, null, true, messageId, history);
 
             let newContent = '';
             for await (const token of stream) {
@@ -1262,15 +1264,16 @@ function initHttp() {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
         try {
             const { id: chatId } = req.params;
+            const { history } = req.body;
             const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
             const existingChat = new Chat(JSON.parse(await fs.readFile(chatPath, 'utf-8')));
 
-            if (existingChat.messages.length === 0 || existingChat.messages.at(-1).role !== 'user') {
+            if (!history && (existingChat.messages.length === 0 || existingChat.messages.at(-1).role !== 'user')) {
                 throw new Error('Cannot resend: the last message is not from the user.');
             }
             
             // This is equivalent to a normal prompt but without a *new* user message.
-            const { stream, chat } = await processPrompt(chatId, null, false, null);
+            const { stream, chat } = await processPrompt(chatId, null, false, null, history);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
             for await (const token of stream) {
@@ -1297,9 +1300,9 @@ function initHttp() {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
         try {
             const { id: chatId } = req.params;
-            const { message } = req.body;
+            const { message, history } = req.body;
 
-            const { stream, chat, userMessageToAppend } = await processPrompt(chatId, message, false, null);
+            const { stream, chat, userMessageToAppend } = await processPrompt(chatId, message, false, null, history);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
             for await (const token of stream) {

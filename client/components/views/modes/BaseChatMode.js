@@ -329,6 +329,36 @@ export class BaseChatMode extends BaseComponent {
     }
 
     /**
+     * Gets the full, ordered message history for the current chat.
+     * @returns {Promise<Array<object>>} A promise that resolves to the message array.
+     */
+    async getFullHistory() {
+        // The chat object is already the full chat data.
+        return Promise.resolve(this.chat?.messages || []);
+    }
+    
+    /**
+     * Sends a prompt to the main controller using a custom, client-provided message history.
+     * This is the entry point for chat modes that need to manipulate the prompt context.
+     * @param {object} payload
+     * @param {object} payload.userMessage - The user message object to be saved to history.
+     * @param {Array<object>} payload.messages - The array of messages to be sent to the LLM for prompting.
+     */
+    sendChatCompletion({ userMessage, messages }) {
+        this.dispatch('chat-mode-send-custom-prompt', { userMessage, messages });
+    }
+
+    /**
+     * Requests a regeneration using a custom, client-provided message history.
+     * @param {object} payload
+     * @param {string} payload.messageId - The ID of the message to regenerate.
+     * @param {Array<object>} payload.history - The array of messages to use as context for regeneration.
+     */
+    regenerateWithHistory({ messageId, history }) {
+        this.dispatch('chat-mode-regenerate-with-history', { messageId, history });
+    }
+
+    /**
      * Sends a prompt to the main controller. Use this function to build the user prompt.
      * @param {string} promptText - The user's message.
      */
