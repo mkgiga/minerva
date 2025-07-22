@@ -1,6 +1,7 @@
 /**
  * Abstract base class for all LLM connection adapters.
  * Defines the required interface for prompting and health checks.
+ * @todo: Refactor to use generation parameter schemas for specific models. This means each model offered by a provider must be known in advance and be manually updated in the code whenever a new model is added, changed, or removed from the provider's API.
  */
 export class BaseAdapter {
     constructor(config) {
@@ -70,7 +71,42 @@ export class BaseAdapter {
      */
     prepareMessages(messages) {
         throw new Error("Method 'prepareMessages()' must be implemented by concrete adapters.");
-    }
+    }   
+}
 
+export class GenerationParameter {
     
+    /** Name of the parameter, e.g., 'temperature' */
+    name;
+
+    /** Form control type for the parameter, e.g., 'range', 'number', 'text' */
+    type;
+
+    /** Human-readable label for the parameter, e.g., 'Temperature' */
+    label;
+
+    constructor(name, label, type, options = {}) {
+        this.name = name; // e.g., 'temperature'
+        this.label = label; // e.g., 'Temperature'
+        this.type = type; // e.g., 'range', 'number', 'text'
+        this.options = options; // Additional options like min, max, step, defaultValue
+    }
+}
+
+/**
+ * Sometimes, providers offer different models, which may only support a subset of the generation parameters.
+ * @todo: Intregrate this with the provider classes instead of using a single global parameter schema for all of the provider's models.
+ */
+export class ModelSchema {
+    
+    /** Name of the model, i.e `gemini-pro-flash-2.5` */
+    name;
+
+    /**
+     * 
+     * @returns {Array<GenerationParameter>} An array of GenerationParameter objects defining the model's supported parameters.
+     */
+    getGenerationParametersSchema() {
+        return [];
+    }
 }

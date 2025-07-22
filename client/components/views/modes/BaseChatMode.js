@@ -1,4 +1,3 @@
-// client/components/views/modes/BaseChatMode.js
 import { BaseComponent } from '../../BaseComponent.js';
 
 /**
@@ -9,13 +8,15 @@ import { BaseComponent } from '../../BaseComponent.js';
  */
 export class BaseChatMode extends BaseComponent {
     #isSending = false;
+    #chat = null;
+    #messageMap = new Map();
+
     constructor() {
         super();
         if (this.constructor === BaseChatMode) {
             throw new TypeError('Abstract class "BaseChatMode" cannot be instantiated directly.');
         }
 
-        this.chat = null;
         this.allCharacters = [];
         this.userPersona = null;
         this.mainView = null;
@@ -63,6 +64,24 @@ export class BaseChatMode extends BaseComponent {
     
     get isSending() { return this.#isSending; }
     set isSending(value) { this.#isSending = value; }
+
+    get chat() {
+        return this.#chat;
+    }
+
+    set chat(newChat) {
+        this.#chat = newChat;
+        this.#buildMessageMap();
+    }
+
+    #buildMessageMap() {
+        this.#messageMap.clear();
+        if (this.#chat?.messages) {
+            for (const msg of this.#chat.messages) {
+                this.#messageMap.set(msg.id, msg);
+            }
+        }
+    }
 
     /**
      * @abstract
@@ -271,7 +290,16 @@ export class BaseChatMode extends BaseComponent {
     }
 
     /**
-     * Sends a prompt to the main controller.
+     * A helper to quickly find a message from the current chat by its ID.
+     * @param {string} messageId - The ID of the message to find.
+     * @returns {object|undefined} The message object or undefined if not found.
+     */
+    getMessageById(messageId) {
+        return this.#messageMap.get(messageId);
+    }
+
+    /**
+     * Sends a prompt to the main controller. Use this function to build the user prompt.
      * @param {string} promptText - The user's message.
      */
     sendPrompt(promptText) {
@@ -332,4 +360,23 @@ export class BaseChatMode extends BaseComponent {
     abortGeneration() {
         this.dispatch('chat-mode-abort-generation');
     }
+    
+    /**
+     * Helper for building chat completion prompts in the format expected by the backend.
+     * Useful if you aren't familiar with the minerva backend's chat completion API.
+     * This will be converted to the appropriate format once sent to the backend using the current API provider class.
+     */
+    static PromptBuilder = PromptBuilder;
+}
+
+class PromptBuilder {
+    static new() {
+        return new PromptBuilder();
+    }
+
+    constructor() {
+        this.messages = [];
+    }
+
+    
 }

@@ -161,6 +161,7 @@ class GenerationConfigView extends BaseComponent {
                         this.#generationConfigs[index] = detail.data;
                         if (this.#selectedGenConfig?.id === detail.data.id) {
                             this.#selectedGenConfig = JSON.parse(JSON.stringify(detail.data));
+                            this.#setNeedsSave(false); // Overwrite local changes with server state
                         }
                         needsFullUpdate = true;
                     }

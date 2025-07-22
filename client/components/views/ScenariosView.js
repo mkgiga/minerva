@@ -101,6 +101,7 @@ class ScenariosView extends BaseComponent {
                         this.#state.scenarios[index] = data;
                         if (this.#selectedScenario?.id === data.id) {
                             this.#selectedScenario = JSON.parse(JSON.stringify(data)); // Deep copy updated data
+                            this.#setNeedsSave(false); // Overwrite local changes with server state
                         }
                         stateChanged = true;
                     }
@@ -219,10 +220,10 @@ class ScenariosView extends BaseComponent {
         };
 
         try {
-            // The SSE handler will pick this up and update the state
             await api.put(`/api/scenarios/${scenarioData.id}`, scenarioData);
             notifier.show({ type: 'good', message: 'Scenario saved.' });
-
+            // The SSE will update the state, but we can immediately mark as saved.
+            this.#setNeedsSave(false);
         } catch (error) {
             notifier.show({ type: 'bad', header: 'Error', message: 'Could not save scenario.' });
         }

@@ -99,7 +99,7 @@ export class DefaultChatMode extends BaseChatMode {
     }
 
     onRegenerateStart(messageId) {
-        const messageData = this.chat.messages.find(m => m.id === messageId);
+        const messageData = this.getMessageById(messageId);
         if (!messageData) return null;
 
         if (messageData.role === 'assistant') {
@@ -206,7 +206,7 @@ export class DefaultChatMode extends BaseChatMode {
         const contentEl = messageEl.querySelector('.message-content');
         if (!contentEl) return;
 
-        const message = this.chat.messages.find(m => m.id === messageId);
+        const message = this.getMessageById(messageId);
         if (!message) return;
 
         const originalContent = message.content;
@@ -289,7 +289,7 @@ export class DefaultChatMode extends BaseChatMode {
                     case 'regenerate': this.regenerateMessage(messageId); break;
                     case 'edit': this.#handleEditMessage(messageId, messageEl); break;
                     case 'copy': {
-                        const message = this.chat.messages.find(m => m.id === messageId);
+                        const message = this.getMessageById(messageId);
                         if (message) this.copyMessageContent(message.content);
                         break;
                     }

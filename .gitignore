@@ -11,12 +11,16 @@ dist/
 .env
 *.env.*
 
+# Temporary files
+*.tmp
+temp/
+
 # Logs
 logs
 npm-debug.log*
 
 # User data
-/data
+data
 
 # Code completion context files
 GEMINI.md

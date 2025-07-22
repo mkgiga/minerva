@@ -10,8 +10,7 @@ export class OpenAIV1Adapter extends BaseAdapter {
         // This adapter uses the default schema which includes url and apiKey.
         // We explicitly define it here for clarity, but `return super.getAdapterSchema()` would also work.
         return [
-            { name: 'url', label: 'API URL', type: 'text', required: true, placeholder: 'e.g., http://localhost:1234/v1' },
-            { name: 'apiKey', label: 'API Key', type: 'password', required: false, placeholder: 'sk-...' },
+            ...super.getAdapterSchema(),
         ];
     }
     

@@ -1,5 +1,5 @@
 import { BaseComponent } from './BaseComponent.js';
-import { api, modal, notifier, imagePreview } from '../../client.js'; // NEW: Import imagePreview
+import { api, modal, notifier, imagePreview } from '../../client.js';
 
 class CharacterEditor extends BaseComponent {
     constructor() {
@@ -10,7 +10,7 @@ class CharacterEditor extends BaseComponent {
     
     set character(newChar) {
         this._character = newChar;
-        this._updateView();
+        this.#updateView();
     }
 
     get character() {
@@ -25,7 +25,7 @@ class CharacterEditor extends BaseComponent {
         form.addEventListener('change', this.handleFormChange.bind(this));
         form.addEventListener('blur', this.handleFormBlur.bind(this), true);
         this.shadowRoot.querySelector('#character-avatar-upload').addEventListener('change', this.onAvatarChange.bind(this));
-        this._updateView();
+        this.#updateView();
     }
 
     handleFormClick(event) {
@@ -53,14 +53,14 @@ class CharacterEditor extends BaseComponent {
                     }
                 }
             });
-            return; // NEW: Added return here to prevent further processing
+            return;
         }
 
-        // NEW: Handle clicks on gallery item previews
+        // Handle clicks on gallery item previews
         const previewImage = event.target.closest('.gallery-item-preview');
         if (previewImage) {
             imagePreview.show({ src: previewImage.src, alt: previewImage.alt });
-            return; // NEW: Added return here
+            return; 
         }
     }
 
@@ -162,7 +162,7 @@ class CharacterEditor extends BaseComponent {
         }
     }
     
-    _updateView() {
+    #updateView() {
         const formWrapper = this.shadowRoot.querySelector('.form-wrapper');
         const placeholder = this.shadowRoot.querySelector('.placeholder');
         const bgContainer = this.shadowRoot.querySelector('.background-avatar-container');
@@ -191,11 +191,11 @@ class CharacterEditor extends BaseComponent {
             this.shadowRoot.querySelector('#character-description').value = this._character.description || '';
             this.shadowRoot.querySelector('#replace-char-id').textContent = this._character.id || 'id';
 
-            this._renderGallery();
+            this.#renderGallery();
         }
     }
 
-    _renderGallery() {
+    #renderGallery() {
         const galleryGrid = this.shadowRoot.querySelector('#gallery-grid');
         if (!galleryGrid || !this.character?.gallery) return;
 

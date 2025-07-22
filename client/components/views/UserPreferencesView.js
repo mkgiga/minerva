@@ -154,10 +154,10 @@ class UserPreferencesView extends BaseComponent {
         };
         
         try {
-            // Send the update. The view will be updated via the SSE broadcast.
-            // On successful broadcast, handleResourceChange will set #needsSave to false.
             await api.post('/api/settings', settingsPayload);
             notifier.show({ message: 'Settings saved.', type: 'good' });
+            // Set needsSave to false immediately for better UX. The SSE will re-confirm.
+            this.#setNeedsSave(false);
         } catch (error) {
             console.error('Failed to save settings:', error);
             notifier.show({ 

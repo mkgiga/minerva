@@ -151,57 +151,64 @@ class MainChatView extends BaseComponent {
     
     handleResourceChange(event) {
         const { resourceType, eventType, data } = event.detail;
-    
+        
         const oldSelectedChat = this.state.selectedChat ? JSON.parse(JSON.stringify(this.state.selectedChat)) : null;
-    
-        let requiresChromeUpdate = false;
+        
         let characterListChanged = false;
         let userPersonaChanged = false;
         let rendererChanged = false;
-        let scenarioListChanged = false;
-    
+        
         switch (resourceType) {
             case 'chat':
-                requiresChromeUpdate = this.handleChatListChange(eventType, data) || requiresChromeUpdate;
+                if (this.handleChatListChange(eventType, data)) {
+                    this.#renderChatList();
+                    this.updateMultiSelectControls();
+                }
                 break;
-    
+        
             case 'chat_details':
                 if (eventType === 'update' && this.state.selectedChat?.id === data.id) {
                     this.state.selectedChat = data;
                     if (this.#activeChatMode) this.#activeChatMode.chat = data;
-                    requiresChromeUpdate = true;
-    
+        
+                    const oldParticipants = (oldSelectedChat.participants || []).map(p => p.id).sort();
+                    const newParticipants = (data.participants || []).map(p => p.id).sort();
+                    const oldScenarios = (oldSelectedChat.scenarioIds || []).sort();
+                    const newScenarios = (data.scenarioIds || []).sort();
+        
+                    if (JSON.stringify(oldParticipants) !== JSON.stringify(newParticipants) || JSON.stringify(oldScenarios) !== JSON.stringify(newScenarios)) {
+                        this.#updateRightPanel();
+                    }
+        
                     this.#diffChatAndUpdateMode(oldSelectedChat, data);
                 }
                 break;
-    
+        
             case 'character':
-                characterListChanged = this.handleCharacterListChange(eventType, data) || characterListChanged;
-                requiresChromeUpdate = true;
+                if (this.handleCharacterListChange(eventType, data)) {
+                    characterListChanged = true;
+                    this.#updateRightPanel();
+                }
                 break;
                 
             case 'scenario':
-                scenarioListChanged = this.handleScenarioListChange(eventType, data) || scenarioListChanged;
-                requiresChromeUpdate = true;
+                if (this.handleScenarioListChange(eventType, data)) {
+                    this.#updateRightPanel();
+                }
                 break;
-    
+        
             case 'setting':
                 const oldPersonaId = this.state.userPersona?.id;
                 const oldRenderer = this.state.chatRenderer;
-                const settingsChanged = this.handleSettingChange(data);
+                this.handleSettingChange(data);
                 if (this.state.userPersona?.id !== oldPersonaId) userPersonaChanged = true;
                 if (this.state.chatRenderer !== oldRenderer) rendererChanged = true;
-                requiresChromeUpdate = settingsChanged || requiresChromeUpdate;
                 break;
         }
-    
-        if (requiresChromeUpdate) {
-            this.updateViewChrome();
-        }
-    
+        
         if (this.#activeChatMode) {
             if (rendererChanged) {
-                this.updateMainPanel(); // This will trigger a mode switch
+                this.updateMainPanel();
             }
             if (characterListChanged) {
                 this.#activeChatMode.allCharacters = [...this.state.allCharacters];
@@ -403,7 +410,7 @@ class MainChatView extends BaseComponent {
                 } else {
                     this.state.expandedChatIds.add(rootIdToToggle);
                 }
-                this._renderChatList();
+                this.#renderChatList();
                 break;
         }
     }
@@ -831,7 +838,7 @@ class MainChatView extends BaseComponent {
     }
     handleMultiSelectionChange(id) {
         if (this.state.multiSelectedChatIds.has(id)) { this.state.multiSelectedChatIds.delete(id); } else { this.state.multiSelectedChatIds.add(id); }
-        this._renderChatList();
+        this.#renderChatList();
         this.updateMultiSelectControls();
     }
     updateMultiSelectControls() {
@@ -893,7 +900,7 @@ class MainChatView extends BaseComponent {
         return treeRoots;
     }
 
-    _findLatestNodeInTree(root) {
+    #findLatestNodeInTree(root) {
         let latestNode = root;
         function traverse(node) {
             if (new Date(node.lastModifiedAt) > new Date(latestNode.lastModifiedAt)) {
@@ -905,13 +912,13 @@ class MainChatView extends BaseComponent {
         return latestNode;
     }
 
-    _renderChatList() {
+    #renderChatList() {
         const chatListEl = this.shadowRoot.querySelector('#chat-list');
         if (!chatListEl) return;
         const chatTree = this._buildChatTree(this.state.chats);
         
         const listHtml = chatTree.map(root => {
-            const displayNode = this._findLatestNodeInTree(root);
+            const displayNode = this.#findLatestNodeInTree(root);
             const isExpanded = this.state.expandedChatIds.has(root.id);
             const hasChildren = root.children && root.children.length > 0;
             const isSelected = this.state.selectedChat?.id === displayNode.id;
@@ -922,7 +929,7 @@ class MainChatView extends BaseComponent {
             
             const expanderHtml = hasChildren ? `<button class="expander icon-button" data-action="toggle-expand"><span class="material-icons">${isExpanded ? 'expand_more' : 'chevron_right'}</span></button>` : `<span class="expander-placeholder"></span>`;
             const checkboxHtml = this.state.isMultiSelectMode ? `<input type="checkbox" class="multiselect-checkbox" ${isMultiSelected ? 'checked' : ''}>` : '';
-            const childrenHtml = hasChildren && isExpanded ? `<ul class="chat-tree-container">${this._renderTimelineNodes(root, root.id, 0)}</ul>` : '';
+            const childrenHtml = hasChildren && isExpanded ? `<ul class="chat-tree-container">${this.#renderTimelineNodes(root, root.id, 0)}</ul>` : '';
 
             return `
                 <li data-id="${displayNode.id}" data-root-id="${root.id}" class="${liClasses}">
@@ -945,7 +952,7 @@ class MainChatView extends BaseComponent {
         chatListEl.innerHTML = listHtml;
     }
 
-    _renderTimelineNodes(node, rootId, level) {
+    #renderTimelineNodes(node, rootId, level) {
         const isSelected = this.state.selectedChat?.id === node.id;
         const rowClasses = ['item-row', 'timeline-node', isSelected ? 'selected' : ''].join(' ');
         const nodeHtml = `
@@ -959,13 +966,13 @@ class MainChatView extends BaseComponent {
             </li>
         `;
         const childrenHtml = node.children && node.children.length > 0 
-            ? `<ul>${node.children.map(child => this._renderTimelineNodes(child, rootId, level + 1)).join('')}</ul>` 
+            ? `<ul>${node.children.map(child => this.#renderTimelineNodes(child, rootId, level + 1)).join('')}</ul>` 
             : '';
 
         return nodeHtml + childrenHtml;
     }
     
-    _renderCharacterListItem(character, options = {}) {
+    #renderCharacterListItem(character, options = {}) {
         const { isParticipant, isRemovable } = options;
         const liClasses = isParticipant ? 'is-participant' : '';
 
@@ -1001,7 +1008,7 @@ class MainChatView extends BaseComponent {
         }
         this.shadowRoot.querySelector('#back-to-chats-btn').style.display = isMobile && this.state.selectedChat ? 'flex' : 'none';
         
-        this._renderChatList();
+        this.#renderChatList();
         this.updateMultiSelectControls();
         this.#updateRightPanel();
     }
@@ -1073,7 +1080,7 @@ class MainChatView extends BaseComponent {
             this.shadowRoot.querySelector('.right-panel-content').style.display = 'flex';
             const participantChars = this.state.selectedChat.participants
                 .map(p => this.state.allCharacters.find(char => char.id === p.id)).filter(Boolean);
-            this.shadowRoot.querySelector('#participant-list').innerHTML = participantChars.map(char => this._renderCharacterListItem(char, { isParticipant: true, isRemovable: true })).join('');
+            this.shadowRoot.querySelector('#participant-list').innerHTML = participantChars.map(char => this.#renderCharacterListItem(char, { isParticipant: true, isRemovable: true })).join('');
             
             this._renderActiveScenarioList();
         } else {
@@ -1107,7 +1114,7 @@ class MainChatView extends BaseComponent {
         const search = this.shadowRoot.querySelector('#modal-search-input').value.toLowerCase();
         const participantIds = new Set(this.state.selectedChat?.participants.map(p => p.id) || []);
         const filteredChars = this.state.allCharacters.filter(char => char.name.toLowerCase().includes(search));
-        list.innerHTML = filteredChars.map(char => this._renderCharacterListItem(char, { isParticipant: participantIds.has(char.id) })).join('');
+        list.innerHTML = filteredChars.map(char => this.#renderCharacterListItem(char, { isParticipant: participantIds.has(char.id) })).join('');
     }
     
     updateScenarioModalListView() {

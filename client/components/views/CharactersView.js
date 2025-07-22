@@ -90,7 +90,7 @@ class CharactersView extends BaseComponent {
             if (editorHasFocus && !selectedCharacterWasDeleted) {
                 // User is typing in the editor. To avoid interrupting them, we only update
                 // the list on the left, not the main editor panel.
-                this._renderCharacterList();
+                this.#renderCharacterList();
             } else {
                 // Otherwise, perform a full update of the view.
                 this.updateView();
@@ -347,7 +347,7 @@ class CharactersView extends BaseComponent {
         });
     }
     
-    _renderCharacterList() {
+    #renderCharacterList() {
         if (!this.itemList) return;
         
         const charactersHtml = this.state.characters
@@ -404,7 +404,7 @@ class CharactersView extends BaseComponent {
             mobileHeader.style.display = 'none';
         }
 
-        this._renderCharacterList();
+        this.#renderCharacterList();
 
         const editor = this.shadowRoot.querySelector('minerva-character-editor');
         if (editor) {

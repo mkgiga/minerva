@@ -15,7 +15,7 @@ export class AdventureChatMode extends BaseChatMode {
     #isAnimating = false;
     #justAnimatedMessageIds = new Set();
     #settings = {};
-    #streamingContent = new Map(); // New: Map to hold content during streaming
+    #streamingContent = new Map();
 
     static getSettingsSchema() {
         return [
@@ -85,7 +85,6 @@ export class AdventureChatMode extends BaseChatMode {
             this.#quickRegenButton.addEventListener('click', this.#handleQuickRegen.bind(this));
         }
 
-        // New: Listener for collapsible prompts and image previews
         this.#historyContainer.addEventListener('click', this.#handleHistoryClick.bind(this));
     }
     
@@ -159,7 +158,7 @@ export class AdventureChatMode extends BaseChatMode {
         console.log('[AdventureChatMode] onMessagesDeleted', deletedMessageIds);
         if (this.#isAnimating) return;
         for (const id of deletedMessageIds) {
-            this.shadowRoot.querySelector(`.chat-message[data-message-id="${id}"]`)?.remove();
+            this.shadowRoot.querySelector(`.chat-message[data-message-id="${id}`)?.remove();
         }
         this.updateInputState();
     }
@@ -185,7 +184,7 @@ export class AdventureChatMode extends BaseChatMode {
     onRegenerateStart(messageId) {
         console.log('[AdventureChatMode] onRegenerateStart', messageId);
         const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
-        const messageData = this.chat.messages.find(m => m.id === messageId);
+        const messageData = this.getMessageById(messageId);
         
         if (!messageData) return;
 
@@ -290,7 +289,7 @@ export class AdventureChatMode extends BaseChatMode {
                         case 'branch': this.branchFromMessage(messageId); break;
                         case 'regenerate': this.regenerateMessage(messageId); break;
                         case 'edit': this.#handleEditMessage(messageId, button.closest('.chat-message')); break;
-                        case 'copy': { const msg = this.chat.messages.find(m => m.id === messageId); if (msg) this.copyMessageContent(msg.content); break; }
+                        case 'copy': { const msg = this.getMessageById(messageId); if (msg) this.copyMessageContent(msg.content); break; }
                     }
                     return; // Handled message control
                 }
@@ -302,7 +301,7 @@ export class AdventureChatMode extends BaseChatMode {
         const contentEl = messageEl.querySelector('.message-content, .adventure-dialogue-content');
         if (!contentEl) return;
         
-        const originalContent = this.chat.messages.find(m => m.id === messageId)?.content || '';
+        const originalContent = this.getMessageById(messageId)?.content || '';
         
         const editor = document.createElement('text-box');
         editor.value = originalContent;
@@ -324,7 +323,7 @@ export class AdventureChatMode extends BaseChatMode {
             editor.removeEventListener('blur', onBlur);
             
             if (isCancelled) {
-                this.#updateMessageContent(messageEl, this.chat.messages.find(m => m.id === messageId));
+                this.#updateMessageContent(messageEl, this.getMessageById(messageId));
                 return;
             }
 
@@ -332,7 +331,7 @@ export class AdventureChatMode extends BaseChatMode {
             if (newContent.trim() !== originalContent.trim()) {
                 this.saveEditedMessage(messageId, newContent);
             } else {
-                this.#updateMessageContent(messageEl, this.chat.messages.find(m => m.id === messageId));
+                this.#updateMessageContent(messageEl, this.getMessageById(messageId));
             }
         };
         
@@ -447,7 +446,7 @@ export class AdventureChatMode extends BaseChatMode {
                 const prevMsg = this.chat.messages[i - 1];
                 if (prevMsg?.role === 'assistant' && prevMsg.content.includes('<prompt>')) continue;
             }
-            this.appendMessage(msg, false);
+            this.appendMessage(msg, false, i);
         }
         
         if (this.#lastUnansweredPromptEl) {
@@ -460,11 +459,11 @@ export class AdventureChatMode extends BaseChatMode {
         this.updateInputState(this.isSending);
     }
     
-    appendMessage(message, scrollToBottom = true) {
+    appendMessage(message, scrollToBottom = true, index = -1) {
         if (!this.#historyContainer) return;
         
         const messageEl = this.#createMessageElement(message);
-        this.#updateMessageContent(messageEl, message);
+        this.#updateMessageContent(messageEl, message, index);
         this.#historyContainer.appendChild(messageEl);
 
         if (scrollToBottom) this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
@@ -494,7 +493,7 @@ export class AdventureChatMode extends BaseChatMode {
         // This function is now implicitly handled by the one listener on `#historyContainer`.
     }
 
-    #updateMessageContent(messageEl, msg) {
+    #updateMessageContent(messageEl, msg, index = -1) {
         messageEl.dataset.messageId = msg.id;
 
         if (msg.role !== 'assistant') {
@@ -503,7 +502,7 @@ export class AdventureChatMode extends BaseChatMode {
             const roleClass = isPlayerChoice ? 'player-choice' : msg.role;
             const author = isUser ? this.getCharacterById(msg.characterId) : null;
             const authorName = author?.name || 'You';
-            let content = isPlayerChoice ? this._escapeHtml(msg.content.slice(8, -9)) : this._escapeHtml(msg.content).replace(/\n/g, '<br>');
+            let content = isPlayerChoice ? this.#escapeHtml(msg.content.slice(8, -9)) : this.#escapeHtml(msg.content).replace(/\n/g, '<br>');
             const avatarHTML = isUser ? '' : `<img src="assets/images/system_icon.svg" alt="System" class="avatar">`;
 
             messageEl.className = `chat-message ${roleClass}`;
@@ -536,17 +535,17 @@ export class AdventureChatMode extends BaseChatMode {
                     <img src="${avatarUrl}" alt="${authorName}" class="avatar">
                     <div class="message-bubble">
                         <div class="message-header"><span class="author-name">${authorName}</span>${this.#renderMessageControlsHTML(msg)}</div>
-                        <div class="message-content">${this._escapeHtml(content).replace(/\n/g, '<br>')}</div>
+                        <div class="message-content">${this.#escapeHtml(content).replace(/\n/g, '<br>')}</div>
                     </div>`;
                 if (parserError) {
                     const errorDetails = document.createElement('div');
                     errorDetails.className = 'adventure-parse-error';
-                    errorDetails.innerHTML = '<strong>Parse Error:</strong><pre>' + this._escapeHtml(parserError.textContent) + '</pre>';
+                    errorDetails.innerHTML = '<strong>Parse Error:</strong><pre>' + this.#escapeHtml(parserError.textContent) + '</pre>';
                     messageEl.querySelector('.message-bubble').appendChild(errorDetails);
                 }
             } else {
                 messageEl.className = 'chat-message assistant adventure-mode';
-                const contentFragment = this.#renderVnOutput(outputNode, msg);
+                const contentFragment = this.#renderVnOutput(outputNode, msg, index);
                 messageEl.innerHTML = `<div class="message-controls">${this.#renderMessageControlsHTML(msg)}</div>`;
                 messageEl.appendChild(contentFragment);
             }
@@ -627,7 +626,7 @@ export class AdventureChatMode extends BaseChatMode {
         const contentsToType = new Map();
     
         for (const node of Array.from(outputNode.children)) {
-            const block = this.#createVnBlock(node, msg);
+            const block = this.#createVnBlock(node, msg, -1);
             if (block) {
                 const elementsToTypeInBlock = [];
                 if (block.classList.contains('adventure-action')) {
@@ -681,16 +680,16 @@ export class AdventureChatMode extends BaseChatMode {
 
     // VN Block Rendering
     
-    #renderVnOutput(outputNode, msg) {
+    #renderVnOutput(outputNode, msg, index = -1) {
         const fragment = document.createDocumentFragment();
         for (const node of Array.from(outputNode.children)) {
-            const block = this.#createVnBlock(node, msg);
+            const block = this.#createVnBlock(node, msg, index);
             if (block) fragment.appendChild(block);
         }
         return fragment;
     }
     
-    #createVnBlock(node, msg) {
+    #createVnBlock(node, msg, index = -1) {
         const nodeName = node.nodeName.toLowerCase();
         let block;
     
@@ -706,17 +705,17 @@ export class AdventureChatMode extends BaseChatMode {
             case 'prompt':
                 block = document.createElement('div');
                 block.className = 'adventure-block adventure-prompt collapsed';
-                this.#populatePromptBlock(block, node, msg);
+                this.#populatePromptBlock(block, node, msg, index);
                 break;
             case 'show':
-                block = this.#createShowBlock(node, msg);
+                block = this.#createShowBlock(node, msg, index);
                 break;
             default: return null;
         }
         return block;
     }
 
-    #createShowBlock(node, msg) {
+    #createShowBlock(node, msg, index = -1) {
         const block = document.createElement('div');
         block.className = 'adventure-block adventure-show';
     
@@ -739,13 +738,13 @@ export class AdventureChatMode extends BaseChatMode {
         
         const contentContainer = document.createElement('div');
         contentContainer.className = 'adventure-show-content';
-        contentContainer.appendChild(this.#renderVnOutput(node, msg));
+        contentContainer.appendChild(this.#renderVnOutput(node, msg, index));
         block.appendChild(contentContainer);
     
         return block;
     }
     
-    #populatePromptBlock(block, promptNode, msg) {
+    #populatePromptBlock(block, promptNode, msg, index = -1) {
         const header = document.createElement('div');
         header.className = 'adventure-prompt-header';
         const body = document.createElement('div');
@@ -760,7 +759,7 @@ export class AdventureChatMode extends BaseChatMode {
             }
         }
 
-        const msgIndex = this.chat.messages.findIndex(m => m.id === msg.id);
+        const msgIndex = index > -1 ? index : this.chat.messages.findIndex(m => m.id === msg.id);
         const nextMessage = this.chat.messages[msgIndex + 1];
     
         if (nextMessage?.role === 'user' && nextMessage.content.startsWith('<choice>')) {
@@ -770,11 +769,11 @@ export class AdventureChatMode extends BaseChatMode {
             const authorName = choiceAuthor?.name || 'You';
             const authorAvatar = choiceAuthor?.avatarUrl || 'assets/images/user_icon.svg';
 
-            header.innerHTML = `<div class="answered-prompt-header"><img src="${authorAvatar}" alt="${authorName}" class="avatar"><span class="answered-choice-text">${this._escapeHtml(choiceContent)}</span></div><span class="material-icons expand-icon">unfold_more</span>`;
+            header.innerHTML = `<div class="answered-prompt-header"><img src="${authorAvatar}" alt="${authorName}" class="avatar"><span class="answered-choice-text">${this.#escapeHtml(choiceContent)}</span></div><span class="material-icons expand-icon">unfold_more</span>`;
             
             const playerChoiceEl = document.createElement('div');
             playerChoiceEl.className = 'adventure-prompt-player-choice';
-            playerChoiceEl.innerHTML = `<div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this._escapeHtml(choiceContent)}</div>`;
+            playerChoiceEl.innerHTML = `<div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this.#escapeHtml(choiceContent)}</div>`;
             body.appendChild(playerChoiceEl);
         } else {
             block.classList.add('unanswered');
@@ -898,7 +897,7 @@ export class AdventureChatMode extends BaseChatMode {
             </div>`;
     }
 
-    _escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+    #escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
 
     render() {
          super._initShadow(`

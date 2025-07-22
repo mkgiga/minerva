@@ -6,11 +6,14 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { glob } from 'glob';
-import { OpenAIV1Adapter } from './server/adapters/v1.js';
-import { GoogleGeminiAdapter } from './server/adapters/gemini.js';
+import { OpenAIV1Adapter } from './server/providers/v1.js';
+import { GoogleGeminiAdapter } from './server/providers/gemini.js';
 import yaml from 'yaml';
 import cors from 'cors';
 import { CURRENT_REV, runMigrations, migrateData } from './server/migrations.js';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const serverConfig = yaml.parse(readFileSync('config.yaml', 'utf8'));
 
@@ -1201,7 +1204,10 @@ function initHttp() {
         }
 
         const resolvedSystemInstruction = systemParts.join('\n\n');
-
+        // save final prompt message to temp file for debugging
+        const TEMP_DIR = path.join(__dirname, 'temp');
+        const tempPromptPath = path.join(TEMP_DIR, `prompt-${chatId}-${Date.now()}.json`);
+        await fs.writeFile(tempPromptPath, JSON.stringify(finalMessageList, null, 2));
         console.log('Final prompt messages:', resolvedSystemInstruction, finalMessageList);
 
         // 5. Stream response from adapter

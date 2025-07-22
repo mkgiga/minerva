@@ -10,7 +10,7 @@ export class GoogleGeminiAdapter extends BaseAdapter {
     static getAdapterSchema() {
         // Gemini adapter only requires an API key, as the URL is fixed.
         return [
-            { name: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'Your Google AI Studio API Key' },
+            ...super.getAdapterSchema(),
         ];
     }
     

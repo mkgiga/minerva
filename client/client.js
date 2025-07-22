@@ -13,7 +13,7 @@ import './components/Modal.js';
 import './components/TextBox.js';
 import './components/Spinner.js';
 import './components/SchemaForm.js';
-import './components/ImagePreview.js'; // NEW: Import the ImagePreview component
+import './components/ImagePreview.js';
 
 /**
  * A simple, dependency-free UUID v4 generator.
@@ -181,7 +181,7 @@ class MinervaApp extends BaseComponent {
         // Link services to their UI elements
         notifier.setContainer(this.shadowRoot.querySelector('#notification-container'));
         modal.setModal(this.shadowRoot.querySelector('minerva-modal'));
-        imagePreview.setElement(this.shadowRoot.querySelector('minerva-image-preview')); // NEW: Link imagePreview service
+        imagePreview.setElement(this.shadowRoot.querySelector('minerva-image-preview'));
 
         this.updateActiveView();
         this.#connectToSse();
