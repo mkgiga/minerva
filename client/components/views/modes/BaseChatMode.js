@@ -1,6 +1,36 @@
 import { BaseComponent } from '../../BaseComponent.js';
 
 /**
+ * A builder class for constructing chat prompts.
+ * Contains methods that return the same instance for method chaining.
+ */
+export class PromptBuilder {
+    static new() {
+        return new PromptBuilder();
+    }
+
+    constructor() {
+        this.messages = [];
+    }
+    
+    /**
+     * 
+     * @param {'user' | 'assistant' | 'system'} role 
+     * @param {string} content
+     * @param {string} [characterId] - Optional character ID to associate with the message. Mainly used to track which character the user was playing as at the time of sending the message. Becomes the user's persona by default if not specified when sending the prompt.
+     */
+    addMessage(role, content = '') {
+        if (!(role in ['user', 'assistant', 'system'])) {
+            throw new TypeError(`Invalid role: ${role}. Must be 'user', 'assistant', or 'system'.`);
+        }
+
+        this.messages.push({ role, content });
+        
+        return this; // chainable
+    }
+}
+
+/**
  * @abstract
  * Base class for all chat rendering modes.
  * It's not meant to be instantiated directly.
@@ -369,28 +399,5 @@ export class BaseChatMode extends BaseComponent {
     static PromptBuilder = PromptBuilder;
 }
 
-export class PromptBuilder {
-    static new() {
-        return new PromptBuilder();
-    }
-
-    constructor() {
-        this.messages = [];
-    }
-    
-    /**
-     * 
-     * @param {'user' | 'assistant' | 'system'} role 
-     * @param {string} content
-     * @param {string} [characterId] - Optional character ID to associate with the message. Mainly used to track which character the user was playing as at the time of sending the message. Becomes the user's persona by default if not specified when sending the prompt.
-     */
-    addMessage(role, content = '') {
-        if (!['user', 'assistant', 'system'].includes(role)) {
-            throw new TypeError(`Invalid role: ${role}. Must be 'user', 'assistant', or 'system'.`);
-        }
-        this.messages.push({ role, content });
-        return this; // For chaining
-    }
-}
 
 export default { BaseChatMode, PromptBuilder };

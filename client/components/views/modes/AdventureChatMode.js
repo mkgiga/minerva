@@ -298,40 +298,52 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     #handleEditMessage(messageId, messageEl) {
-        const contentEl = messageEl.querySelector('.message-content, .adventure-dialogue-content');
-        if (!contentEl) return;
-        
+        // Determine the main container for the message's content.
+        // For adventure messages, it's the message element itself. For others, it's .message-content.
+        const isAdventure = messageEl.classList.contains('adventure-mode');
+        const contentContainer = isAdventure ? messageEl : messageEl.querySelector('.message-content');
+
+        if (!contentContainer) {
+            console.warn("Could not find content container to edit for message:", messageId);
+            return;
+        }
+
         const originalContent = this.getMessageById(messageId)?.content || '';
         
         const editor = document.createElement('text-box');
         editor.value = originalContent;
         editor.style.minHeight = '150px';
-        editor.style.height = `${Math.max(contentEl.offsetHeight, 150)}px`;
-
-        contentEl.innerHTML = '';
-        contentEl.appendChild(editor);
-        editor.focus();
+        editor.style.height = `${Math.max(contentContainer.offsetHeight, 150)}px`;
         
+        // For adventure messages, we need to preserve the controls which are a direct child.
+        const controls = isAdventure ? messageEl.querySelector('.message-controls') : null;
+
+        // Clear the container and add the editor, preserving controls if necessary.
+        contentContainer.innerHTML = '';
+        if (controls) {
+            contentContainer.appendChild(controls);
+        }
+        contentContainer.appendChild(editor);
+        editor.focus();
+
         let isCancelled = false;
         const onKeydown = e => {
             if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); editor.blur(); } 
             else if (e.key === 'Escape') { e.preventDefault(); isCancelled = true; editor.blur(); }
         };
 
-        const onBlur = async () => {
+        const onBlur = () => {
             editor.removeEventListener('keydown', onKeydown);
             editor.removeEventListener('blur', onBlur);
             
-            if (isCancelled) {
-                this.#updateMessageContent(messageEl, this.getMessageById(messageId));
-                return;
-            }
-
+            // Re-rendering the message from data is the cleanest way to restore its state.
             const newContent = editor.value;
-            if (newContent.trim() !== originalContent.trim()) {
-                this.saveEditedMessage(messageId, newContent);
-            } else {
+            if (isCancelled || newContent.trim() === originalContent.trim()) {
+                // If cancelled or unchanged, restore the original view.
                 this.#updateMessageContent(messageEl, this.getMessageById(messageId));
+            } else {
+                // If changed, dispatch the save event. The update will come via SSE.
+                this.saveEditedMessage(messageId, newContent);
             }
         };
         
@@ -947,7 +959,7 @@ export class AdventureChatMode extends BaseChatMode {
             .author-name { font-weight: 600; }
             .message-header .message-controls { opacity: 0; }
             .message-bubble:hover .message-controls { opacity: 1; }
-            .message-bubble text-box, .adventure-dialogue-content text-box { outline: 1px solid var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-faded); border-radius: var(--radius-sm); padding: var(--spacing-sm); background-color: var(--bg-0); color: white; }
+            .message-bubble text-box, .adventure-dialogue-content text-box, .chat-message.assistant.adventure-mode > text-box { outline: 1px solid var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-faded); border-radius: var(--radius-sm); padding: var(--spacing-sm); background-color: var(--bg-0); color: white; }
             .message-controls .icon-btn .material-icons { font-size: 1.1rem; }
             .icon-btn { background: transparent; border: none; cursor: pointer; color: var(--text-secondary); padding: 0; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
             .icon-btn:hover { color: var(--text-primary); }
