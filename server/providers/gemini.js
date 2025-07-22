@@ -19,12 +19,13 @@ export class GoogleGeminiAdapter extends BaseAdapter {
             { name: 'temperature', label: 'Temperature', type: 'range', min: 0, max: 2, step: 0.1, defaultValue: 0.9 },
             { name: 'topP', label: 'Top P', type: 'range', min: 0, max: 1, step: 0.05, defaultValue: 1 },
             { name: 'topK', label: 'Top K', type: 'number', min: 1, step: 1, defaultValue: 1 },
-            { name: 'maxOutputTokens', label: 'Max Output Tokens', type: 'number', min: 1, step: 1, defaultValue: 60000 },
-            
+            { name: 'maxOutputTokens', label: 'Max Output Tokens', type: 'number', min: 1, step: 1, defaultValue: 65536 },
+            // { name: 'stopSequences', label: 'Stop Sequences', type: 'text', placeholder: 'e.g., "Human:, AI:"' },
+            // { name: 'urlContext', label: 'URL Context', type: 'checkbox', defaultValue: false, description: 'Gemini opens links included in the user prompt and uses the content to in the output.' },
         ];
     }
 
-    async *prompt(messages, options = {}) {
+    async *prompt(messages, options = { generationConfig: {} }) {
         const { apiKey } = this.config;
         const { systemInstruction, ...generationConfig } = options;
 
