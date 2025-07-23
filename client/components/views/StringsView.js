@@ -58,7 +58,7 @@ class StringsView extends BaseComponent {
         if (resourceType !== 'reusable_string') return;
         
         // System strings are handled internally, don't show them in this view
-        if (data.id === 'system-chat-history') return;
+        if (data.id.startsWith('system-')) return;
 
         let changed = false;
         let selectedStringWasDeleted = false;
@@ -108,8 +108,8 @@ class StringsView extends BaseComponent {
     async fetchData() {
         try {
             const strings = await api.get('/api/reusable-strings');
-            // 'system-chat-history' is a special string, we'll filter it from the editable list.
-            this.state.strings = strings.filter(s => s.id !== 'system-chat-history');
+            // Filter out all system-defined strings from the editable list.
+            this.state.strings = strings.filter(s => !s.id.startsWith('system-'));
 
             if (this._pendingSelectedId) {
                 const stringToSelect = this.state.strings.find(s => s.id === this._pendingSelectedId);
