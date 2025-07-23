@@ -1,6 +1,6 @@
 # Minerva
 
-Minerva is a web-based graphical user interface (GUI) designed for interacting with Large Language Models (LLMs), with a special focus on roleplaying, storytelling, and other forms of creative writing. It provides a clean, user-friendly, and mobile-ready interface to create characters and engage with them in dynamic, multi-participant conversations.
+Minerva is a web-based graphical user interface (GUI) designed for interacting with Large Language Models (LLMs) inspired by projects like SillyTavern, with a special focus on roleplaying, storytelling, and other forms of creative writing. It provides a clean, user-friendly, and mobile-ready interface to create characters and engage with them in dynamic, multi-participant conversations.
 
 ![Minerva Screenshot](https://raw.githubusercontent.com/mkgiga/minerva/main/screenshot1.png)
 
