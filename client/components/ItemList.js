@@ -52,7 +52,7 @@ class ItemList extends BaseComponent {
             :host {
                 display: block;
                 height: 100%;
-                background-color: var(--bg-1);
+                background-color: var(--bg-0);
                 overflow: hidden; /* Let the container handle scroll */
             }
             .list-container {
