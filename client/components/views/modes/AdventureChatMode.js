@@ -658,7 +658,7 @@ export class AdventureChatMode extends BaseChatMode {
                 role: "assistant",
                 content: finalContent,
             };
-            await this.#animateVnResponse(messageEl, messageToAnimate);
+            await this.#animateAdventureModeResponse(messageEl, messageToAnimate);
         }
 
         this.#streamingContent.delete(messageId);
@@ -842,7 +842,7 @@ export class AdventureChatMode extends BaseChatMode {
                 }
             } else {
                 messageEl.className = "chat-message assistant adventure-mode";
-                const contentFragment = this.#renderVnOutput(
+                const contentFragment = this.#renderAdventureModeOutput(
                     outputNode,
                     msg,
                     index
@@ -920,7 +920,7 @@ export class AdventureChatMode extends BaseChatMode {
         }
     }
 
-    async #animateVnResponse(messageEl, msg) {
+    async #animateAdventureModeResponse(messageEl, msg) {
         this.#isAnimating = true;
         this.updateInputState(this.isSending);
         messageEl.innerHTML = "";
@@ -948,7 +948,7 @@ export class AdventureChatMode extends BaseChatMode {
         const contentsToType = new Map();
 
         for (const node of Array.from(outputNode.children)) {
-            const block = this.#createVnBlock(node, msg, -1);
+            const block = this.#createAdventureModeBlock(node, msg, -1);
             if (block) {
                 const elementsToTypeInBlock = [];
                 if (block.classList.contains("adventure-action")) {
@@ -1015,16 +1015,16 @@ export class AdventureChatMode extends BaseChatMode {
 
     // VN Block Rendering
 
-    #renderVnOutput(outputNode, msg, index = -1) {
+    #renderAdventureModeOutput(outputNode, msg, index = -1) {
         const fragment = document.createDocumentFragment();
         for (const node of Array.from(outputNode.children)) {
-            const block = this.#createVnBlock(node, msg, index);
+            const block = this.#createAdventureModeBlock(node, msg, index);
             if (block) fragment.appendChild(block);
         }
         return fragment;
     }
 
-    #createVnBlock(node, msg, index = -1) {
+    #createAdventureModeBlock(node, msg, index = -1) {
         const nodeName = node.nodeName.toLowerCase();
         let block;
 
@@ -1076,7 +1076,7 @@ export class AdventureChatMode extends BaseChatMode {
 
         const contentContainer = document.createElement("div");
         contentContainer.className = "adventure-show-content";
-        contentContainer.appendChild(this.#renderVnOutput(node, msg, index));
+        contentContainer.appendChild(this.#renderAdventureModeOutput(node, msg, index));
         block.appendChild(contentContainer);
 
         return block;
@@ -1421,4 +1421,4 @@ export class AdventureChatMode extends BaseChatMode {
 }
 
 customElements.define("adventure-chat-mode", AdventureChatMode);
-chatModeRegistry.register("vn", "adventure-chat-mode");
+chatModeRegistry.register("adventure", "adventure-chat-mode");
