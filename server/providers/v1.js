@@ -25,7 +25,7 @@ export class OpenAIV1Adapter extends BaseAdapter {
     
     async *prompt(messages, options = {}) {
         const { url, apiKey } = this.config;
-        const { systemInstruction, stream = true, ...genParams } = options;
+        const { systemInstruction, stream = true, signal, ...genParams } = options;
 
         // Prepare messages for the API call
         const apiMessages = this.prepareMessages(messages);
@@ -49,6 +49,7 @@ export class OpenAIV1Adapter extends BaseAdapter {
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify(body),
+            signal,
         });
 
         if (!response.ok) {

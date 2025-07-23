@@ -25,9 +25,9 @@ export class GoogleGeminiAdapter extends BaseAdapter {
         ];
     }
 
-    async *prompt(messages, options = { generationConfig: {} }) {
+    async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }) {
         const { apiKey } = this.config;
-        const { systemInstruction, ...generationConfig } = options;
+        const { systemInstruction, signal, ...generationConfig } = options;
 
         const body = {
             contents: this.prepareMessages(messages),
@@ -62,11 +62,12 @@ export class GoogleGeminiAdapter extends BaseAdapter {
         try {
             // Use the streaming endpoint with SSE enabled
             const streamingUrl = `${GEMINI_API_URL}?key=${apiKey}&alt=sse`;
-
+            
             const response = await fetch(streamingUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
+                signal,
             });
 
             if (!response.ok || !response.body) {
@@ -101,6 +102,10 @@ export class GoogleGeminiAdapter extends BaseAdapter {
                 }
             }
         } catch (error) {
+            if (error.name === 'AbortError') {
+                // Re-throw so the server.js handler can catch it and know it was an abort
+                throw error;
+            }
             console.error('Gemini prompt error:', error);
             // Yield the error message as a token so it appears in the chat
             yield `**Error interacting with Gemini:**\n*${error.message}*`;

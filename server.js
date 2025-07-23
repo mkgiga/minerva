@@ -63,20 +63,20 @@ const ADAPTERS = {
 };
 
 // Helper to escape XML special characters to prevent XSS
-// `&` -> `&amp;`,
-// `<` -> `&lt;`,
-// `>` -> `&gt;`,
-// `'` -> `&apos;`,
-// `"` -> `&quot;`
+// `&` -> `&`,
+// `<` -> `<`,
+// `>` -> `>`,
+// `'` -> `'`,
+// `"` -> `"`
 function escapeXML(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe.replace(/[<>&'"]/g, c => {
         switch (c) {
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '&': return '&amp;';
-            case "'": return "&apos;";
-            case '"': return '&quot;';
+            case '<': return '<';
+            case '>': return '>';
+            case '&': return '&';
+            case "'": return "'";
+            case '"': return '"';
             default: return c;
         }
     });
@@ -1064,11 +1064,12 @@ function initHttp() {
     
     // Prompting API
     function sendSse(res, event, data) {
+        
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
     }
 
-    async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null, historyOverride = null) {
+    async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null, historyOverride = null, signal = null) {
         // 1. Get Active Connection and Adapter
         const { activeConnectionConfigId, userPersonaCharacterId, activeGenerationConfigId } = state.settings;
         if (!activeConnectionConfigId) throw new Error('No active connection configuration set.');
@@ -1215,6 +1216,7 @@ function initHttp() {
         // 5. Stream response from adapter
         const stream = adapter.prompt(finalMessageList, {
             systemInstruction: resolvedSystemInstruction,
+            signal,
             ...generationParameters,
         });
 
@@ -1223,12 +1225,15 @@ function initHttp() {
 
     app.post('/api/chats/:id/regenerate', async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+        const abortController = new AbortController();
+
+        
         try {
             const { id: chatId } = req.params;
             const { messageId, history } = req.body;
             if (!messageId) throw new Error('messageId for regeneration is required.');
 
-            const { stream, chat } = await processPrompt(chatId, null, true, messageId, history);
+            const { stream, chat } = await processPrompt(chatId, null, true, messageId, history, abortController.signal);
 
             let newContent = '';
             for await (const token of stream) {
@@ -1253,8 +1258,12 @@ function initHttp() {
             sendSse(res, 'done', { messageId: messageToUpdate.id });
 
         } catch (error) {
-            console.error('Error during regeneration:', error);
-            sendSse(res, 'error', { message: error.message });
+            if (error.name === 'AbortError') {
+                console.log(`Regeneration for chat ${req.params.id} was aborted by the client.`);
+            } else {
+                console.error('Error during regeneration:', error);
+                sendSse(res, 'error', { message: error.message });
+            }
         } finally {
             res.end();
         }
@@ -1262,6 +1271,8 @@ function initHttp() {
 
     app.post('/api/chats/:id/resend', async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+        const abortController = new AbortController();
+
         try {
             const { id: chatId } = req.params;
             const { history } = req.body;
@@ -1273,7 +1284,7 @@ function initHttp() {
             }
             
             // This is equivalent to a normal prompt but without a *new* user message.
-            const { stream, chat } = await processPrompt(chatId, null, false, null, history);
+            const { stream, chat } = await processPrompt(chatId, null, false, null, history, abortController.signal);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
             for await (const token of stream) {
@@ -1288,8 +1299,12 @@ function initHttp() {
             sendSse(res, 'done', { messageId: assistantMessage.id });
 
         } catch (error) {
-            console.error('Error during resend:', error);
-            sendSse(res, 'error', { message: error.message });
+            if (error.name === 'AbortError') {
+                console.log(`Resend for chat ${req.params.id} was aborted by the client.`);
+            } else {
+                console.error('Error during resend:', error);
+                sendSse(res, 'error', { message: error.message });
+            }
         } finally {
             res.end();
         }
@@ -1298,11 +1313,13 @@ function initHttp() {
     app.post('/api/chats/:id/prompt', async (req, res) => {
         console.log(`[${new Date().toISOString()}] Processing prompt for chat ${req.params.id}`);
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+        const abortController = new AbortController();
+
         try {
             const { id: chatId } = req.params;
             const { message, history } = req.body;
 
-            const { stream, chat, userMessageToAppend } = await processPrompt(chatId, message, false, null, history);
+            const { stream, chat, userMessageToAppend } = await processPrompt(chatId, message, false, null, history, abortController.signal);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
             for await (const token of stream) {
@@ -1324,8 +1341,12 @@ function initHttp() {
             sendSse(res, 'done', { messageId: chat.messages.at(-1).id });
 
         } catch (error) {
-            console.error('Error during prompt:', error);
-            sendSse(res, 'error', { message: error.message });
+            if (error.name === 'AbortError') {
+                console.log(`Prompt for chat ${req.params.id} was aborted by the client.`);
+            } else {
+                console.error('Error during prompt:', error);
+                sendSse(res, 'error', { message: error.message });
+            }
         } finally {
             res.end();
         }
