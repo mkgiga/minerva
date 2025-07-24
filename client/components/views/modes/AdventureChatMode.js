@@ -1342,7 +1342,7 @@ export class AdventureChatMode extends BaseChatMode {
             .send-button.stop-button:hover { opacity: 0.9; }
             
             .chat-message { margin-bottom: var(--spacing-md); display: flex; flex-direction: column; gap: var(--spacing-xs); position: relative; }
-            .chat-message.assistant.adventure-mode { max-width: 800px; margin-left: auto; margin-right: auto; }
+            .chat-message { max-width: 800px; margin-left: auto; margin-right: auto; }
             .chat-message.assistant.adventure-mode .message-controls { display: flex; justify-content: flex-end; width: 100%; padding-right: var(--spacing-md); opacity: 0; transition: var(--transition-fast); }
             .chat-message.assistant.adventure-mode:hover .message-controls { opacity: 1; }
             .chat-message:not(.assistant.adventure-mode) { display: flex; gap: var(--spacing-md); max-width: 100%; }
