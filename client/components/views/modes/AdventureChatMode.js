@@ -351,20 +351,28 @@ export class AdventureChatMode extends BaseChatMode {
             this.abortGeneration();
             return;
         }
-
+    
         const promptText = event.target.value || this.getUserInput();
-        if (promptText && !this.#sendButton.disabled) {
+    
+        // If event.target.value exists, it's a programmatic call from a choice button,
+        // so we bypass the sendButton.disabled check which is tied to the main textbox.
+        const isProgrammaticSend = !!event.target.value;
+    
+        if (promptText && (isProgrammaticSend || !this.#sendButton.disabled)) {
             const userMessage = {
                 role: "user",
                 content: promptText,
                 characterId: this.userPersona?.id || null,
             };
-            const messagesForPrompt = [...this.#strippedHistory, userMessage];
-
+            
+            // The history for the prompt should NOT include the new user message.
+            // MainChatView's #handleSendCustomMessage sends the user message and history separately.
+            const messagesForPrompt = [...this.#strippedHistory];
+    
             // Add timestamp and ID for the optimistic update in onPromptStart
             userMessage.timestamp = new Date().toISOString();
             userMessage.id = `user-${uuidv4()}`;
-
+    
             this.sendChatCompletion({
                 userMessage,
                 messages: messagesForPrompt,

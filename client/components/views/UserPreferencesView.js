@@ -26,7 +26,7 @@ class UserPreferencesView extends BaseComponent {
                     options: [
                         { value: 'raw', label: 'Raw Text' },
                         { value: 'markdown', label: 'Markdown' },
-                        { value: 'vn', label: 'Adventure' },
+                        { value: 'adventure', label: 'Adventure' },
                     ],
                     description: 'Determines how chat messages are displayed. Markdown supports rich text formatting and code blocks.'
                 }
