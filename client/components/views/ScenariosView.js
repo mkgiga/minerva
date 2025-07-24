@@ -2,7 +2,7 @@
 import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier } from '../../client.js';
 import '../ItemList.js';
-import '../TextBox.js';
+import '../ScenarioEditor.js'; // Import the new component
 
 class ScenariosView extends BaseComponent {
     #state = {
@@ -12,6 +12,7 @@ class ScenariosView extends BaseComponent {
     #selectedScenario = null;
     #needsSave = false;
     #pendingSelectedId = null;
+    #editor = null;
 
     constructor() {
         super();
@@ -24,6 +25,7 @@ class ScenariosView extends BaseComponent {
     async connectedCallback() {
         this.render();
         this.itemList = this.shadowRoot.querySelector('item-list');
+        this.#editor = this.shadowRoot.querySelector('minerva-scenario-editor');
 
         // Listeners
         this.itemList.addEventListener('item-action', this.handleItemAction);
@@ -32,11 +34,9 @@ class ScenariosView extends BaseComponent {
         });
         this.shadowRoot.querySelector('#back-to-scenarios-btn').addEventListener('click', this.handleBackToScenarios);
         
-        const editorWrapper = this.shadowRoot.querySelector('.editor-wrapper');
-        this.shadowRoot.querySelector('#save-scenario-btn').addEventListener('click', this.onSave);
-        this.shadowRoot.querySelector('#add-override-btn').addEventListener('click', () => this.openAddOverrideModal());
-        this.shadowRoot.querySelector('#override-list').addEventListener('click', e => this.handleOverrideListClick(e));
-        editorWrapper.addEventListener('input', () => this.#setNeedsSave(true));
+        this.shadowRoot.querySelector('#save-scenario-btn').addEventListener('click', () => this.#editor.shadowRoot.querySelector('form').requestSubmit());
+        this.#editor.addEventListener('scenario-save', this.onSave);
+        this.#editor.addEventListener('change', () => this.#setNeedsSave(true));
 
         window.addEventListener('minerva-resource-changed', this.handleResourceChange);
 
@@ -62,6 +62,7 @@ class ScenariosView extends BaseComponent {
             ]);
             this.#state.scenarios = scenarios;
             this.#state.allCharacters = characters;
+            this.#editor.allCharacters = characters;
             
             if (this._pendingSelectedId) {
                 const scenarioToSelect = this.#state.scenarios.find(s => s.id === this._pendingSelectedId);
@@ -80,18 +81,26 @@ class ScenariosView extends BaseComponent {
     
     handleResourceChange(event) {
         const { resourceType, eventType, data } = event.detail;
+
+        if (resourceType === 'character') {
+            // Just update the character list in the editor if it changes
+            api.get('/api/characters').then(chars => {
+                this.#state.allCharacters = chars;
+                this.#editor.allCharacters = chars;
+            });
+            return;
+        }
+
         if (resourceType === 'scenario') {
             let stateChanged = false;
             let selectedScenarioWasDeleted = false;
             
             switch (eventType) {
                 case 'create':
-                    // Only add if it's truly new to prevent duplicates if optimistic updates were somehow still present
                     if (!this.#state.scenarios.some(s => s.id === data.id)) {
                         this.#state.scenarios.push(data);
                     }
-                    // Always select the new scenario and mark as saved (it came from the server)
-                    this.#selectedScenario = JSON.parse(JSON.stringify(data)); // Deep copy to prevent direct mutation
+                    this.#selectedScenario = JSON.parse(JSON.stringify(data));
                     this.#setNeedsSave(false);
                     stateChanged = true;
                     break;
@@ -100,8 +109,8 @@ class ScenariosView extends BaseComponent {
                     if (index > -1) {
                         this.#state.scenarios[index] = data;
                         if (this.#selectedScenario?.id === data.id) {
-                            this.#selectedScenario = JSON.parse(JSON.stringify(data)); // Deep copy updated data
-                            this.#setNeedsSave(false); // Overwrite local changes with server state
+                            this.#selectedScenario = JSON.parse(JSON.stringify(data));
+                            this.#setNeedsSave(false);
                         }
                         stateChanged = true;
                     }
@@ -121,13 +130,10 @@ class ScenariosView extends BaseComponent {
                 }
             }
             if (stateChanged) {
-                // Determine if editor has focus to avoid interrupting user input
-                const hasFocus = this.shadowRoot.activeElement && this.shadowRoot.activeElement.closest('.editor-wrapper');
+                const hasFocus = this.#editor.shadowRoot.activeElement;
                 if (hasFocus && !selectedScenarioWasDeleted) {
-                    // If editor has focus and the selected item wasn't deleted, just re-render the list
                     this.#renderScenarioList();
                 } else {
-                    // Otherwise, perform a full view update (re-renders editor too)
                     this.#updateView();
                 }
             }
@@ -166,7 +172,6 @@ class ScenariosView extends BaseComponent {
     }
 
     #performSelection(item) {
-        // Deep copy the item to ensure editor changes don't affect the list until saved
         this.#selectedScenario = JSON.parse(JSON.stringify(item));
         this.#setNeedsSave(false);
         this.#updateView();
@@ -174,7 +179,6 @@ class ScenariosView extends BaseComponent {
 
     async handleScenarioAdd() {
         try {
-            // Just trigger the API call. The SSE event will handle adding to list and selecting.
             await api.post('/api/scenarios', { name: 'New Scenario', description: '' });
             notifier.show({ message: 'New scenario created.' });
         } catch (error) {
@@ -200,29 +204,13 @@ class ScenariosView extends BaseComponent {
         });
     }
 
-    async onSave() {
+    async onSave(event) {
         if (!this.#selectedScenario || !this.#needsSave) return;
+        const { scenario } = event.detail;
         
-        const overrides = {};
-        this.shadowRoot.querySelectorAll('.override-item').forEach(itemEl => {
-            const charId = itemEl.dataset.characterId;
-            const text = itemEl.querySelector('text-box').value;
-            overrides[charId] = text;
-        });
-
-        const scenarioData = {
-            ...this.#selectedScenario,
-            id: this.#selectedScenario.id,
-            name: this.shadowRoot.querySelector('#scenario-name-input').value,
-            describes: this.shadowRoot.querySelector('#scenario-type-input').value,
-            description: this.shadowRoot.querySelector('#description-input').value,
-            characterOverrides: overrides,
-        };
-
         try {
-            await api.put(`/api/scenarios/${scenarioData.id}`, scenarioData);
+            await api.put(`/api/scenarios/${scenario.id}`, scenario);
             notifier.show({ type: 'good', message: 'Scenario saved.' });
-            // The SSE will update the state, but we can immediately mark as saved.
             this.#setNeedsSave(false);
         } catch (error) {
             notifier.show({ type: 'bad', header: 'Error', message: 'Could not save scenario.' });
@@ -282,20 +270,7 @@ class ScenariosView extends BaseComponent {
             mobileHeader.style.display = 'none';
         }
 
-        const editorWrapper = this.shadowRoot.querySelector('.editor-wrapper');
-        const placeholder = this.shadowRoot.querySelector('.placeholder');
-
-        if (this.#selectedScenario) {
-            editorWrapper.style.display = 'flex';
-            placeholder.style.display = 'none';
-            this.shadowRoot.querySelector('#scenario-name-input').value = this.#selectedScenario.name || '';
-            this.shadowRoot.querySelector('#scenario-type-input').value = this.#selectedScenario.describes || '';
-            this.shadowRoot.querySelector('#description-input').value = this.#selectedScenario.description || '';
-            this.#renderOverridesList();
-        } else {
-            editorWrapper.style.display = 'none';
-            placeholder.style.display = 'flex';
-        }
+        this.#editor.scenario = this.#selectedScenario;
         this.#renderScenarioList();
     }
 
@@ -311,75 +286,6 @@ class ScenariosView extends BaseComponent {
                         <button class="icon-button delete-btn" data-action="delete" title="Delete"><span class="material-icons">delete</span></button>
                     </div>
                 </li>
-            `;
-        }).join('');
-    }
-
-    openAddOverrideModal() {
-        const currentOverrideIds = Object.keys(this.#selectedScenario.characterOverrides || {});
-        const charactersToAdd = this.#state.allCharacters.filter(c => !currentOverrideIds.includes(c.id));
-        
-        const content = document.createElement('div');
-        const list = document.createElement('item-list');
-        list.innerHTML = charactersToAdd.map(char => `
-            <li data-id="${char.id}">
-                <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
-                <div class="item-name">${char.name}</div>
-            </li>
-        `).join('');
-        
-        list.addEventListener('item-action', e => {
-            const charId = e.detail.id;
-            if (!this.#selectedScenario.characterOverrides) {
-                this.#selectedScenario.characterOverrides = {};
-            }
-            this.#selectedScenario.characterOverrides[charId] = '';
-            this.#renderOverridesList();
-            this.#setNeedsSave(true);
-            modal.hide();
-        });
-
-        content.appendChild(list);
-        modal.show({
-            title: 'Add Character Override',
-            content,
-            buttons: [{ label: 'Cancel', className: 'button-secondary', onClick: () => modal.hide() }]
-        });
-    }
-
-    handleOverrideListClick(event) {
-        const deleteBtn = event.target.closest('.delete-override-btn');
-        if (deleteBtn) {
-            const charId = deleteBtn.dataset.characterId;
-            delete this.#selectedScenario.characterOverrides[charId];
-            this.#renderOverridesList();
-            this.#setNeedsSave(true);
-        }
-    }
-
-    #renderOverridesList() {
-        const listEl = this.shadowRoot.querySelector('#override-list');
-        const overrides = this.#selectedScenario?.characterOverrides || {};
-
-        if (Object.keys(overrides).length === 0) {
-            listEl.innerHTML = `<p class="field-description">No character-specific text defined.</p>`;
-            return;
-        }
-
-        listEl.innerHTML = Object.entries(overrides).map(([charId, text]) => {
-            const character = this.#state.allCharacters.find(c => c.id === charId);
-            if (!character) return '';
-            return `
-                <div class="override-item" data-character-id="${charId}">
-                    <img src="${character.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${character.name}'s avatar" class="avatar">
-                    <div class="override-item-main">
-                        <span class="char-name">${character.name}</span>
-                        <text-box>${text}</text-box>
-                    </div>
-                    <button type="button" class="icon-button delete-override-btn" data-character-id="${charId}" title="Remove Override">
-                        <span class="material-icons">delete</span>
-                    </button>
-                </div>
             `;
         }).join('');
     }
@@ -404,37 +310,13 @@ class ScenariosView extends BaseComponent {
                         <h2 id="editor-title-mobile">Editor</h2>
                     </header>
                     <div class="editor-container">
-                        <div class="placeholder">
-                            <h2>Select a scenario to edit or create a new one.</h2>
-                        </div>
-                        <div class="editor-wrapper" style="display: none;">
-                            <header class="editor-header">
-                                <div class="editor-header-main">
-                                    <input type="text" id="scenario-name-input" class="editor-title-input" placeholder="Scenario Name">
-                                    <div class="form-group-inline">
-                                        <label for="scenario-type-input">Type</label>
-                                        <input type="text" id="scenario-type-input" placeholder="e.g., Output Formatting" class="type-input">
-                                    </div>
-                                </div>
-                                <div class="header-controls">
-                                    <span class="save-indicator">Unsaved changes</span>
-                                    <button type="button" id="save-scenario-btn" class="button-primary" disabled>Save</button>
-                                </div>
-                            </header>
-                            <form id="editor-form">
-                                <section class="form-section">
-                                    <h3>General Scenario Text</h3>
-                                    <p class="field-description">This text will be inserted when using the "Scenario" item in a Generation Config.</p>
-                                    <text-box id="description-input"></text-box>
-                                </section>
-                                <section class="form-section">
-                                    <h3>Character-Specific Text</h3>
-                                    <p class="field-description">Provide alternate text for specific characters. This is used by the {{characters[..., scenario]}} macro.</p>
-                                    <div id="override-list"></div>
-                                    <button type="button" id="add-override-btn" class="button-secondary">Add Character Override</button>
-                                </section>
-                            </form>
-                        </div>
+                        <header class="main-editor-header">
+                             <div class="header-controls">
+                                <span class="save-indicator">Unsaved changes</span>
+                                <button type="button" id="save-scenario-btn" class="button-primary" disabled>Save</button>
+                            </div>
+                        </header>
+                        <minerva-scenario-editor></minerva-scenario-editor>
                     </div>
                 </div>
             </div>
@@ -480,42 +362,29 @@ class ScenariosView extends BaseComponent {
             #back-to-scenarios-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
             #back-to-scenarios-btn:hover { color: var(--text-primary); }
 
-            .editor-container { padding: var(--spacing-lg); overflow-y: auto; height: 100%; }
-            .editor-wrapper { display: none; flex-direction: column; }
-            .placeholder { text-align: center; height: 100%; display: flex; align-items: center; justify-content: center; flex-grow: 1; color: var(--text-secondary); }
-            
-            .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg); }
-            .editor-header-main { flex-grow: 1; display: flex; flex-direction: column; gap: var(--spacing-sm); }
+            .editor-container { padding: var(--spacing-lg); overflow: hidden; height: 100%; display: flex; flex-direction: column; }
+            .main-editor-header {
+                display: flex;
+                justify-content: flex-end;
+                padding-bottom: var(--spacing-md);
+                border-bottom: 1px solid var(--bg-3);
+                margin-bottom: var(--spacing-lg);
+            }
             .header-controls { display: flex; align-items: center; gap: var(--spacing-md); }
             .save-indicator { font-size: var(--font-size-sm); color: var(--accent-warn); opacity: 0; transition: opacity 0.3s; }
             #save-scenario-btn:disabled { background-color: var(--bg-2); color: var(--text-disabled); cursor: not-allowed; opacity: 1; }
-
-            .editor-title-input { font-size: 1.5rem; font-weight: 600; background: none; border: none; outline: none; width: 100%; color: var(--text-primary); padding: 0; }
-
-            .form-group-inline { display: flex; align-items: center; gap: var(--spacing-sm); font-size: var(--font-size-sm); }
-            .form-group-inline label { margin: 0; font-weight: 500; color: var(--text-secondary); }
-            .type-input { flex-grow: 1; background: none; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-secondary); padding: var(--spacing-xs); font-size: 0.9em; }
-            .type-input:focus { background: var(--bg-0); border-color: var(--bg-3); color: var(--text-primary); }
-
-            #editor-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
-            .form-section { margin-bottom: var(--spacing-lg); }
-            #description-input { min-height: 150px; }
-            .field-description { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--spacing-xs); margin-bottom: var(--spacing-sm); }
             
-            #override-list { display: flex; flex-direction: column; gap: var(--spacing-md); margin-bottom: var(--spacing-md); }
-            .override-item { display: flex; gap: var(--spacing-md); align-items: flex-start; background: var(--bg-0); padding: var(--spacing-md); border-radius: var(--radius-sm); }
-            .override-item .avatar { width: 50px; height: 50px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; }
-            .override-item-main { flex-grow: 1; display: flex; flex-direction: column; gap: var(--spacing-sm); }
-            .override-item-main .char-name { font-weight: 600; }
-            .override-item-main text-box { min-height: 80px; }
-            .override-item .delete-override-btn { color: var(--text-secondary); align-self: center; }
-            .override-item .delete-override-btn:hover { color: var(--accent-danger); }
-            
-            item-list .avatar { width: 40px; height: 40px; }
-            item-list li { gap: var(--spacing-md); }
+            minerva-scenario-editor {
+                flex-grow: 1;
+                overflow-y: auto;
+            }
 
             @media (max-width: 768px) {
                 .editor-container { padding: var(--spacing-md); }
+                .main-editor-header {
+                     margin-bottom: var(--spacing-md);
+                     padding-bottom: var(--spacing-sm);
+                }
             }
         `;
     }

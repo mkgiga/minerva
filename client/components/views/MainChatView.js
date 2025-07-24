@@ -3,6 +3,8 @@ import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier, uuidv4 } from '../../client.js';
 import { chatModeRegistry } from '../../ChatModeRegistry.js';
 import '../ItemList.js';
+import '../CharacterEditor.js';
+import '../ScenarioEditor.js';
 
 class MainChatView extends BaseComponent {
     #activeChatMode = null;
@@ -76,14 +78,13 @@ class MainChatView extends BaseComponent {
             if (e.target.closest('[data-action="add-scenario"]')) this.openScenarioModal();
         });
         
-        // Add Character Modal
+        // Modals
         const charModalEl = this.shadowRoot.querySelector('#add-character-modal');
         charModalEl.addEventListener('click', (e) => { if (e.target === charModalEl) this.closeCharacterModal(); });
         this.shadowRoot.querySelector('#close-char-modal-btn').addEventListener('click', this.closeCharacterModal);
         this.shadowRoot.querySelector('#modal-character-list').addEventListener('item-action', this.handleModalCharacterAction);
         this.shadowRoot.querySelector('#modal-search-input').addEventListener('input', this.handleModalSearch);
         
-        // Add Scenario Modal
         const scenarioModalEl = this.shadowRoot.querySelector('#add-scenario-modal');
         scenarioModalEl.addEventListener('click', (e) => { if (e.target === scenarioModalEl) this.closeScenarioModal(); });
         this.shadowRoot.querySelector('#close-scenario-modal-btn').addEventListener('click', this.closeScenarioModal);
@@ -173,10 +174,10 @@ class MainChatView extends BaseComponent {
                     this.state.selectedChat = data;
                     if (this.#activeChatMode) this.#activeChatMode.chat = data;
         
-                    const oldParticipants = (oldSelectedChat.participants || []).map(p => p.id).sort();
-                    const newParticipants = (data.participants || []).map(p => p.id).sort();
-                    const oldScenarios = (oldSelectedChat.scenarioIds || []).sort();
-                    const newScenarios = (data.scenarioIds || []).sort();
+                    const oldParticipants = (oldSelectedChat.participants || []).map(p => typeof p === 'string' ? p : p.id).sort();
+                    const newParticipants = (data.participants || []).map(p => typeof p === 'string' ? p : p.id).sort();
+                    const oldScenarios = (oldSelectedChat.scenarios || []).map(s => typeof s === 'string' ? s : s.id).sort();
+                    const newScenarios = (data.scenarios || []).map(s => typeof s === 'string' ? s : s.id).sort();
         
                     if (JSON.stringify(oldParticipants) !== JSON.stringify(newParticipants) || JSON.stringify(oldScenarios) !== JSON.stringify(newScenarios)) {
                         this.#updateRightPanel();
@@ -227,8 +228,8 @@ class MainChatView extends BaseComponent {
         if (!this.#activeChatMode || !oldChat || !newChat) return;
     
         // Participant changes are simple and can be handled first.
-        const oldParticipants = (oldChat.participants || []).map(p => p.id).sort();
-        const newParticipants = (newChat.participants || []).map(p => p.id).sort();
+        const oldParticipants = (oldChat.participants || []).map(p => typeof p === 'string' ? p : p.id).sort();
+        const newParticipants = (newChat.participants || []).map(p => typeof p === 'string' ? p : p.id).sort();
         if (JSON.stringify(oldParticipants) !== JSON.stringify(newParticipants)) {
             this.#activeChatMode.onParticipantsChanged();
         }
@@ -421,7 +422,12 @@ class MainChatView extends BaseComponent {
         // Prevent re-selecting the same chat and causing a full refresh
         if (this.state.selectedChat?.id === chat.id) return;
         try {
-            this.state.selectedChat = await api.get(`/api/chats/${chat.id}`);
+            const fullChat = await api.get(`/api/chats/${chat.id}`);
+            // Assign temporary IDs to any embedded resources that don't have one.
+            (fullChat.participants || []).forEach(p => { if(typeof p === 'object' && !p.id) p.id = `temp-${uuidv4()}`});
+            (fullChat.scenarios || []).forEach(s => { if(typeof s === 'object' && !s.id) s.id = `temp-${uuidv4()}`});
+            this.state.selectedChat = fullChat;
+            
             this.updateView();
             this.#activeChatMode?.onChatSwitched();
         } catch (error) {
@@ -472,9 +478,12 @@ class MainChatView extends BaseComponent {
     }
 
     handleParticipantAction(event) {
-        const { id, action } = event.detail;
-        if (action === 'delete') {
-            this.handleParticipantDelete(id);
+        const { id, action, listItem } = event.detail;
+        
+        switch (action) {
+            case 'delete': this.handleParticipantDelete(id); break;
+            case 'edit': this.handleResourceEdit('character', id); break;
+            case 'promote': this.handlePromoteToLibrary('character', id); break;
         }
     }
 
@@ -482,21 +491,15 @@ class MainChatView extends BaseComponent {
         const selectedChat = this.state.selectedChat;
         if (!selectedChat) return;
         
-        const character = this.state.allCharacters.find(c => c.id === charIdToRemove);
-        if (!character) return;
-        
-        // Optimistic Update
         const originalParticipants = [...selectedChat.participants];
-        selectedChat.participants = selectedChat.participants.filter(p => p.id !== charIdToRemove);
+        selectedChat.participants = selectedChat.participants.filter(p => (typeof p === 'string' ? p : p.id) !== charIdToRemove);
         this.#updateRightPanel(); // Re-render the side panel list immediately
-        notifier.show({ header: 'Participant Removed', message: `${character.name} has left the chat.` });
     
-        // API call in background
         try {
-            await api.put(`/api/chats/${selectedChat.id}`, { participants: selectedChat.participants.map(p => ({id: p.id})) });
+            await api.put(`/api/chats/${selectedChat.id}`, { participants: selectedChat.participants });
+            notifier.show({ header: 'Participant Removed' });
         } catch (error) {
             notifier.show({ header: 'Error', type: 'bad', message: 'Failed to remove participant. Reverting.' });
-            // Revert on failure
             this.state.selectedChat.participants = originalParticipants;
             this.#updateRightPanel();
         }
@@ -516,16 +519,16 @@ class MainChatView extends BaseComponent {
         const character = this.state.allCharacters.find(c => c.id === charIdToToggle);
         if (!character) return;
     
-        const isParticipant = selectedChat.participants.some(p => p.id === charIdToToggle);
+        const isParticipant = selectedChat.participants.some(p => (typeof p === 'string' ? p : p.id) === charIdToToggle);
         const originalParticipants = [...selectedChat.participants];
         let notificationMessage;
     
         // OPTIMISTIC UI UPDATE
         if (isParticipant) {
-            selectedChat.participants = selectedChat.participants.filter(p => p.id !== charIdToToggle);
+            selectedChat.participants = selectedChat.participants.filter(p => (typeof p === 'string' ? p : p.id) !== charIdToToggle);
             notificationMessage = { header: 'Participant Removed', message: `${character.name} has left the chat.` };
         } else {
-            selectedChat.participants.push({ id: charIdToToggle });
+            selectedChat.participants.push(charIdToToggle); // Add by ID
             notificationMessage = { type: 'good', header: 'Participant Added', message: `${character.name} has joined the chat.` };
         }
     
@@ -536,11 +539,8 @@ class MainChatView extends BaseComponent {
     
         // API CALL IN BACKGROUND
         try {
-            const finalParticipants = [...selectedChat.participants];
-            await api.put(`/api/chats/${selectedChat.id}`, { participants: finalParticipants.map(p => ({id: p.id})) });
-            // On success, the state is already correct. The SSE will just re-confirm it.
+            await api.put(`/api/chats/${selectedChat.id}`, { participants: selectedChat.participants });
         } catch (error) {
-            // REVERT ON FAILURE
             notifier.show({ type: 'bad', header: 'Error', message: 'Failed to update participants. Reverting change.' });
             this.state.selectedChat.participants = originalParticipants;
             this.updateModalListView();
@@ -555,41 +555,45 @@ class MainChatView extends BaseComponent {
     
     handleActiveScenarioAction(event) {
         const { id, action } = event.detail;
-        if (action === 'delete') this.handleModalScenarioToggle(id);
+        switch (action) {
+            case 'delete': this.handleModalScenarioToggle(id, true); break; // true to force removal
+            case 'edit': this.handleResourceEdit('scenario', id); break;
+            case 'promote': this.handlePromoteToLibrary('scenario', id); break;
+        }
     }
 
-    async handleModalScenarioToggle(scenarioId) {
+    async handleModalScenarioToggle(scenarioId, forceRemove = false) {
         const selectedChat = this.state.selectedChat;
         if (!selectedChat) return;
         
         const scenario = this.state.allScenarios.find(s => s.id === scenarioId);
         if (!scenario) return;
 
-        const originalScenarioIds = [...(selectedChat.scenarioIds || [])];
-        let newScenarioIds;
+        const originalScenarios = [...(selectedChat.scenarios || [])];
+        let newScenarios;
         let notificationMessage;
 
-        const isActive = originalScenarioIds.includes(scenarioId);
+        const isActive = originalScenarios.some(s => (typeof s === 'string' ? s : s.id) === scenarioId);
 
-        if (isActive) {
-            newScenarioIds = originalScenarioIds.filter(id => id !== scenarioId);
+        if (isActive || forceRemove) {
+            newScenarios = originalScenarios.filter(s => (typeof s === 'string' ? s : s.id) !== scenarioId);
             notificationMessage = { message: `Scenario "${scenario.name}" removed from chat.` };
         } else {
-            newScenarioIds = [...originalScenarioIds, scenarioId];
+            newScenarios = [...originalScenarios, scenarioId]; // Add by ID
             notificationMessage = { type: 'good', message: `Scenario "${scenario.name}" added to chat.` };
         }
         
         // Optimistic update
-        selectedChat.scenarioIds = newScenarioIds;
+        selectedChat.scenarios = newScenarios;
         this.updateScenarioModalListView();
         this.#updateRightPanel();
         notifier.show(notificationMessage);
 
         try {
-            await api.put(`/api/chats/${selectedChat.id}`, { scenarioIds: newScenarioIds });
+            await api.put(`/api/chats/${this.state.selectedChat.id}`, { scenarios: newScenarios });
         } catch(e) {
             notifier.show({ type: 'bad', header: 'Error', message: 'Failed to update scenarios. Reverting.' });
-            selectedChat.scenarioIds = originalScenarioIds;
+            selectedChat.scenarios = originalScenarios;
             this.updateScenarioModalListView();
             this.#updateRightPanel();
         }
@@ -905,6 +909,80 @@ class MainChatView extends BaseComponent {
         });
     }
 
+    async handleResourceEdit(resourceType, resourceId) {
+        const resourceList = resourceType === 'character'
+            ? this.#getResolvedParticipants()
+            : this.#getResolvedScenarios();
+    
+        const resource = resourceList.find(r => r.id === resourceId);
+        if (!resource) return;
+    
+        const modalId = `#edit-${resourceType}-modal`;
+        const editorTagName = resourceType === 'character' ? 'minerva-character-editor' : 'minerva-scenario-editor';
+        const editorProp = resourceType; // 'character' or 'scenario'
+        const saveEventName = resourceType === 'character' ? 'character-save' : 'scenario-save';
+    
+        const modalEl = this.shadowRoot.querySelector(modalId);
+        const editorEl = modalEl.querySelector(editorTagName);
+        const closeBtn = modalEl.querySelector('.close-modal-btn');
+        const backdrop = modalEl;
+    
+        if (editorTagName === 'minerva-scenario-editor') {
+            editorEl.allCharacters = this.state.allCharacters;
+        }
+        editorEl[editorProp] = JSON.parse(JSON.stringify(resource)); // Deep copy
+    
+        const onSave = async (event) => {
+            const updatedData = event.detail[editorProp];
+            try {
+                if (resource.isEmbedded) {
+                    const resourceListKey = resourceType === 'character' ? 'participants' : 'scenarios';
+                    const chatResourceList = this.state.selectedChat[resourceListKey];
+                    const index = chatResourceList.findIndex(r => typeof r === 'object' && r.id === resourceId);
+                    if (index > -1) {
+                        chatResourceList[index] = updatedData;
+                    }
+                    await api.put(`/api/chats/${this.state.selectedChat.id}`, { [resourceListKey]: chatResourceList });
+                } else {
+                    const apiEndpoint = resourceType === 'character' ? 'characters' : 'scenarios';
+                    await api.put(`/api/${apiEndpoint}/${resourceId}`, updatedData);
+                }
+                notifier.show({ type: 'good', message: `${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} updated.` });
+                hideModal();
+            } catch (e) {
+                notifier.show({ type: 'bad', header: 'Error', message: `Could not save ${resourceType}. ${e.message}` });
+            }
+        };
+    
+        const hideModal = () => {
+            modalEl.style.display = 'none';
+            // Clean up listeners to prevent memory leaks
+            editorEl.removeEventListener(saveEventName, onSave);
+            closeBtn.removeEventListener('click', hideModal);
+            backdrop.removeEventListener('click', onBackdropClick);
+        };
+    
+        const onBackdropClick = (e) => { if (e.target === backdrop) hideModal(); };
+    
+        editorEl.addEventListener(saveEventName, onSave);
+        closeBtn.addEventListener('click', hideModal);
+        backdrop.addEventListener('click', onBackdropClick);
+    
+        modalEl.style.display = 'flex';
+    }
+
+    async handlePromoteToLibrary(resourceType, resourceId) {
+        try {
+            await api.post(`/api/chats/${this.state.selectedChat.id}/promote-to-library`, {
+                resourceType,
+                resourceId
+            });
+            notifier.show({ type: 'good', header: 'Saved to Library', message: `The ${resourceType} has been saved.` });
+        } catch (error) {
+            notifier.show({ type: 'bad', header: 'Error', message: `Could not save ${resourceType} to library.` });
+        }
+    }
+
     _buildChatTree(chats) {
         const chatMap = new Map(chats.map(chat => [chat.id, { ...chat, children: [] }]));
         const treeRoots = [];
@@ -1012,24 +1090,28 @@ class MainChatView extends BaseComponent {
         return nodeHtml + childrenHtml;
     }
     
-    #renderCharacterListItem(character, options = {}) {
-        const { isParticipant, isRemovable } = options;
-        const liClasses = isParticipant ? 'is-participant' : '';
-
-        return `
-            <li data-id="${character.id}" class="${liClasses}">
-                <div class="item-row">
-                    <img class="avatar" src="${character.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${character.name}'s avatar">
-                    <div class="item-name">${character.name}</div>
-                    <div class="actions">
-                        ${isParticipant ? `<span class="material-icons participant-icon" title="Is a participant">check_circle</span>` : ''}
-                        ${isRemovable ? `<button class="icon-button delete-btn" data-action="delete" title="Remove"><span class="material-icons">close</span></button>` : ''}
-                    </div>
-                </div>
-            </li>
-        `;
+    #getResolvedParticipants() {
+        if (!this.state.selectedChat?.participants) return [];
+        return this.state.selectedChat.participants.map(p => {
+            if (typeof p === 'string') {
+                const char = this.state.allCharacters.find(c => c.id === p);
+                return char ? { ...char, isEmbedded: false } : null;
+            }
+            return { ...p, isEmbedded: true };
+        }).filter(Boolean);
     }
 
+    #getResolvedScenarios() {
+        if (!this.state.selectedChat?.scenarios) return [];
+        return this.state.selectedChat.scenarios.map(s => {
+            if (typeof s === 'string') {
+                const scenario = this.state.allScenarios.find(sc => sc.id === s);
+                return scenario ? { ...scenario, isEmbedded: false } : null;
+            }
+            return { ...s, isEmbedded: true };
+        }).filter(Boolean);
+    }
+    
     updateView() {
         this.updateViewChrome();
         this.updateMainPanel();
@@ -1118,48 +1200,85 @@ class MainChatView extends BaseComponent {
     #updateRightPanel() {
         if (this.state.selectedChat) {
             this.shadowRoot.querySelector('.right-panel-content').style.display = 'flex';
-            const participantChars = this.state.selectedChat.participants
-                .map(p => this.state.allCharacters.find(char => char.id === p.id)).filter(Boolean);
-            this.shadowRoot.querySelector('#participant-list').innerHTML = participantChars.map(char => this.#renderCharacterListItem(char, { isParticipant: true, isRemovable: true })).join('');
-            
-            this._renderActiveScenarioList();
+            this.#renderParticipantList();
+            this.#renderActiveScenarioList();
         } else {
             this.shadowRoot.querySelector('.right-panel-content').style.display = 'none';
         }
     }
+
+    #renderParticipantList() {
+        const listEl = this.shadowRoot.querySelector('#participant-list');
+        const participants = this.#getResolvedParticipants();
+
+        listEl.innerHTML = participants.map(char => {
+            const promoteBtn = char.isEmbedded ? `<button class="icon-button" data-action="promote" title="Save to Library"><span class="material-icons">library_add</span></button>` : '';
+            return `
+                 <li data-id="${char.id}">
+                    <div class="item-row">
+                        <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
+                        <div class="item-name">${char.name}</div>
+                        <div class="actions">
+                            ${promoteBtn}
+                            <button class="icon-button" data-action="edit" title="Edit"><span class="material-icons">edit</span></button>
+                            <button class="icon-button delete-btn" data-action="delete" title="Remove"><span class="material-icons">close</span></button>
+                        </div>
+                    </div>
+                </li>
+            `;
+        }).join('');
+    }
     
-    _renderActiveScenarioList() {
+    #renderActiveScenarioList() {
         const listEl = this.shadowRoot.querySelector('#active-scenario-list');
-        const activeScenarioIds = this.state.selectedChat?.scenarioIds || [];
-        if (activeScenarioIds.length === 0) {
+        const activeScenarios = this.#getResolvedScenarios();
+        
+        if (activeScenarios.length === 0) {
             listEl.innerHTML = `<li class="list-placeholder">No active scenarios.</li>`;
             return;
         }
 
-        const activeScenarios = activeScenarioIds.map(id => this.state.allScenarios.find(s => s.id === id)).filter(Boolean);
-        listEl.innerHTML = activeScenarios.map(scenario => `
-            <li data-id="${scenario.id}">
-                <div class="item-row">
-                    <div class="item-name">${this._escapeHtml(scenario.name)}</div>
-                    <div class="actions">
-                        <button class="icon-button delete-btn" data-action="delete" title="Remove Scenario"><span class="material-icons">close</span></button>
+        listEl.innerHTML = activeScenarios.map(scenario => {
+             const promoteBtn = scenario.isEmbedded ? `<button class="icon-button" data-action="promote" title="Save to Library"><span class="material-icons">library_add</span></button>` : '';
+            return `
+                <li data-id="${scenario.id}">
+                    <div class="item-row">
+                        <div class="item-name">${this._escapeHtml(scenario.name)}</div>
+                        <div class="actions">
+                            ${promoteBtn}
+                            <button class="icon-button" data-action="edit" title="Edit"><span class="material-icons">edit</span></button>
+                            <button class="icon-button delete-btn" data-action="delete" title="Remove Scenario"><span class="material-icons">close</span></button>
+                        </div>
                     </div>
-                </div>
-            </li>
-        `).join('');
+                </li>
+            `}).join('');
     }
 
     updateModalListView() {
         const list = this.shadowRoot.querySelector('#modal-character-list');
         const search = this.shadowRoot.querySelector('#modal-search-input').value.toLowerCase();
-        const participantIds = new Set(this.state.selectedChat?.participants.map(p => p.id) || []);
+        const participantIds = new Set(this.#getResolvedParticipants().map(p => p.id));
         const filteredChars = this.state.allCharacters.filter(char => char.name.toLowerCase().includes(search));
-        list.innerHTML = filteredChars.map(char => this.#renderCharacterListItem(char, { isParticipant: participantIds.has(char.id) })).join('');
+        
+        list.innerHTML = filteredChars.map(char => {
+            const isParticipant = participantIds.has(char.id);
+            return `
+                <li data-id="${char.id}" class="${isParticipant ? 'is-participant' : ''}">
+                    <div class="item-row">
+                        <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
+                        <div class="item-name">${char.name}</div>
+                        <div class="actions">
+                            ${isParticipant ? `<span class="material-icons participant-icon" title="Is a participant">check_circle</span>` : ''}
+                        </div>
+                    </div>
+                </li>
+            `;
+        }).join('');
     }
     
     updateScenarioModalListView() {
         const list = this.shadowRoot.querySelector('#modal-scenario-list');
-        const activeIds = new Set(this.state.selectedChat?.scenarioIds || []);
+        const activeIds = new Set(this.#getResolvedScenarios().map(s => s.id));
         const sortedScenarios = [...this.state.allScenarios].sort((a, b) => a.name.localeCompare(b.name));
 
         list.innerHTML = sortedScenarios.map(scenario => {
@@ -1233,6 +1352,8 @@ class MainChatView extends BaseComponent {
                     </div>
                 </div>
             </div>
+
+            <!-- MODALS -->
             <div id="add-character-modal" class="modal-backdrop">
                 <div class="modal-content">
                     <header><h2>Add Character to Chat</h2><button id="close-char-modal-btn" class="close-modal-btn" title="Close"><span class="material-icons">close</span></button></header>
@@ -1250,6 +1371,19 @@ class MainChatView extends BaseComponent {
                     </div>
                 </div>
             </div>
+            <div id="edit-character-modal" class="modal-backdrop editor-modal">
+                <div class="modal-content large">
+                    <header><h2>Edit Character</h2><button class="close-modal-btn" title="Close"><span class="material-icons">close</span></button></header>
+                    <div class="modal-body"><minerva-character-editor></minerva-character-editor></div>
+                </div>
+            </div>
+            <div id="edit-scenario-modal" class="modal-backdrop editor-modal">
+                <div class="modal-content large">
+                    <header><h2>Edit Scenario</h2><button class="close-modal-btn" title="Close"><span class="material-icons">close</span></button></header>
+                    <div class="modal-body"><minerva-scenario-editor></minerva-scenario-editor></div>
+                </div>
+            </div>
+
             <div class="view-overlay"></div>
             `, this.styles()
         );
@@ -1279,12 +1413,16 @@ class MainChatView extends BaseComponent {
             #chat-mode-container { display: none; flex-grow: 1; flex-direction: column; overflow: hidden; }
             .placeholder { flex-grow: 1; display: flex; align-items: center; justify-content: center; color: var(--text-disabled); text-align: center; }
             .modal-backdrop { position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
-            .modal-content { background-color: var(--bg-1); border: 1px solid var(--bg-3); border-radius: var(--radius-md); width: 90%; max-width: 500px; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+            .modal-content { background-color: var(--bg-1); border: 1px solid var(--bg-3); border-radius: var(--radius-md); width: 90%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+            .modal-content.large { max-width: 800px; }
             .modal-content header { display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; }
             .modal-content header h2 { margin: 0; font-size: 1.1rem; }
             .close-modal-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
             .close-modal-btn:hover { color: var(--text-primary); }
-            .modal-body { display: flex; flex-direction: column; overflow-y: hidden; padding: var(--spacing-md); flex-grow: 1; gap: var(--spacing-md); }
+            .modal-body { display: flex; flex-direction: column; overflow-y: auto; flex-grow: 1; gap: var(--spacing-md); }
+            .editor-modal .modal-body { padding: var(--spacing-lg); }
+            #add-character-modal .modal-body, #add-scenario-modal .modal-body { padding: var(--spacing-md); }
+            .modal-content footer { border-top: 1px solid var(--bg-3); padding: var(--spacing-md); display: flex; justify-content: flex-end; }
             .modal-search-bar { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--bg-3); background-color: var(--bg-0); border-radius: var(--radius-sm); flex-shrink: 0; }
             #modal-search-input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); }
             #go-to-parent-btn { display: none; }
@@ -1299,6 +1437,7 @@ class MainChatView extends BaseComponent {
             #modal-character-list li:not(.is-participant) .item-row:hover,
             #modal-scenario-list li:not(.is-participant) .item-row:hover { background-color: var(--bg-2); }
             item-list .avatar { width: 40px; height: 40px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; background-color: var(--bg-3); }
+            #modal-character-list .avatar { width: 32px; height: 32px; }
             item-list .item-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
             item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
             

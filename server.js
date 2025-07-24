@@ -292,7 +292,7 @@ function start() {
 // Helper function for macro resolution
 function resolveMacros(text, context) {
     if (!text) return '';
-    const { allCharacters = [], userPersonaCharacterId = null, chatCharacterIds = [], activeScenarioIds = [] } = context;
+    const { allCharacters = [], userPersonaCharacterId = null, chatCharacters = [], activeScenarios = [] } = context;
 
     // New complex macro handler: {{characters[name,description,...]}}
     text = text.replace(/{{\s*([a-zA-Z0-9_]+)\[(.*?)\]\s*}}/g, (match, resourceName, propsString) => {
@@ -300,7 +300,7 @@ function resolveMacros(text, context) {
         
         if (resourceName.toLowerCase() === 'characters') {
             // Get the list of characters participating in the chat
-            let charactersToRender = allCharacters.filter(c => chatCharacterIds.includes(c.id));
+            let charactersToRender = [...chatCharacters];
             
             const includePlayer = props.includes('player');
 
@@ -334,7 +334,6 @@ function resolveMacros(text, context) {
                     }
                 }
                 if (props.includes('scenario')) {
-                    const activeScenarios = state.scenarios.filter(s => activeScenarioIds.includes(s.id));
                     const characterScenarioXmlString = activeScenarios.map(s => {
                         const overrideText = s.characterOverrides?.[c.id];
                         if (!overrideText?.trim()) return null;
@@ -363,7 +362,6 @@ function resolveMacros(text, context) {
 
     const macros = {
         characters: () => {
-            const chatCharacters = allCharacters.filter(c => chatCharacterIds.includes(c.id));
             if (!chatCharacters || chatCharacters.length === 0) return '';
             
             return chatCharacters.map(c => {
@@ -372,9 +370,6 @@ function resolveMacros(text, context) {
             }).join('\n\n\n\n');
         },
         scenarios: () => {
-            if (!activeScenarioIds || activeScenarioIds.length === 0) return '';
-            
-            const activeScenarios = state.scenarios.filter(s => activeScenarioIds.includes(s.id));
             if (!activeScenarios || activeScenarios.length === 0) return '';
             
             return activeScenarios.map(s => {
@@ -739,9 +734,10 @@ function initHttp() {
             // Also remove this scenario from any chats that use it
             const allChats = await loadJsonFilesFromDir(CHATS_DIR, Chat);
             for (const chat of allChats) {
-                const initialLength = chat.scenarioIds.length;
-                chat.scenarioIds = chat.scenarioIds.filter(scenarioId => scenarioId !== id);
-                if (chat.scenarioIds.length < initialLength) {
+                const initialLength = chat.scenarios.length;
+                chat.scenarios = chat.scenarios.filter(s => (typeof s === 'string' ? s : s.id) !== id);
+
+                if (chat.scenarios.length < initialLength) {
                     await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
                     broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
                 }
@@ -864,7 +860,7 @@ function initHttp() {
             const newChat = new Chat({
                 name: `[Branch from "${originalChat.name}"]`, // More descriptive name
                 participants: originalChat.participants,
-                scenarioIds: originalChat.scenarioIds, // Copy scenarios to branch
+                scenarios: originalChat.scenarios, // Copy scenarios to branch
                 parentId: originalChat.id, // Set parent ID
                 systemInstruction: originalChat.systemInstruction,
                 messages: originalChat.messages.slice(0, branchIndex + 1)
@@ -887,6 +883,75 @@ function initHttp() {
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Original chat not found.' });
             console.error(`Error branching chat ${originalChatId}:`, e);
             res.status(500).json({ message: 'Failed to create chat branch.' });
+        }
+    });
+
+    // New endpoint to promote an embedded resource to the global library
+    app.post('/api/chats/:id/promote-to-library', async (req, res) => {
+        const { id: chatId } = req.params;
+        const { resourceType, resourceId } = req.body;
+
+        if (!resourceType || !resourceId) {
+            return res.status(400).json({ message: 'resourceType and resourceId are required.' });
+        }
+        if (resourceType !== 'character' && resourceType !== 'scenario') {
+            return res.status(400).json({ message: 'Invalid resourceType.' });
+        }
+
+        try {
+            const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            const chat = new Chat(chatData);
+            
+            let newGlobalResource;
+            let found = false;
+
+            if (resourceType === 'character') {
+                const charIndex = chat.participants.findIndex(p => typeof p === 'object' && p.id === resourceId);
+                if (charIndex === -1) return res.status(404).json({ message: 'Embedded character not found in chat.' });
+                
+                const embeddedCharData = chat.participants[charIndex];
+                const newChar = new Character(embeddedCharData); // This assigns a new permanent ID
+                
+                const charDir = path.join(CHARACTERS_DIR, newChar.id);
+                await fs.mkdir(charDir, { recursive: true });
+                await fs.writeFile(path.join(charDir, 'character.json'), JSON.stringify(newChar.toSaveObject(), null, 2));
+                
+                state.characters.push(newChar);
+                chat.participants[charIndex] = newChar.id; // Replace object with ID
+                newGlobalResource = newChar;
+                found = true;
+            } else if (resourceType === 'scenario') {
+                const scenarioIndex = chat.scenarios.findIndex(s => typeof s === 'object' && s.id === resourceId);
+                if (scenarioIndex === -1) return res.status(404).json({ message: 'Embedded scenario not found in chat.' });
+
+                const embeddedScenarioData = chat.scenarios[scenarioIndex];
+                const newScenario = new Scenario(embeddedScenarioData); // Assigns new permanent ID
+
+                await fs.writeFile(path.join(SCENARIOS_DIR, `${newScenario.id}.json`), JSON.stringify(newScenario, null, 2));
+
+                state.scenarios.push(newScenario);
+                chat.scenarios[scenarioIndex] = newScenario.id; // Replace object with ID
+                newGlobalResource = newScenario;
+                found = true;
+            }
+
+            if (found) {
+                // Save the updated chat file
+                chat.lastModifiedAt = new Date().toISOString();
+                await fs.writeFile(chatPath, JSON.stringify(chat, null, 2));
+
+                // Broadcast events
+                broadcastEvent('resourceChange', { resourceType, eventType: 'create', data: newGlobalResource });
+                broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+                
+                res.json(chat);
+            }
+
+        } catch (e) {
+            if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found.' });
+            console.error('Error promoting resource:', e);
+            res.status(500).json({ message: 'Failed to promote resource to library.' });
         }
     });
 
@@ -1069,6 +1134,29 @@ function initHttp() {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
     }
 
+    async function getResolvedChatContext(chat) {
+        const resolvedChars = [];
+        for (const p of chat.participants) {
+            if (typeof p === 'string') {
+                const char = state.characters.find(c => c.id === p);
+                if (char) resolvedChars.push(char);
+            } else if (typeof p === 'object' && p.id && p.name) {
+                resolvedChars.push(new Character(p));
+            }
+        }
+
+        const resolvedScenarios = [];
+        for (const s of chat.scenarios) {
+            if (typeof s === 'string') {
+                const scenario = state.scenarios.find(sc => sc.id === s);
+                if (scenario) resolvedScenarios.push(scenario);
+            } else if (typeof s === 'object' && s.id && s.name) {
+                resolvedScenarios.push(new Scenario(s));
+            }
+        }
+        return { characters: resolvedChars, scenarios: resolvedScenarios };
+    }
+
     async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null, historyOverride = null, signal = null) {
         // 1. Get Active Connection and Adapter
         const { activeConnectionConfigId, userPersonaCharacterId, activeGenerationConfigId } = state.settings;
@@ -1084,6 +1172,8 @@ function initHttp() {
         // 2. Prepare Prompt Data
         const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
         const chat = new Chat(JSON.parse(await fs.readFile(chatPath, 'utf-8')));
+
+        const { characters: chatCharacters, scenarios: activeScenarios } = await getResolvedChatContext(chat);
 
         // Use the history override if provided, otherwise use the chat's actual messages.
         let historyForPrompt = historyOverride ? [...historyOverride] : [...chat.messages];
@@ -1105,8 +1195,8 @@ function initHttp() {
         const macroContext = { 
             allCharacters: state.characters, 
             userPersonaCharacterId, 
-            chatCharacterIds: chat.participants.map(p => p.id),
-            activeScenarioIds: chat.scenarioIds || []
+            chatCharacters,
+            activeScenarios
         };
 
         // 3. Assemble Prompt from Generation Config
@@ -1138,7 +1228,6 @@ function initHttp() {
                         fullPromptSequence.push(userMessageToAppend);
                     }
                 } else if (ps.stringId === SCENARIO_STRING.id) {
-                    const activeScenarios = state.scenarios.filter(s => (chat.scenarioIds || []).includes(s.id));
                     if (activeScenarios.length > 0) {
                         const scenarioContent = activeScenarios.map(s => {
                             if (!s.description?.trim()) return null;
@@ -1390,12 +1479,14 @@ async function updateCharacterIdReferences(oldId, newId) {
         try {
             const chatData = JSON.parse(await fs.readFile(chatFile, 'utf-8'));
             let chatModified = false;
-            for (const participant of chatData.participants) {
-                if (participant.id === oldId) {
-                    participant.id = newId;
+            // Update participants that are references
+            chatData.participants = chatData.participants.map(p => {
+                if (typeof p === 'string' && p === oldId) {
                     chatModified = true;
+                    return newId;
                 }
-            }
+                return p;
+            });
             if (chatModified) {
                 await fs.writeFile(chatFile, JSON.stringify(chatData, null, 2));
                 const chatInState = state.chats.find(c => c.id === chatData.id);
@@ -1465,8 +1556,8 @@ class Chat {
     id = uuidv4();
     name = 'New Chat';
     messages = [];
-    participants = []; // { id: string }
-    scenarioIds = [];
+    participants = []; // Array of string (ID) or object (embedded character)
+    scenarios = []; // Array of string (ID) or object (embedded scenario)
     parentId = null;
     childChatIds = [];
     createdAt = new Date().toISOString();
@@ -1476,21 +1567,24 @@ class Chat {
 
     constructor(data = {}) {
         const now = new Date().toISOString();
-        Object.assign(this, {
+        const defaults = {
             id: uuidv4(),
             name: 'New Chat',
             messages: [],
             participants: [],
-            scenarioIds: [],
+            scenarios: [],
             parentId: null,
             childChatIds: [],
             createdAt: now,
             lastModifiedAt: now,
             systemInstruction: '',
             _rev: CURRENT_REV,
-        }, data);
+        };
+        Object.assign(this, defaults, data);
     }
+
     addMessage(msg) { this.messages.push({ id: uuidv4(), timestamp: new Date().toISOString(), ...msg }); }
+    
     getSummary() {
         const lastMessage = this.messages.at(-1);
         let snippet = '';
