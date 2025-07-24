@@ -348,20 +348,9 @@ class ConnectionConfigView extends BaseComponent {
         }
     }
 
-    render() {
+        render() {
         super._initShadow(`
             <div style="display: contents;">
-                <div class="panel-left">
-                     <header id="list-header">
-                        <h3>Connections</h3>
-                        <div class="header-actions">
-                            <button class="icon-button" data-action="add" title="Add New Connection">
-                                <span class="material-icons">add</span>
-                            </button>
-                        </div>
-                    </header>
-                    <item-list></item-list>
-                </div>
                 <div class="panel-main">
                     <header class="mobile-editor-header">
                         <button id="back-to-configs-btn" class="icon-btn" title="Back to list"><span class="material-icons">arrow_back</span></button>
@@ -385,13 +374,24 @@ class ConnectionConfigView extends BaseComponent {
                         </div>
                     </div>
                 </div>
+                <div class="panel-left">
+                     <header id="list-header">
+                        <h3>Connections</h3>
+                        <div class="header-actions">
+                            <button class="icon-button" data-action="add" title="Add New Connection">
+                                <span class="material-icons">add</span>
+                            </button>
+                        </div>
+                    </header>
+                    <item-list></item-list>
+                </div>
             </div>
         `, this.styles());
     }
 
     styles() {
         return `
-            .panel-left { flex-direction: column; }
+            .panel-left { flex-direction: column; border-right: none; border-left: 1px solid var(--bg-3); }
             .panel-left header {
                 display: flex; justify-content: space-between; align-items: center;
                 padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);

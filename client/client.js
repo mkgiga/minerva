@@ -241,24 +241,31 @@ class MinervaApp extends BaseComponent {
                 <aside class="icon-sidebar">
                     <button class="nav-button" data-view="preferences" title="User Preferences">
                         <span class="material-icons">settings</span>
+                        <span class="btn-label">Preferences</span>
                     </button>
                     <button class="nav-button" data-view="connection-config" title="Connection Settings">
                         <span class="material-icons">wifi</span>
+                        <span class="btn-label">Connection</span>
                     </button>
                     <button class="nav-button" data-view="generation-config" title="Generation Settings">
                         <span class="material-icons">tune</span>
+                        <span class="btn-label">Generation</span>
                     </button>
                     <button class="nav-button" data-view="strings" title="Strings">
                         <span class="material-icons">text_fields</span>
+                        <span class="btn-label">Strings</span>
                     </button>
                      <button class="nav-button" data-view="scenarios" title="Scenarios">
                         <span class="material-icons">menu_book</span>
+                        <span class="btn-label">Scenarios</span>
                     </button>
                     <button class="nav-button" data-view="characters" title="Characters">
                         <span class="material-icons">people</span>
+                        <span class="btn-label">Characters</span>
                     </button>
                     <button class="nav-button" data-view="chat" title="Chat">
                         <span class="material-icons">chat</span>
+                        <span class="btn-label">Chat</span>
                     </button>
                 </aside>
                 <div class="main-view-wrapper">
@@ -282,6 +289,23 @@ class MinervaApp extends BaseComponent {
                 display: flex;
                 height: 100%;
                 width: 100%;
+            }
+            .icon-sidebar > .nav-button > span.btn-label {
+                display: none;
+            }
+
+            @media (min-width: 1280px) {
+                .icon-sidebar > .nav-button {
+                    display: flex;
+                    flex-direction: row;
+                    gap: 8px;
+                    justify-content: flex-start;
+                }
+
+                .icon-sidebar > .nav-button span.btn-label {
+                    display: inline-block;
+                    font-weight: 700;
+                }
             }
         `;
         super._initShadow(template, styles);

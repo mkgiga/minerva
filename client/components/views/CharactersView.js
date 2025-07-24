@@ -412,9 +412,16 @@ class CharactersView extends BaseComponent {
         }
     }
 
-    render() {
+        render() {
         super._initShadow(`
             <div style="display: contents;">
+                <div class="panel-main">
+                    <header class="mobile-editor-header">
+                        <button id="back-to-characters-btn" class="icon-btn" title="Back to list"><span class="material-icons">arrow_back</span></button>
+                        <h2 id="editor-title-mobile">Editor</h2>
+                    </header>
+                    <minerva-character-editor></minerva-character-editor>
+                </div>
                 <div class="panel-left">
                     <header id="list-header">
                         <h3>Characters</h3>
@@ -429,13 +436,6 @@ class CharactersView extends BaseComponent {
                     </header>
                     <item-list></item-list>
                 </div>
-                <div class="panel-main">
-                    <header class="mobile-editor-header">
-                        <button id="back-to-characters-btn" class="icon-btn" title="Back to list"><span class="material-icons">arrow_back</span></button>
-                        <h2 id="editor-title-mobile">Editor</h2>
-                    </header>
-                    <minerva-character-editor></minerva-character-editor>
-                </div>
             </div>
         `, this.styles());
     }
@@ -444,6 +444,7 @@ class CharactersView extends BaseComponent {
         return `
             .panel-left {
                 flex-direction: column;
+                border-left: 1px solid var(--bg-3);
             }
             .panel-left header {
                 display: flex; justify-content: space-between; align-items: center;

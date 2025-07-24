@@ -1472,7 +1472,6 @@ class MainChatView extends BaseComponent {
             .timeline-item > .item-row.selected .item-name { color: var(--accent-primary) !important; }
             .timeline-item > .item-row .avatar { display: none; }
             .timeline-item > .item-row .item-details { margin-left: var(--spacing-sm); }
-            
             @media (max-width: 768px) {
                 .panel-main { padding: 0; height: 100%; }
                 .chat-main-header { display: none !important; }

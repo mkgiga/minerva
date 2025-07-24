@@ -99,7 +99,7 @@ minerva-app {
 }
 
 .icon-sidebar {
-    width: 50px;
+    min-width: 50px;
     background-color: var(--bg-0);
     border-right: 1px solid var(--bg-3);
     display: flex;
@@ -108,8 +108,21 @@ minerva-app {
     padding: var(--spacing-sm) 0;
     gap: var(--spacing-xs);
     flex-shrink: 0;
-}
 
+    
+}
+@media (min-width: 1280px) {
+    .icon-sidebar {
+        align-items: flex-start; /* Align icons to the left on larger screens */
+        text-align: left; /* Align text labels to the left */
+    }
+    .icon-sidebar .nav-button {
+        width: 100%; /* Full width buttons */
+        display: inline-flex; /* Allow text labels to appear */
+        align-items: flex-start; /* Align icons to the left */
+        justify-content: flex-start; /* Align text labels to the left */
+    }
+}
 .icon-sidebar .nav-button {
     background: none;
     border: none;
@@ -121,9 +134,10 @@ minerva-app {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 42px;
-    height: 42px;
+    width: 100%;   
 }
+
+
 .icon-sidebar .nav-button:hover {
     color: var(--text-primary);
     background-color: var(--bg-2);
@@ -138,7 +152,7 @@ minerva-app {
     height: 100%;
     overflow: hidden;
     /* Default to two panels, left and main */
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 1fr 320px;
 }
 
 .system-defined:not(.used-partial-item) {
@@ -369,6 +383,15 @@ input[type="checkbox"]:focus-visible {
 .form-group-stretch text-box {
     flex-grow: 1;
     min-height: 150px;
+}
+
+@media (min-width: 1280px) {
+    .sidebar {
+        display: flex;
+        flex-direction: column;
+        width: 300px;
+        border-right: 1px solid var(--bg-3);
+    }
 }
 
 /* Mobile Support */
