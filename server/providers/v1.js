@@ -16,6 +16,9 @@ export class OpenAIV1Adapter extends BaseAdapter {
     
     static getGenerationParametersSchema() {
         return [
+            { name: 'baseUrl', label: 'API URL', type: 'text', required: true, placeholder: 'e.g., http://localhost:1234/v1' },
+            { name: 'apiKey', label: 'API Key', type: 'password', required: false, placeholder: '' },
+            { name: 'model', label: 'Model', type: 'text', placeholder: 'e.g., gpt-4' },
             { name: 'temperature', label: 'Temperature', type: 'range', min: 0, max: 2, step: 0.1, defaultValue: 0.7 },
             { name: 'top_p', label: 'Top P', type: 'range', min: 0, max: 1, step: 0.05, defaultValue: 0.95 },
             { name: 'max_tokens', label: 'Max Tokens', type: 'number', min: 1, step: 1, defaultValue: 2048 },
@@ -24,7 +27,7 @@ export class OpenAIV1Adapter extends BaseAdapter {
     }
     
     async *prompt(messages, options = {}) {
-        const { url, apiKey } = this.config;
+        const { baseUrl, apiKey } = this.config;
         const { systemInstruction, stream = true, signal, ...genParams } = options;
 
         // Prepare messages for the API call
@@ -42,7 +45,7 @@ export class OpenAIV1Adapter extends BaseAdapter {
             ...genParams
         };
 
-        const response = await fetch(`${url}/chat/completions`, {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -87,10 +90,10 @@ export class OpenAIV1Adapter extends BaseAdapter {
     }
 
     async healthCheck() {
-        const { url, apiKey } = this.config;
+        const { baseUrl, apiKey } = this.config;
         try {
             // A common endpoint for health checks is listing models
-            const response = await fetch(`${url}/models`, {
+            const response = await fetch(`${baseUrl}/models`, {
                 headers: { 'Authorization': `Bearer ${apiKey}` }
             });
             

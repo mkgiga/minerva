@@ -19,8 +19,7 @@ export class BaseAdapter {
      */
     static getAdapterSchema() {
         return [
-            { name: 'url', label: 'API URL', type: 'text', required: true, placeholder: 'e.g., http://localhost:1234/v1' },
-            { name: 'apiKey', label: 'API Key', type: 'password', required: false, placeholder: 'sk-...' },
+            
         ];
     }
 
