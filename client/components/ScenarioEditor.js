@@ -34,6 +34,9 @@ class ScenarioEditor extends BaseComponent {
         const form = this.shadowRoot.querySelector('form');
         form.addEventListener('submit', this.#onSave.bind(this));
         
+        // This will catch input events from the name, type, description, AND override text boxes
+        form.addEventListener('input', () => this.dispatch('change'));
+
         this.shadowRoot.querySelector('#add-override-btn').addEventListener('click', () => this.#openAddOverrideModal());
         this.#overrideList.addEventListener('click', e => this.#handleOverrideListClick(e));
 
@@ -138,11 +141,6 @@ class ScenarioEditor extends BaseComponent {
                 </div>
             `;
         }).join('');
-        
-        // Re-attach listeners to text-boxes inside the dynamically generated list
-        this.#overrideList.querySelectorAll('text-box').forEach(tb => {
-            tb.addEventListener('input', () => this.dispatch('change'));
-        });
     }
     
     #updateView() {
