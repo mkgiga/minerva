@@ -210,12 +210,24 @@ class ScenarioEditor extends BaseComponent {
             .editor-title-input { font-size: 1.5rem; font-weight: 600; background: none; border: none; outline: none; width: 100%; color: var(--text-primary); padding: 0; }
             .form-group-inline { display: flex; align-items: center; gap: var(--spacing-sm); font-size: var(--font-size-sm); }
             .form-group-inline label { margin: 0; font-weight: 500; color: var(--text-secondary); }
-            .type-input { flex-grow: 1; background: none; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-secondary); padding: var(--spacing-xs); font-size: 0.9em; }
-            .type-input:focus { background: var(--bg-0); border-color: var(--bg-3); color: var(--text-primary); }
+            .type-input {
+                flex-grow: 1;
+                background-color: var(--bg-1);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-sm);
+                color: var(--text-primary);
+                padding: var(--spacing-sm);
+                font-size: 0.9em;
+                transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+            }
+            .type-input:focus {
+                outline: none;
+                border-color: var(--accent-primary);
+                box-shadow: 0 0 0 2px var(--accent-primary-faded);
+            }
 
             #editor-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
             .form-section { margin-bottom: var(--spacing-lg); }
-            #description-input { min-height: 150px; }
             .field-description { font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--spacing-xs); margin-bottom: var(--spacing-sm); }
             
             #override-list { display: flex; flex-direction: column; gap: var(--spacing-md); margin-bottom: var(--spacing-md); }
@@ -223,12 +235,33 @@ class ScenarioEditor extends BaseComponent {
             .override-item .avatar { width: 50px; height: 50px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0; }
             .override-item-main { flex-grow: 1; display: flex; flex-direction: column; gap: var(--spacing-sm); }
             .override-item-main .char-name { font-weight: 600; }
-            .override-item-main text-box { min-height: 80px; }
             .override-item .delete-override-btn { color: var(--text-secondary); align-self: center; background: none; border: none; cursor: pointer; }
             .override-item .delete-override-btn:hover { color: var(--accent-danger); }
 
             #add-override-btn {
                 margin-top: var(--spacing-sm);
+            }
+
+            text-box {
+                resize: vertical;
+                padding: 0.75rem;
+                background-color: var(--bg-1);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-sm);
+                color: var(--text-primary);
+                font-size: var(--font-size-md);
+            }
+            text-box:focus-within {
+                outline: none;
+                border-color: var(--accent-primary);
+                box-shadow: 0 0 0 2px var(--accent-primary-faded, rgba(138, 180, 248, 0.3));
+                transition: var(--transition-fast);
+            }
+            #description-input {
+                min-height: 150px;
+            }
+            .override-item-main text-box {
+                min-height: 80px;
             }
 
             button[type="submit"] {
