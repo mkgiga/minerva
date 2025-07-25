@@ -84,11 +84,19 @@ class MainChatView extends BaseComponent {
         this.shadowRoot.querySelector('#close-char-modal-btn').addEventListener('click', this.closeCharacterModal);
         this.shadowRoot.querySelector('#modal-character-list').addEventListener('item-action', this.handleModalCharacterAction);
         this.shadowRoot.querySelector('#modal-search-input').addEventListener('input', this.handleModalSearch);
+        this.shadowRoot.querySelector('#create-embedded-char-btn').addEventListener('click', () => {
+            this.closeCharacterModal();
+            this.handleCreateEmbedded('character');
+        });
         
         const scenarioModalEl = this.shadowRoot.querySelector('#add-scenario-modal');
         scenarioModalEl.addEventListener('click', (e) => { if (e.target === scenarioModalEl) this.closeScenarioModal(); });
         this.shadowRoot.querySelector('#close-scenario-modal-btn').addEventListener('click', this.closeScenarioModal);
         this.shadowRoot.querySelector('#modal-scenario-list').addEventListener('item-action', this.handleModalScenarioAction);
+        this.shadowRoot.querySelector('#create-embedded-scenario-btn').addEventListener('click', () => {
+            this.closeScenarioModal();
+            this.handleCreateEmbedded('scenario');
+        });
 
         this.shadowRoot.querySelector('#participants-btn').addEventListener('click', this.handleParticipantsToggle);
         this.shadowRoot.querySelector('#scenarios-btn').addEventListener('click', this.openScenarioModal);
@@ -667,17 +675,6 @@ class MainChatView extends BaseComponent {
         this.updateView();
     }
 
-    async handleChatNameSave(event) {
-        const newName = event.target.value.trim();
-        if (!newName || !this.state.selectedChat || newName === this.state.selectedChat.name) return;
-        try {
-            await api.put(`/api/chats/${this.state.selectedChat.id}`, { name: newName });
-            notifier.show({ header: 'Chat Renamed', message: 'Chat name updated successfully.' });
-        } catch (error) {
-            notifier.show({ type: 'bad', header: 'Error', message: 'Could not rename chat.' });
-        }
-    }
-
     handleChatNameEdit() {
         const nameInput = this.shadowRoot.querySelector('#chat-name-input');
         if (!nameInput) return;
@@ -696,6 +693,17 @@ class MainChatView extends BaseComponent {
             ]
         });
         setTimeout(() => document.getElementById('modal-chat-name')?.focus(), 100);
+    }
+
+    async handleChatNameSave(event) {
+        const newName = event.target.value.trim();
+        if (!newName || !this.state.selectedChat || newName === this.state.selectedChat.name) return;
+        try {
+            await api.put(`/api/chats/${this.state.selectedChat.id}`, { name: newName });
+            notifier.show({ header: 'Chat Renamed', message: 'Chat name updated successfully.' });
+        } catch (error) {
+            notifier.show({ type: 'bad', header: 'Error', message: 'Could not rename chat.' });
+        }
     }
 
     async handleGoToParentChat() {
@@ -913,7 +921,6 @@ class MainChatView extends BaseComponent {
         const resourceList = resourceType === 'character'
             ? this.#getResolvedParticipants()
             : this.#getResolvedScenarios();
-    
         const resource = resourceList.find(r => r.id === resourceId);
         if (!resource) return;
     
@@ -925,13 +932,21 @@ class MainChatView extends BaseComponent {
         const modalEl = this.shadowRoot.querySelector(modalId);
         const editorEl = modalEl.querySelector(editorTagName);
         const closeBtn = modalEl.querySelector('.close-modal-btn');
+        const saveChangesBtn = modalEl.querySelector('.save-changes-btn');
+        const saveToLibraryBtn = modalEl.querySelector('.save-to-library-btn');
         const backdrop = modalEl;
     
         if (editorTagName === 'minerva-scenario-editor') {
             editorEl.allCharacters = this.state.allCharacters;
         }
-        editorEl[editorProp] = JSON.parse(JSON.stringify(resource)); // Deep copy
+        editorEl[editorProp] = JSON.parse(JSON.stringify(resource));
+        saveToLibraryBtn.disabled = !resource.isEmbedded;
     
+        const onSaveChanges = () => editorEl.shadowRoot.querySelector('form').requestSubmit();
+        const onSaveToLibrary = () => {
+            this.handlePromoteToLibrary(resourceType, resourceId);
+            saveToLibraryBtn.disabled = true; // Optimistically disable after click
+        };
         const onSave = async (event) => {
             const updatedData = event.detail[editorProp];
             try {
@@ -939,9 +954,7 @@ class MainChatView extends BaseComponent {
                     const resourceListKey = resourceType === 'character' ? 'participants' : 'scenarios';
                     const chatResourceList = this.state.selectedChat[resourceListKey];
                     const index = chatResourceList.findIndex(r => typeof r === 'object' && r.id === resourceId);
-                    if (index > -1) {
-                        chatResourceList[index] = updatedData;
-                    }
+                    if (index > -1) chatResourceList[index] = updatedData;
                     await api.put(`/api/chats/${this.state.selectedChat.id}`, { [resourceListKey]: chatResourceList });
                 } else {
                     const apiEndpoint = resourceType === 'character' ? 'characters' : 'scenarios';
@@ -956,18 +969,83 @@ class MainChatView extends BaseComponent {
     
         const hideModal = () => {
             modalEl.style.display = 'none';
-            // Clean up listeners to prevent memory leaks
             editorEl.removeEventListener(saveEventName, onSave);
             closeBtn.removeEventListener('click', hideModal);
+            saveChangesBtn.removeEventListener('click', onSaveChanges);
+            saveToLibraryBtn.removeEventListener('click', onSaveToLibrary);
             backdrop.removeEventListener('click', onBackdropClick);
         };
-    
         const onBackdropClick = (e) => { if (e.target === backdrop) hideModal(); };
     
-        editorEl.addEventListener(saveEventName, onSave);
+        editorEl.addEventListener(saveEventName, onSave, { once: true });
         closeBtn.addEventListener('click', hideModal);
+        saveChangesBtn.addEventListener('click', onSaveChanges);
+        saveToLibraryBtn.addEventListener('click', onSaveToLibrary);
         backdrop.addEventListener('click', onBackdropClick);
     
+        modalEl.style.display = 'flex';
+    }
+
+    async handleCreateEmbedded(resourceType) {
+        if (!this.state.selectedChat) return;
+        const modalId = `#edit-${resourceType}-modal`;
+        const editorTagName = resourceType === 'character' ? 'minerva-character-editor' : 'minerva-scenario-editor';
+        const editorProp = resourceType;
+        const saveEventName = resourceType === 'character' ? 'character-save' : 'scenario-save';
+
+        const modalEl = this.shadowRoot.querySelector(modalId);
+        const editorEl = modalEl.querySelector(editorTagName);
+        const closeBtn = modalEl.querySelector('.close-modal-btn');
+        const saveChangesBtn = modalEl.querySelector('.save-changes-btn');
+        const saveToLibraryBtn = modalEl.querySelector('.save-to-library-btn');
+        const backdrop = modalEl;
+
+        const newResource = {
+            id: `temp-${uuidv4()}`,
+            name: 'New Embedded ' + (resourceType.charAt(0).toUpperCase() + resourceType.slice(1)),
+            description: '',
+        };
+        if (resourceType === 'character') {
+            newResource.gallery = [];
+        } else {
+            newResource.describes = '';
+            newResource.characterOverrides = {};
+        }
+
+        if (editorTagName === 'minerva-scenario-editor') {
+            editorEl.allCharacters = this.state.allCharacters;
+        }
+        editorEl[editorProp] = newResource;
+        saveToLibraryBtn.disabled = true;
+
+        const onSaveChanges = () => editorEl.shadowRoot.querySelector('form').requestSubmit();
+        const onSave = async (event) => {
+            const resourceData = event.detail[editorProp];
+            try {
+                const resourceListKey = resourceType === 'character' ? 'participants' : 'scenarios';
+                this.state.selectedChat[resourceListKey].push(resourceData);
+                await api.put(`/api/chats/${this.state.selectedChat.id}`, { [resourceListKey]: this.state.selectedChat[resourceListKey] });
+                notifier.show({ type: 'good', message: `New embedded ${resourceType} added to chat.` });
+                hideModal();
+            } catch (e) {
+                notifier.show({ type: 'bad', header: 'Error', message: `Could not save embedded ${resourceType}. ${e.message}` });
+            }
+        };
+
+        const hideModal = () => {
+            modalEl.style.display = 'none';
+            editorEl.removeEventListener(saveEventName, onSave);
+            closeBtn.removeEventListener('click', hideModal);
+            saveChangesBtn.removeEventListener('click', onSaveChanges);
+            backdrop.removeEventListener('click', onBackdropClick);
+        };
+        const onBackdropClick = (e) => { if (e.target === backdrop) hideModal(); };
+
+        editorEl.addEventListener(saveEventName, onSave, { once: true });
+        closeBtn.addEventListener('click', hideModal);
+        saveChangesBtn.addEventListener('click', onSaveChanges);
+        backdrop.addEventListener('click', onBackdropClick);
+
         modalEl.style.display = 'flex';
     }
 
@@ -1361,6 +1439,9 @@ class MainChatView extends BaseComponent {
                         <div class="modal-search-bar"><span class="material-icons">search</span><input type="text" id="modal-search-input" placeholder="Search for characters..."></div>
                         <item-list id="modal-character-list"></item-list>
                     </div>
+                    <div class="modal-footer">
+                        <button id="create-embedded-char-btn" class="button-secondary">Create & Embed New Character</button>
+                    </div>
                 </div>
             </div>
              <div id="add-scenario-modal" class="modal-backdrop">
@@ -1369,18 +1450,29 @@ class MainChatView extends BaseComponent {
                     <div class="modal-body">
                         <item-list id="modal-scenario-list"></item-list>
                     </div>
+                    <div class="modal-footer">
+                        <button id="create-embedded-scenario-btn" class="button-secondary">Create & Embed New Scenario</button>
+                    </div>
                 </div>
             </div>
             <div id="edit-character-modal" class="modal-backdrop editor-modal">
                 <div class="modal-content large">
                     <header><h2>Edit Character</h2><button class="close-modal-btn" title="Close"><span class="material-icons">close</span></button></header>
                     <div class="modal-body"><minerva-character-editor></minerva-character-editor></div>
+                    <div class="modal-footer">
+                        <button class="save-to-library-btn button-secondary" disabled>Save to Library</button>
+                        <button class="save-changes-btn button-primary">Save Changes</button>
+                    </div>
                 </div>
             </div>
             <div id="edit-scenario-modal" class="modal-backdrop editor-modal">
                 <div class="modal-content large">
                     <header><h2>Edit Scenario</h2><button class="close-modal-btn" title="Close"><span class="material-icons">close</span></button></header>
                     <div class="modal-body"><minerva-scenario-editor></minerva-scenario-editor></div>
+                    <div class="modal-footer">
+                        <button class="save-to-library-btn button-secondary" disabled>Save to Library</button>
+                        <button class="save-changes-btn button-primary">Save Changes</button>
+                    </div>
                 </div>
             </div>
 
@@ -1420,9 +1512,10 @@ class MainChatView extends BaseComponent {
             .close-modal-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
             .close-modal-btn:hover { color: var(--text-primary); }
             .modal-body { display: flex; flex-direction: column; overflow-y: auto; flex-grow: 1; gap: var(--spacing-md); }
-            .editor-modal .modal-body { padding: var(--spacing-lg); }
+            .editor-modal .modal-body { padding: 0; }
             #add-character-modal .modal-body, #add-scenario-modal .modal-body { padding: var(--spacing-md); }
-            .modal-content footer { border-top: 1px solid var(--bg-3); padding: var(--spacing-md); display: flex; justify-content: flex-end; }
+            .modal-footer { padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--bg-3); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
+            #add-character-modal .modal-footer, #add-scenario-modal .modal-footer { justify-content: center; }
             .modal-search-bar { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--bg-3); background-color: var(--bg-0); border-radius: var(--radius-sm); flex-shrink: 0; }
             #modal-search-input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); }
             #go-to-parent-btn { display: none; }

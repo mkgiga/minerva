@@ -197,6 +197,7 @@ class ScenarioEditor extends BaseComponent {
                 display: block;
                 height: 100%;
                 overflow-y: auto;
+                padding: var(--spacing-lg);
             }
             .form-wrapper { 
                 display: none; 
