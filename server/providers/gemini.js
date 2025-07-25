@@ -1,6 +1,7 @@
 import { BaseAdapter } from './base.js';
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:streamGenerateContent'
+const GEMINI_MODEL_ID = 'gemini-2.5-pro-preview-06-05'; // for now, we use a fixed model ID
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:streamGenerateContent`;
 
 export class GoogleGeminiAdapter extends BaseAdapter {
     constructor(config) {
@@ -116,12 +117,12 @@ export class GoogleGeminiAdapter extends BaseAdapter {
         const { apiKey } = this.config;
         try {
             // A simple health check is to send a minimal request to the non-streaming endpoint.
-            const healthCheckUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+            const healthCheckUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${apiKey}`;
             const response = await fetch(healthCheckUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{ role: 'user', parts: [{ text: "hello" }]}]
+                    contents: [{ role: 'user', parts: [{ text: "This is a test prompt. Only respond with \"Hello.\"" }]}]
                 }),
             });
 
