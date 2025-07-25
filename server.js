@@ -72,11 +72,11 @@ function escapeXML(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe.replace(/[<>&'"]/g, c => {
         switch (c) {
-            case '<': return '<';
-            case '>': return '>';
-            case '&': return '&';
-            case "'": return "'";
-            case '"': return '"';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case "'": return '&apos;';
+            case '"': return '&quot;';
             default: return c;
         }
     });
@@ -1440,6 +1440,232 @@ function initHttp() {
             res.end();
         }
     });
+
+    // --- NEW: Chat Export Endpoint ---
+    app.get('/api/chats/:id/export', async (req, res) => {
+        const initialChatId = req.params.id;
+        try {
+            // 1. Find the ultimate root of the chat tree
+            let currentChatId = initialChatId;
+            let rootChatId = initialChatId;
+            const allChatRecords = await loadJsonFilesFromDir(CHATS_DIR, Chat); // Load all chats to build the tree
+            const chatMap = new Map(allChatRecords.map(c => [c.id, c]));
+
+            while (true) {
+                const chat = chatMap.get(currentChatId);
+                if (!chat) { // Chat not found or broken link
+                    rootChatId = initialChatId; // Fallback to initial if chain is broken
+                    break;
+                }
+                if (chat.parentId && chatMap.has(chat.parentId)) {
+                    currentChatId = chat.parentId;
+                    rootChatId = currentChatId;
+                } else {
+                    break; // No parent, this is the root
+                }
+            }
+
+            // 2. Collect all chats in the tree (including root and all descendants)
+            const chatTree = new Map(); // Map of ID to full chat object
+            const q = [rootChatId];
+            const visited = new Set();
+
+            while (q.length > 0) {
+                const currentId = q.shift();
+                if (visited.has(currentId)) continue;
+                visited.add(currentId);
+
+                const chat = chatMap.get(currentId);
+                if (chat) {
+                    chatTree.set(chat.id, JSON.parse(JSON.stringify(chat))); // Deep copy for modification
+                    for (const childId of chat.childChatIds) {
+                        if (!visited.has(childId)) {
+                            q.push(childId);
+                        }
+                    }
+                }
+            }
+
+            if (chatTree.size === 0) {
+                return res.status(404).json({ message: 'Chat tree not found.' });
+            }
+
+            // 3. Collect all unique referenced characters and scenarios
+            const exportedCharacters = new Map(); // Map of ID to full Character object
+            const exportedScenarios = new Map();   // Map of ID to full Scenario object
+
+            // Helper to add character to the map
+            const addCharacterToExport = (charData) => {
+                if (charData && !exportedCharacters.has(charData.id)) {
+                    exportedCharacters.set(charData.id, charData.toSaveObject());
+                    exportedCharacters.get(charData.id).id = charData.id; // Ensure ID is present in exported object
+                    exportedCharacters.get(charData.id).avatarUrl = charData.avatarUrl; // Include avatar URL for preview
+                    // For gallery, convert local paths to simple filenames
+                    if (charData.gallery) {
+                        exportedCharacters.get(charData.id).gallery = charData.gallery.map(item => ({
+                            src: item.src,
+                            alt: item.alt
+                        }));
+                    }
+                }
+            };
+
+            // Helper to add scenario to the map
+            const addScenarioToExport = (scenarioData) => {
+                if (scenarioData && !exportedScenarios.has(scenarioData.id)) {
+                    exportedScenarios.set(scenarioData.id, JSON.parse(JSON.stringify(scenarioData)));
+                }
+            };
+            
+            // Get all library characters and scenarios for lookup
+            const allLibraryCharacters = new Map(state.characters.map(c => [c.id, c]));
+            const allLibraryScenarios = new Map(state.scenarios.map(s => [s.id, s]));
+
+            for (const chat of chatTree.values()) {
+                // Collect participants
+                const newParticipants = [];
+                for (const p of chat.participants) {
+                    let charObj;
+                    if (typeof p === 'string') { // It's a reference to a library character
+                        charObj = allLibraryCharacters.get(p);
+                    } else { // It's an embedded character object
+                        charObj = new Character(p); // Convert to Character class to ensure methods like toSaveObject are available
+                    }
+                    if (charObj) {
+                        addCharacterToExport(charObj);
+                        newParticipants.push(charObj); // Store as object in chat, not ID
+                    }
+                }
+                chat.participants = newParticipants; // Update the chat's participants array
+
+                // Collect scenarios
+                const newScenarios = [];
+                for (const s of chat.scenarios) {
+                    let scenarioObj;
+                    if (typeof s === 'string') { // It's a reference to a library scenario
+                        scenarioObj = allLibraryScenarios.get(s);
+                    } else { // It's an embedded scenario object
+                        scenarioObj = new Scenario(s);
+                    }
+                    if (scenarioObj) {
+                        addScenarioToExport(scenarioObj);
+                        newScenarios.push(scenarioObj); // Store as object in chat, not ID
+                    }
+                }
+                chat.scenarios = newScenarios; // Update the chat's scenarios array
+
+                // Collect characters from user messages
+                for (const msg of chat.messages) {
+                    if (msg.role === 'user' && msg.characterId) {
+                        const userChar = allLibraryCharacters.get(msg.characterId);
+                        if (userChar) {
+                            addCharacterToExport(userChar);
+                            // The message's characterId itself remains a string ID
+                        }
+                    }
+                }
+            }
+
+            // 4. Construct the packed object
+            const packedChat = {
+                minervaFormat: "PackedChat",
+                version: "1.0",
+                exportedChatRootId: rootChatId,
+                chats: Object.fromEntries(chatTree), // Chat objects now have embedded participants/scenarios
+                characters: Object.fromEntries(exportedCharacters),
+                scenarios: Object.fromEntries(exportedScenarios),
+            };
+
+            // 5. Send to client
+            const filename = `chat_${chatMap.get(initialChatId)?.name?.replace(/[^a-zA-Z0-9_\-.]/g, '_').substring(0, 50) || initialChatId}.minerva-chat`;
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Type', 'application/json');
+            res.send(JSON.stringify(packedChat, null, 2));
+
+        } catch (error) {
+            console.error('Error exporting chat:', error);
+            res.status(500).json({ message: 'Failed to export chat.' });
+        }
+    });
+
+    // --- NEW: Chat Import Endpoint ---
+    app.post('/api/chats/import', async (req, res) => {
+        try {
+            const packedData = req.body;
+
+            if (packedData.minervaFormat !== 'PackedChat' || !packedData.chats) {
+                return res.status(400).json({ message: 'Invalid Minerva Packed Chat format.' });
+            }
+
+            // Phase 1: Prepare Chat ID mapping for the entire tree
+            const oldChatIdToNewChatIdMap = {};
+            for (const oldChatId of Object.keys(packedData.chats)) {
+                oldChatIdToNewChatIdMap[oldChatId] = uuidv4();
+            }
+
+            // Phase 2: Import chats, keeping resources embedded
+            console.log('Importing chats from packed file...');
+            const newChatsToSave = [];
+            for (const [oldChatId, chatData] of Object.entries(packedData.chats)) {
+                const newChat = new Chat(chatData); // Instantiate with data from file
+                newChat.id = oldChatIdToNewChatIdMap[oldChatId]; // Assign new permanent ID
+
+                // Update parent/child relationships using the new ID map
+                newChat.parentId = chatData.parentId ? oldChatIdToNewChatIdMap[chatData.parentId] : null;
+                newChat.childChatIds = (chatData.childChatIds || []).map(id => oldIdToNewChatIdMap[id]).filter(Boolean);
+
+                // This map will link old resource IDs from the file to new temp IDs for this chat
+                const resourceIdMap = {};
+
+                // Process participants: they are full objects. Assign new temporary IDs to them.
+                newChat.participants = (chatData.participants || []).map(p_obj => {
+                    const oldResourceId = p_obj.id;
+                    const newTempId = `temp-${uuidv4()}`;
+                    resourceIdMap[oldResourceId] = newTempId;
+                    p_obj.id = newTempId;
+                    return p_obj; // Return the object with its new temporary ID
+                });
+
+                // Process scenarios: same logic as participants
+                newChat.scenarios = (chatData.scenarios || []).map(s_obj => {
+                    const oldResourceId = s_obj.id;
+                    const newTempId = `temp-${uuidv4()}`;
+                    resourceIdMap[oldResourceId] = newTempId;
+                    s_obj.id = newTempId;
+                    return s_obj;
+                });
+
+                // Update character IDs in messages to use the new temporary IDs
+                newChat.messages = (chatData.messages || []).map(msg => {
+                    if (msg.role === 'user' && msg.characterId && resourceIdMap[msg.characterId]) {
+                        return { ...msg, characterId: resourceIdMap[msg.characterId] };
+                    }
+                    return msg;
+                });
+
+                // Reset timestamps for the new import
+                const now = new Date().toISOString();
+                newChat.createdAt = now;
+                newChat.lastModifiedAt = now;
+                
+                newChatsToSave.push(newChat);
+            }
+
+            // Phase 3: Save all the newly constructed chats to disk and broadcast
+            for (const newChat of newChatsToSave) {
+                await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
+                state.chats.push(newChat);
+                broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'create', data: newChat.getSummary() });
+            }
+            
+            res.json({ message: `Successfully imported ${newChatsToSave.length} chats.` });
+
+        } catch (error) {
+            console.error('Error importing chat:', error);
+            res.status(500).json({ message: `Failed to import chat: ${error.message}` });
+        }
+    });
+
 }
 
 // Helper Functions for Data Handling

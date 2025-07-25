@@ -1,4 +1,4 @@
-// client/components/views/MainChatView.js
+
 import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier, uuidv4 } from '../../client.js';
 import { chatModeRegistry } from '../../ChatModeRegistry.js';
@@ -46,6 +46,8 @@ class MainChatView extends BaseComponent {
         this.closeScenarioModal = this.closeScenarioModal.bind(this);
         this.handleModalScenarioAction = this.handleModalScenarioAction.bind(this);
         this.handleActiveScenarioAction = this.handleActiveScenarioAction.bind(this);
+        this.handleExportChat = this.handleExportChat.bind(this); // Bind new export handler
+        this.handleImportChatFile = this.handleImportChatFile.bind(this); // NEW: Bind import handler
     }
 
     async connectedCallback() {
@@ -67,6 +69,7 @@ class MainChatView extends BaseComponent {
             switch(actionTarget.dataset.action) {
                 case 'add': this.handleChatAdd(); break;
                 case 'multi-select': this.toggleMultiSelectMode(); break;
+                case 'import': this.handleImportChatFile(); break; // NEW: Import button listener
             }
         });
         
@@ -110,6 +113,7 @@ class MainChatView extends BaseComponent {
         this.shadowRoot.querySelector('#cancel-multiselect-btn').addEventListener('click', this.toggleMultiSelectMode);
 
         this.shadowRoot.querySelector('#go-to-parent-btn').addEventListener('click', this.handleGoToParentChat);
+        this.shadowRoot.querySelector('#export-chat-btn').addEventListener('click', this.handleExportChat); // Export button listener
 
         const modeContainer = this.shadowRoot.querySelector('#chat-mode-container');
         modeContainer.addEventListener('chat-mode-send-prompt', e => this.#handleSendMessage(e.detail.promptText));
@@ -873,6 +877,61 @@ class MainChatView extends BaseComponent {
         }
     }
 
+    // --- NEW: Handle Export Chat ---
+    async handleExportChat() {
+        if (!this.state.selectedChat) {
+            notifier.show({ header: 'Export Error', message: 'No chat selected to export.', type: 'warn' });
+            return;
+        }
+
+        try {
+            // Initiate download by opening the API endpoint directly in a new window/tab.
+            // The browser will handle the Content-Disposition header and download the file.
+            window.open(`/api/chats/${this.state.selectedChat.id}/export`, '_blank');
+            notifier.show({ header: 'Export Initiated', message: `Exporting "${this.state.selectedChat.name}" and its branches.`, type: 'info' });
+        } catch (error) {
+            console.error('Failed to initiate chat export:', error);
+            notifier.show({ header: 'Export Failed', message: `Could not export chat: ${error.message}`, type: 'bad' });
+        }
+    }
+
+    // --- NEW: Handle Import Chat File ---
+    handleImportChatFile() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.minerva-chat';
+        fileInput.style.display = 'none';
+
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            notifier.show({ header: 'Importing Chat', message: `Processing "${file.name}"...`, type: 'info' });
+
+            try {
+                const fileContent = await file.text();
+                const packedChatData = JSON.parse(fileContent);
+
+                if (packedChatData.minervaFormat !== 'PackedChat' || !packedChatData.chats) {
+                    throw new Error('Invalid Minerva Packed Chat file format.');
+                }
+
+                await api.post('/api/chats/import', packedChatData);
+                notifier.show({ type: 'good', header: 'Import Complete', message: `Successfully imported chat tree from "${file.name}".` });
+
+            } catch (error) {
+                console.error('Error importing chat file:', error);
+                notifier.show({
+                    type: 'bad',
+                    header: 'Import Failed',
+                    message: `Could not import chat from "${file.name}". ${error.message || ''}`
+                });
+            }
+        });
+
+        fileInput.click();
+    }
+
     handleParticipantsToggle() { this.toggleParticipantsPanel(true); }
     toggleParticipantsPanel(show) {
         this.shadowRoot.querySelector('.panel-right').classList.toggle('visible', show);
@@ -1224,6 +1283,7 @@ class MainChatView extends BaseComponent {
             this.shadowRoot.querySelector('#chat-name-input').value = this.state.selectedChat.name;
             this.shadowRoot.querySelector('#chat-title-mobile').textContent = this.state.selectedChat.name;
             this.shadowRoot.querySelector('#go-to-parent-btn').style.display = this.state.selectedChat.parentId ? 'flex' : 'none';
+            this.shadowRoot.querySelector('#export-chat-btn').style.display = 'flex'; // Show export button
             
             // This now only creates/recreates the mode if necessary
             this.#ensureChatModeIsCorrect(); 
@@ -1238,6 +1298,7 @@ class MainChatView extends BaseComponent {
             placeholder.style.display = 'flex';
             placeholder.querySelector('h3').textContent = 'Select or create a chat to begin.';
             this.shadowRoot.querySelector('#chat-title-mobile').textContent = this.state.isMultiSelectMode ? 'Select to Delete' : 'Chats';
+            this.shadowRoot.querySelector('#export-chat-btn').style.display = 'none'; // Hide export button
         }
     }
     
@@ -1385,6 +1446,7 @@ class MainChatView extends BaseComponent {
                     <header id="chat-list-header">
                         <h3>Chats</h3>
                         <div class="header-actions">
+                            <button class="icon-button" data-action="import" title="Import Chat"><span class="material-icons">file_upload</span></button>
                             <button class="icon-button" data-action="multi-select" title="Select Multiple"><span class="material-icons">checklist</span></button>
                             <button class="icon-button" data-action="add" title="New Chat"><span class="material-icons">add</span></button>
                         </div>
@@ -1403,6 +1465,7 @@ class MainChatView extends BaseComponent {
                     <header class="chat-main-header">
                         <input type="text" id="chat-name-input" placeholder="Chat Name">
                         <button id="go-to-parent-btn" class="icon-button" title="Go to Parent Chat"><span class="material-icons">arrow_upward</span></button>
+                        <button id="export-chat-btn" class="icon-button" title="Export Chat Tree"><span class="material-icons">download</span></button>
                     </header>
                     <div id="chat-mode-container"></div>
                     <div class="placeholder"><h3>Select or create a chat to begin.</h3></div>
@@ -1519,6 +1582,7 @@ class MainChatView extends BaseComponent {
             .modal-search-bar { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--bg-3); background-color: var(--bg-0); border-radius: var(--radius-sm); flex-shrink: 0; }
             #modal-search-input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); }
             #go-to-parent-btn { display: none; }
+            #export-chat-btn { display: none; } /* Hidden by default, shown when chat is selected */
             .mobile-chat-header, #back-to-chats-btn, .view-overlay { display: none; }
             .list-placeholder { color: var(--text-disabled); font-style: italic; padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-sm); }
 
