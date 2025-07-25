@@ -57,53 +57,117 @@ export class AdventureChatMode extends BaseChatMode {
             autoScroll: true,
         };
     }
+    
+    /**
+     * Calculates the Levenshtein distance between two strings.
+     * @param {string} s1 The first string.
+     * @param {string} s2 The second string.
+     * @returns {number} The edit distance.
+     */
+    #levenshteinDistance(s1, s2) {
+        s1 = s1.toLowerCase();
+        s2 = s2.toLowerCase();
 
-    // TODO: Implement this fully so we can fix broken xml when the LLM makes an oopsie
-    /** On parse error, we try several strategies to try and repair the XML tag structure. */
+        const costs = [];
+        for (let i = 0; i <= s1.length; i++) {
+            let lastValue = i;
+            for (let j = 0; j <= s2.length; j++) {
+                if (i === 0) {
+                    costs[j] = j;
+                } else {
+                    if (j > 0) {
+                        let newValue = costs[j - 1];
+                        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                        }
+                        costs[j - 1] = lastValue;
+                        lastValue = newValue;
+                    }
+                }
+            }
+            if (i > 0) {
+                costs[s2.length] = lastValue;
+            }
+        }
+        return costs[s2.length];
+    }
+
+    /** 
+     * Parses XML content, attempting to repair common typos in tags if initial parsing fails.
+     * @param {string} content The raw XML string from the LLM.
+     * @returns {Document | null} The parsed XML Document, or null if content is empty.
+     */
     #tryRepairOutputXML(content) {
-        // ensure no leading/trailing whitespace
-        content = content.trim();
-
-        // all possible tag names that can be used in the output which may become corrupted
-        const tagNames = [
-            "output",
-            "action",
-            "show",
-            "text",
-            "talk",
-            "yell",
-            "whisper",
-            "char",
-            "prompt",
-            "choice",
-        ];
-
-        const tagRegex = /<\/?([a-zA-Z0-9]+)>/g;
-        let match;
-
-        const inferenceStrategies = {
-            // infer by comparing how many individual characters they share.
-            // for example, <uotput> and <output> have 1 o, 1 u, 1 t, 1 p, and 1 e in common. They share the exact same characters, just in a different order.
-            // another example is a typo like <axction> vs <action>. They share an 1 a, 1 c, 1 t, 1 i, 1 o, and 1 n.
-            // if multiple tags share the same amount of characters with the tag that's being inferred, we also compare the number of characters they do not share in order to prioritize the most likely candidate.
-            inferTagBySharedCharacters: (tag = "<output>") => {
-
-            },
-
-            // subtract or add to the character count to find potential candidate tags, then each time compare how many matching letters there are using the positional offset (the number we subtracted/added)
-            inferTagByLength: (tag = "<axction>") => {
-
-            },
-
-            inferTagByPosition: (tag = "<shoow>") => {
-
-            },
-        };
-
-        // now, start trying to repair the content
-        const parser = new DOMParser();
+        // 1. Pre-processing: Strip markdown fences and trim whitespace
+        let processedContent = content.trim();
+        processedContent = processedContent.replace(/^`{3,}(xml)?\s*\n?/, '');
+        processedContent = processedContent.replace(/\n?`{3,}$/, '');
+        processedContent = processedContent.trim();
         
-        // ... gemini please implement this ... /
+        if (!processedContent) return null;
+
+        const parser = new DOMParser();
+
+        // 2. Initial Parse Attempt
+        let doc = parser.parseFromString(processedContent, "application/xml");
+        let parserError = doc.querySelector("parsererror");
+        if (!parserError) {
+            return doc; // Success on the first try
+        }
+        
+        console.warn("XML parsing failed, attempting repair. Error:", parserError.textContent);
+
+        // 3. Repair Logic
+        const tagNames = [
+            "output", "action", "show", "text", "talk", "yell", "whisper", 
+            "monologue", "char", "prompt", "choice", "delay"
+        ];
+        
+        const findBestMatch = (badTag) => {
+            let bestMatch = null;
+            let minDistance = Infinity;
+
+            for (const goodTag of tagNames) {
+                const distance = this.#levenshteinDistance(badTag, goodTag);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = goodTag;
+                }
+            }
+            
+            // Heuristic: If the best match is still too far, it's probably not a typo.
+            // A distance of 2 or less seems reasonable for these short tag names.
+            if (minDistance <= 2) {
+                return bestMatch;
+            }
+            return null;
+        };
+        
+        const repairedContent = processedContent.replace(/(<\/?)(\w+)(.*?>)/g, (match, opening, tagName, rest) => {
+            if (tagNames.includes(tagName.toLowerCase())) {
+                return match; // Tag is valid
+            }
+            
+            const bestMatch = findBestMatch(tagName);
+            if (bestMatch) {
+                console.log(`Repairing tag: '${tagName}' -> '${bestMatch}'`);
+                return `${opening}${bestMatch}${rest}`;
+            }
+            
+            return match; // No good match found
+        });
+
+        // 4. Re-parse after repair attempt
+        doc = parser.parseFromString(repairedContent, "application/xml");
+        parserError = doc.querySelector("parsererror");
+        
+        if (parserError) {
+            console.error("XML repair failed. Final error:", parserError.textContent);
+        } else {
+            console.log("XML repair successful.");
+        }
+
+        return doc;
     }
 
     // History Management
@@ -808,14 +872,13 @@ export class AdventureChatMode extends BaseChatMode {
                 messageEl.innerHTML = `<div class="message-controls">${this.#renderMessageControlsHTML(
                     msg
                 )}</div><div class="message-content">${content}</div>`;
-                // No need to attach specific listeners here, #handleHistoryClick handles it.
                 return;
             }
 
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(content, "application/xml");
-            const outputNode = doc.querySelector("output");
-            const parserError = doc.querySelector("parsererror");
+            const doc = this.#tryRepairOutputXML(content);
+
+            const outputNode = doc ? doc.querySelector("output") : null;
+            const parserError = doc ? doc.querySelector("parsererror") : null;
 
             if (parserError || !outputNode) {
                 const author = this.allCharacters.find(
@@ -861,7 +924,6 @@ export class AdventureChatMode extends BaseChatMode {
                 messageEl.appendChild(contentFragment);
             }
         }
-        // No need to attach specific listeners here, #handleHistoryClick handles it.
     }
 
     // Animation Logic
@@ -934,10 +996,10 @@ export class AdventureChatMode extends BaseChatMode {
         messageEl.innerHTML = "";
 
         const content = msg.content || "";
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(content, "application/xml");
-        const outputNode = doc.querySelector("output");
-        const parserError = doc.querySelector("parsererror");
+        const doc = this.#tryRepairOutputXML(content);
+
+        const outputNode = doc ? doc.querySelector("output") : null;
+        const parserError = doc ? doc.querySelector("parsererror") : null;
 
         if (parserError || !outputNode) {
             // If content is invalid, render it as plain text instead of animating
@@ -1018,7 +1080,6 @@ export class AdventureChatMode extends BaseChatMode {
 
         this.#isAnimating = false;
         this.updateInputState(false);
-        // No need to attach specific listeners here, #handleHistoryClick handles it.
     }
 
     // VN Block Rendering

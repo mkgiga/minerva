@@ -1,0 +1,1 @@
+// a choice prompt is a component that lists a set of choices for the user to select from. is used within a <vn-text-box> component.
