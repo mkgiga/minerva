@@ -26,6 +26,7 @@ export class GoogleGeminiAdapter extends BaseAdapter {
         ];
     }
 
+    // TODO: Use the gemini SDK instead of their REST API directly
     async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }) {
         const { apiKey } = this.config;
         const { systemInstruction, signal, ...generationConfig } = options;
