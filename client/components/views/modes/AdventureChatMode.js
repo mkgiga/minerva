@@ -52,7 +52,7 @@ export class AdventureChatMode extends BaseChatMode {
 
     static getDefaultSettings() {
         return {
-            scrollSpeed: 12,
+            scrollSpeed: 6,
             blockGap: 1.5, // Corresponds to --spacing-lg
             autoScroll: true,
         };
@@ -116,7 +116,7 @@ export class AdventureChatMode extends BaseChatMode {
         }
         
         console.warn("XML parsing failed, attempting repair. Error:", parserError.textContent);
-
+        
         // 3. Repair Logic
         const tagNames = [
             "output", "action", "show", "text", "talk", "yell", "whisper", 
@@ -282,9 +282,9 @@ export class AdventureChatMode extends BaseChatMode {
         const optimisticUserEl = this.shadowRoot.querySelector(
             '.chat-message[data-message-id^="user-"]'
         );
-        const optimisticAssistantEl = this.shadowRoot.querySelector(
-            '.chat-message[data-message-id^="assistant-"]'
-        );
+        // Use the new reliable class selector to find the assistant element
+        const optimisticAssistantEl = this.shadowRoot.querySelector('.optimistic-assistant-message') || this.shadowRoot.querySelector('.chat-message[data-message-id^="assistant-"]');
+
 
         if (
             optimisticUserEl &&
@@ -356,7 +356,10 @@ export class AdventureChatMode extends BaseChatMode {
             content: '<minerva-spinner mode="infinite"></minerva-spinner>',
             timestamp: new Date().toISOString(),
         };
-        this.appendMessage(assistantSpinnerMessage);
+        const assistantEl = this.appendMessage(assistantSpinnerMessage);
+        if (assistantEl) {
+            assistantEl.classList.add('optimistic-assistant-message');
+        }
 
         this.clearUserInput();
         return assistantSpinnerMessage.id;
@@ -388,7 +391,10 @@ export class AdventureChatMode extends BaseChatMode {
                 content: '<minerva-spinner mode="infinite"></minerva-spinner>',
                 timestamp: new Date().toISOString(),
             };
-            this.appendMessage(assistantSpinnerMessage);
+            const assistantEl = this.appendMessage(assistantSpinnerMessage);
+            if (assistantEl) {
+                assistantEl.classList.add('optimistic-assistant-message');
+            }
             // This case doesn't need a specific messageId to update, a new one will be created.
         }
     }
@@ -706,17 +712,8 @@ export class AdventureChatMode extends BaseChatMode {
         const finalContent = this.#streamingContent.get(messageId);
         if (finalContent === undefined) return;
 
-        // FIX: Handle race condition where onMessagesAdded updates the element ID before this runs.
-        let messageEl = this.shadowRoot.querySelector(
-            `.chat-message[data-message-id="${messageId}"]`
-        );
-        if (!messageEl) {
-            // The optimistic element ID was likely updated. Find it by its unique prefix.
-            // This is safe because there should only ever be one optimistic assistant message at a time.
-            messageEl = this.shadowRoot.querySelector(
-                '.chat-message[data-message-id^="assistant-"]'
-            );
-        }
+        // Use the reliable class selector to find the element, immune to race conditions
+        const messageEl = this.shadowRoot.querySelector('.optimistic-assistant-message');
 
         if (messageEl) {
             // Flag this message as having been animated. We use the element's *current* ID,
@@ -731,6 +728,8 @@ export class AdventureChatMode extends BaseChatMode {
                 content: finalContent,
             };
             await this.#animateAdventureModeResponse(messageEl, messageToAnimate);
+            // Clean up the temporary class now that its job is done.
+            messageEl.classList.remove('optimistic-assistant-message');
         }
 
         this.#streamingContent.delete(messageId);
@@ -754,6 +753,7 @@ export class AdventureChatMode extends BaseChatMode {
         if (messageEl) {
             const errorMsg = { id: messageId, role: "assistant", content };
             this.#updateMessageContent(messageEl, errorMsg);
+            messageEl.classList.remove('optimistic-assistant-message'); // Cleanup on error too
         }
         this.#streamingContent.delete(messageId);
     }
@@ -772,14 +772,6 @@ export class AdventureChatMode extends BaseChatMode {
 
         for (let i = 0; i < this.chat.messages.length; i++) {
             const msg = this.chat.messages[i];
-            if (msg.role === "user" && msg.content.startsWith("<choice>")) {
-                const prevMsg = this.chat.messages[i - 1];
-                if (
-                    prevMsg?.role === "assistant" &&
-                    prevMsg.content.includes("<prompt>")
-                )
-                    continue;
-            }
             this.appendMessage(msg, false, i);
         }
 
@@ -808,6 +800,7 @@ export class AdventureChatMode extends BaseChatMode {
             this.#historyContainer.scrollTop =
                 this.#historyContainer.scrollHeight;
         this.updateInputState(this.isSending);
+        return messageEl; // Return the created element
     }
 
     #findCharacter(idOrName) {
@@ -840,17 +833,13 @@ export class AdventureChatMode extends BaseChatMode {
 
         if (msg.role !== "assistant") {
             const isUser = msg.role === "user";
-            const isPlayerChoice =
-                isUser &&
-                msg.content.startsWith("<choice>") &&
-                msg.content.endsWith("</choice>");
-            const roleClass = isPlayerChoice ? "player-choice" : msg.role;
-            const author = isUser
-                ? this.getCharacterById(msg.characterId)
-                : null;
+            const isPlayerChoice = isUser && msg.content.startsWith("<choice>") && msg.content.endsWith("</choice>");
+            const roleClass = isUser ? "user" : msg.role; // Treat choices as normal user messages for styling
+            const author = isUser ? this.getCharacterById(msg.characterId) : null;
             const authorName = author?.name || "You";
+            // If it's a choice, format it nicely within the user bubble.
             let content = isPlayerChoice
-                ? this.#escapeHtml(msg.content.slice(8, -9))
+                ? `<em>You chose: ${this.#escapeHtml(msg.content.slice(8, -9))}</em>`
                 : this.#escapeHtml(msg.content).replace(/\n/g, "<br>");
             const avatarHTML = isUser
                 ? ""
@@ -1156,7 +1145,16 @@ export class AdventureChatMode extends BaseChatMode {
         header.className = "adventure-prompt-header";
         const body = document.createElement("div");
         body.className = "adventure-prompt-body";
-
+    
+        const msgIndex =
+            index > -1
+                ? index
+                : this.chat.messages.findIndex((m) => m.id === msg.id);
+        const nextMessage = this.chat.messages[msgIndex + 1];
+    
+        const isAnswered = nextMessage?.role === "user" && nextMessage.content.startsWith("<choice>");
+    
+        // Always render the prompt's descriptive text.
         for (const child of Array.from(promptNode.children)) {
             if (child.nodeName.toLowerCase() === "text") {
                 const p = document.createElement("p");
@@ -1165,60 +1163,33 @@ export class AdventureChatMode extends BaseChatMode {
                 body.appendChild(p);
             }
         }
-
-        const msgIndex =
-            index > -1
-                ? index
-                : this.chat.messages.findIndex((m) => m.id === msg.id);
-        const nextMessage = this.chat.messages[msgIndex + 1];
-
-        if (
-            nextMessage?.role === "user" &&
-            nextMessage.content.startsWith("<choice>")
-        ) {
+    
+        if (isAnswered) {
             block.classList.add("answered");
-            const choiceContent = nextMessage.content.slice(8, -9);
-            const choiceAuthor = this.getCharacterById(nextMessage.characterId);
-            const authorName = choiceAuthor?.name || "You";
-            const authorAvatar =
-                choiceAuthor?.avatarUrl || "assets/images/user_icon.svg";
-
-            header.innerHTML = `<div class="answered-prompt-header"><img src="${authorAvatar}" alt="${authorName}" class="avatar"><span class="answered-choice-text">${this.#escapeHtml(
-                choiceContent
-            )}</span></div><span class="material-icons expand-icon">unfold_more</span>`;
-
-            const playerChoiceEl = document.createElement("div");
-            playerChoiceEl.className = "adventure-prompt-player-choice";
-            playerChoiceEl.innerHTML = `<div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this.#escapeHtml(
-                choiceContent
-            )}</div>`;
-            body.appendChild(playerChoiceEl);
+            // Simple header for answered prompts. The choice itself is now rendered separately as a user message.
+            header.innerHTML = `<span>Player Choice (Answered)</span><span class="material-icons expand-icon">unfold_more</span>`;
         } else {
             block.classList.add("unanswered");
             header.innerHTML = `<span>Player Choice</span><span class="material-icons expand-icon">unfold_more</span>`;
+            // Render choice buttons for unanswered prompts.
             for (const child of Array.from(promptNode.children)) {
                 if (child.nodeName.toLowerCase() === "choice") {
                     const button = document.createElement("button");
-                    button.className =
-                        "adventure-choice-button button-secondary";
+                    button.className = "adventure-choice-button button-secondary";
                     button.dataset.action = "adventure-choice";
                     button.dataset.choiceText = child.textContent;
                     button.textContent = child.textContent;
                     body.appendChild(button);
                 }
             }
-            if (
-                this.#lastUnansweredPromptEl &&
-                this.#lastUnansweredPromptEl !== block
-            ) {
+            if (this.#lastUnansweredPromptEl && this.#lastUnansweredPromptEl !== block) {
                 this.#lastUnansweredPromptEl.classList.add("collapsed");
-                const icon =
-                    this.#lastUnansweredPromptEl.querySelector(".expand-icon");
+                const icon = this.#lastUnansweredPromptEl.querySelector(".expand-icon");
                 if (icon) icon.textContent = "unfold_more";
             }
             this.#lastUnansweredPromptEl = block;
         }
-
+    
         block.appendChild(header);
         block.appendChild(body);
     }
@@ -1227,10 +1198,21 @@ export class AdventureChatMode extends BaseChatMode {
         const block = document.createElement("div");
         block.className = "adventure-block adventure-dialogue";
 
-        const speakerId = textNode.getAttribute("id");
+        const speakerId = textNode.getAttribute("id")?.trim();
         const speaker = this.#findCharacter(speakerId);
-        const speakerName =
-            speaker?.name || (speakerId === "null" ? "Narrator" : speakerId);
+        
+        let speakerName;
+        if (speaker) {
+            // Found a defined character, use their proper name
+            speakerName = speaker.name;
+        } else if (speakerId && speakerId !== 'null') {
+            // No defined character, but an ID was provided. Use it as an ad-hoc name.
+            speakerName = speakerId;
+        } else {
+            // No ID, or ID was explicitly 'null'. Default to Narrator.
+            speakerName = 'Narrator';
+        }
+
         const avatarUrl = speaker?.avatarUrl || "assets/images/system_icon.svg";
 
         const nameEl = document.createElement("div");
@@ -1408,9 +1390,8 @@ export class AdventureChatMode extends BaseChatMode {
             .chat-message.assistant.adventure-mode:hover .message-controls { opacity: 1; }
             .chat-message:not(.assistant.adventure-mode) { display: flex; gap: var(--spacing-md); max-width: 100%; }
             .chat-message .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 5px; background-color: var(--bg-3); }
-            .chat-message.system, .chat-message.player-choice { margin: 0 auto; color: var(--text-secondary); max-width: 100%; }
-            .chat-message.system .message-bubble, .chat-message.player-choice .message-bubble { background: none; }
-            .chat-message.player-choice .message-bubble { text-align: center; font-style: italic; }
+            .chat-message.system { margin: 0 auto; color: var(--text-secondary); max-width: 100%; }
+            .chat-message.system .message-bubble { background: none; }
             .message-bubble { background-color: var(--bg-1); border-radius: var(--radius-md); padding: var(--spacing-sm) var(--spacing-md); flex-grow: 1; position: relative; }
             .chat-message.user .message-bubble { background-color: var(--accent-primary); color: var(--bg-0); }
             .chat-message.user .message-bubble .icon-btn { color: var(--bg-1); }
@@ -1431,7 +1412,7 @@ export class AdventureChatMode extends BaseChatMode {
             
             .adventure-parse-error { border: 2px solid var(--accent-danger); background: rgba(242, 139, 130, 0.1); padding: var(--spacing-md); border-radius: var(--radius-md); margin-top: var(--spacing-md); }
             .adventure-parse-error pre { background: var(--bg-0); padding: var(--spacing-sm); border-radius: var(--radius-sm); white-space: pre-wrap; word-break: break-all; }
-            .adventure-block { margin-bottom: var(--adventure-block-gap, var(--spacing-lg)); padding-top: 0; transition: opacity 0.4s ease-out; }
+            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; }
             .adventure-action { font-style: italic; color: var(--text-secondary); text-align: justify; padding: var(--spacing-sm) 0; }
             .adventure-action:not(:last-child) { border-bottom: 1px dashed var(--bg-3); }
             .adventure-action:nth-child(2) { border-top: 1px dashed var(--bg-3); }
@@ -1453,9 +1434,6 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-prompt-header .answered-prompt-header { display: flex; align-items: center; gap: var(--spacing-sm); flex-grow: 1; overflow: hidden; }
             .answered-prompt-header .avatar { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
             .answered-prompt-header .answered-choice-text { font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            .adventure-prompt-player-choice { margin-top: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--accent-primary-faded); color: var(--text-primary); border-radius: var(--radius-md); border-top: 1px solid var(--bg-3); }
-            .adventure-prompt-player-choice .message-header { margin-bottom: 0; }
-            .adventure-prompt-player-choice .author-name { font-weight: 600; }
             .adventure-char-ref { display: inline-flex; align-items: center; gap: 0px; background: var(--bg-2); padding: 2px 4px; border-radius: var(--radius-sm); color: var(--text-primary); text-decoration: none; font-weight: 500; line-height: 1; vertical-align: middle; }
             .adventure-char-ref.non-interactive { cursor: default; }
             a.adventure-char-ref:hover { text-decoration: none; color: var(--accent-primary); background-color: var(--bg-3); }
