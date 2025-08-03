@@ -34,7 +34,7 @@ Minerva is a web-based graphical user interface (GUI) designed for interacting w
 -   **User-friendly**: A clean, intuitive, and responsive interface that works great on both desktop and mobile devices. No clutter, just your story.
 -   **Save your prompts**: Create and manage a library of reusable text snippets (Strings). Use them to build complex prompts, define character personalities, or set up system instructions without repeating yourself.
 -   **Multi-character chats**: Add any number of characters to a conversation. The AI is made aware of all participants through powerful macros like `{{characters}}`, allowing for dynamic group interactions.
--   **Scenario/Lorebooks**: Define Scenarios to inject consistent world-building, plot points, or contextual information into your chats. Scenarios can even have character-specific overrides, tailoring the context for each participant.
+-   **Note/Lorebooks**: Define Notes to inject consistent world-building, plot points, or contextual information into your chats. Notes can even have character-specific overrides, tailoring the context for each participant.
 -   **Extendable chat interface**: Swap out the entire chat UI with custom 'Chat Modes'. Minerva comes with a standard text mode and a story-focused 'Adventure' mode, but developers can create entirely new experiences (e.g., a game-like RPG interface).
 -   **No telemetry**: Your data is your own. All character data, chats, and configurations are saved locally to your machine. Minerva never sends data to third parties, except for the LLM API you configure.
 

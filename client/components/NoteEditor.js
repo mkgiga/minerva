@@ -1,10 +1,10 @@
-// client/components/ScenarioEditor.js
+// client/components/NoteEditor.js
 import { BaseComponent } from './BaseComponent.js';
 import { api, modal, notifier } from '../../client.js';
 import './TextBox.js';
 
-class ScenarioEditor extends BaseComponent {
-    #scenario = null;
+class NoteEditor extends BaseComponent {
+    #note = null;
     #allCharacters = [];
     #overrideList = null;
 
@@ -13,16 +13,16 @@ class ScenarioEditor extends BaseComponent {
         this.render();
     }
 
-    set scenario(newScenario) {
-        this.#scenario = newScenario;
+    set note(newNote) {
+        this.#note = newNote;
         this.#updateView();
     }
-    get scenario() { return this.#scenario; }
+    get note() { return this.#note; }
 
     set allCharacters(characters) {
         this.#allCharacters = characters;
         // No need to re-render the whole view, just the overrides list if it's visible.
-        if (this.isConnected && this.#scenario) {
+        if (this.isConnected && this.#note) {
             this.#renderOverridesList();
         }
     }
@@ -52,20 +52,20 @@ class ScenarioEditor extends BaseComponent {
             overrides[charId] = text;
         });
 
-        const scenarioData = {
-            ...this.#scenario,
-            name: this.shadowRoot.querySelector('#scenario-name-input').value,
-            describes: this.shadowRoot.querySelector('#scenario-type-input').value,
+        const noteData = {
+            ...this.#note,
+            name: this.shadowRoot.querySelector('#note-name-input').value,
+            describes: this.shadowRoot.querySelector('#note-type-input').value,
             description: this.shadowRoot.querySelector('#description-input').value,
             characterOverrides: overrides,
         };
         
-        this.dispatch('scenario-save', { scenario: scenarioData });
+        this.dispatch('note-save', { note: noteData });
     }
 
     #openAddOverrideModal() {
-        if (!this.#scenario) return;
-        const currentOverrideIds = Object.keys(this.#scenario.characterOverrides || {});
+        if (!this.#note) return;
+        const currentOverrideIds = Object.keys(this.#note.characterOverrides || {});
         const charactersToAdd = this.#allCharacters.filter(c => !currentOverrideIds.includes(c.id));
         
         const content = document.createElement('div');
@@ -90,10 +90,10 @@ class ScenarioEditor extends BaseComponent {
         
         list.addEventListener('item-action', e => {
             const charId = e.detail.id;
-            if (!this.#scenario.characterOverrides) {
-                this.#scenario.characterOverrides = {};
+            if (!this.#note.characterOverrides) {
+                this.#note.characterOverrides = {};
             }
-            this.#scenario.characterOverrides[charId] = '';
+            this.#note.characterOverrides[charId] = '';
             this.#renderOverridesList();
             this.dispatch('change');
             modal.hide();
@@ -111,14 +111,14 @@ class ScenarioEditor extends BaseComponent {
         const deleteBtn = event.target.closest('.delete-override-btn');
         if (deleteBtn) {
             const charId = deleteBtn.dataset.characterId;
-            delete this.#scenario.characterOverrides[charId];
+            delete this.#note.characterOverrides[charId];
             this.#renderOverridesList();
             this.dispatch('change');
         }
     }
 
     #renderOverridesList() {
-        const overrides = this.#scenario?.characterOverrides || {};
+        const overrides = this.#note?.characterOverrides || {};
 
         if (Object.keys(overrides).length === 0) {
             this.#overrideList.innerHTML = `<p class="field-description">No character-specific text defined.</p>`;
@@ -147,40 +147,40 @@ class ScenarioEditor extends BaseComponent {
         const formWrapper = this.shadowRoot.querySelector('.form-wrapper');
         const placeholder = this.shadowRoot.querySelector('.placeholder');
 
-        if (!this.#scenario) {
+        if (!this.#note) {
             formWrapper.style.display = 'none';
             placeholder.style.display = 'flex';
         } else {
             formWrapper.style.display = 'flex';
             placeholder.style.display = 'none';
-            this.shadowRoot.querySelector('#scenario-name-input').value = this.#scenario.name || '';
-            this.shadowRoot.querySelector('#scenario-type-input').value = this.#scenario.describes || '';
-            this.shadowRoot.querySelector('#description-input').value = this.#scenario.description || '';
+            this.shadowRoot.querySelector('#note-name-input').value = this.#note.name || '';
+            this.shadowRoot.querySelector('#note-type-input').value = this.#note.describes || '';
+            this.shadowRoot.querySelector('#description-input').value = this.#note.description || '';
             this.#renderOverridesList();
         }
     }
 
     render() {
         super._initShadow(`
-            <div class="placeholder"><h2>Select a scenario to begin editing.</h2></div>
+            <div class="placeholder"><h2>Select a note to begin editing.</h2></div>
             <form id="editor-form" class="form-wrapper">
                 <header class="editor-header">
                     <div class="editor-header-main">
-                        <input type="text" id="scenario-name-input" class="editor-title-input" placeholder="Scenario Name">
+                        <input type="text" id="note-name-input" class="editor-title-input" placeholder="Note Name">
                         <div class="form-group-inline">
-                            <label for="scenario-type-input">Type</label>
-                            <input type="text" id="scenario-type-input" placeholder="e.g., Output Formatting" class="type-input">
+                            <label for="note-type-input">Type</label>
+                            <input type="text" id="note-type-input" placeholder="e.g., Output Formatting" class="type-input">
                         </div>
                     </div>
                 </header>
                 <section class="form-section">
-                    <h3>General Scenario Text</h3>
-                    <p class="field-description">This text will be inserted when using the "Scenario" item in a Generation Config.</p>
+                    <h3>General Note Text</h3>
+                    <p class="field-description">This text will be inserted when using the "Note" item in a Generation Config.</p>
                     <text-box id="description-input"></text-box>
                 </section>
                 <section class="form-section">
                     <h3>Character-Specific Text</h3>
-                    <p class="field-description">Provide alternate text for specific characters. This is used by the {{characters[..., scenario]}} macro.</p>
+                    <p class="field-description">Provide alternate text for specific characters. This is used by the {{characters[..., note]}} macro.</p>
                     <div id="override-list"></div>
                     <button type="button" id="add-override-btn" class="button-secondary">Add Character Override</button>
                 </section>
@@ -270,4 +270,4 @@ class ScenarioEditor extends BaseComponent {
         `;
     }
 }
-customElements.define('minerva-scenario-editor', ScenarioEditor);
+customElements.define('minerva-note-editor', NoteEditor);

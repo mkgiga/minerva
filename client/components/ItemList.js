@@ -51,13 +51,15 @@ class ItemList extends BaseComponent {
             `
             :host {
                 display: block;
-                height: 100%;
                 background-color: var(--bg-0);
-                overflow: hidden; /* Let the container handle scroll */
             }
+
+            /* 
+             * This component is designed to grow with its content.
+             * The parent element is responsible for handling layout and scrolling.
+             */
             .list-container {
-                height: 100%;
-                overflow-y: auto;
+                /* No height or overflow is set, allowing the list to expand naturally. */
             }
             ul {
                 list-style: none;

@@ -26,7 +26,7 @@ const REUSABLE_STRINGS_DIR = path.join(DATA_DIR, 'reusable_strings');
 const GENERATION_CONFIGS_DIR = path.join(DATA_DIR, 'generation_configs');
 const CONNECTION_CONFIGS_DIR = path.join(DATA_DIR, 'connection_configs');
 const CHATS_DIR = path.join(DATA_DIR, 'chats');
-const SCENARIOS_DIR = path.join(DATA_DIR, 'scenarios');
+const SCENARIOS_DIR = path.join(DATA_DIR, 'notes');
 const SETTINGS_FILE_PATH = path.join(DATA_DIR, 'settings.json');
 
 // CORS
@@ -115,7 +115,7 @@ const state = {
     reusableStrings: [],
     generationConfigs: [],
     chats: [],
-    scenarios: [],
+    notes: [],
     settings: {},
 };
 
@@ -145,7 +145,7 @@ async function initializeData() {
         state.settings = await loadSettings();
         state.characters = await loadCharacters();
         state.chats = (await loadJsonFilesFromDir(CHATS_DIR, Chat)).map(chatData => new Chat(chatData));
-        state.scenarios = await loadJsonFilesFromDir(SCENARIOS_DIR, Scenario);
+        state.notes = await loadJsonFilesFromDir(SCENARIOS_DIR, Note);
         
         // Load user-created strings and prepend the system-defined ones.
         const userReusableStrings = await loadJsonFilesFromDir(REUSABLE_STRINGS_DIR, ReusableString);
@@ -157,7 +157,7 @@ async function initializeData() {
         console.log('Data loaded successfully.');
         console.log(`- ${state.characters.length} characters`);
         console.log(`- ${state.chats.length} chats`);
-        console.log(`- ${state.scenarios.length} scenarios`);
+        console.log(`- ${state.notes.length} notes`);
         console.log(`- ${state.connectionConfigs.length} connection configs`);
         console.log(`- ${state.reusableStrings.length} reusable strings (including system)`);
         console.log(`- ${state.generationConfigs.length} generation configs`);
@@ -292,7 +292,7 @@ function start() {
 // Helper function for macro resolution
 function resolveMacros(text, context) {
     if (!text) return '';
-    const { allCharacters = [], userPersonaCharacterId = null, chatCharacters = [], activeScenarios = [] } = context;
+    const { allCharacters = [], userPersonaCharacterId = null, chatCharacters = [], activeNotes = [] } = context;
 
     // New complex macro handler: {{characters[name,description,...]}}
     text = text.replace(/{{\s*([a-zA-Z0-9_]+)\[(.*?)\]\s*}}/g, (match, resourceName, propsString) => {
@@ -333,16 +333,16 @@ function resolveMacros(text, context) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
                     }
                 }
-                if (props.includes('scenario')) {
-                    const characterScenarioXmlString = activeScenarios.map(s => {
+                if (props.includes('note')) {
+                    const characterNoteXmlString = activeNotes.map(s => {
                         const overrideText = s.characterOverrides?.[c.id];
                         if (!overrideText?.trim()) return null;
                         const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
-                        return `    <scenario${describesAttr}>\n        <override>${escapeXML(overrideText)}</override>\n    </scenario>`;
+                        return `    <note${describesAttr}>\n        <override>${escapeXML(overrideText)}</override>\n    </note>`;
                     }).filter(Boolean).join('\n');
 
-                    if (characterScenarioXmlString) {
-                        characterLines.push(characterScenarioXmlString);
+                    if (characterNoteXmlString) {
+                        characterLines.push(characterNoteXmlString);
                     }
                 }
                 
@@ -369,13 +369,13 @@ function resolveMacros(text, context) {
                 return `${c.name} (ID: ${c.id})\n${c.description}`;
             }).join('\n\n\n\n');
         },
-        scenarios: () => {
-            if (!activeScenarios || activeScenarios.length === 0) return '';
+        notes: () => {
+            if (!activeNotes || activeNotes.length === 0) return '';
             
-            return activeScenarios.map(s => {
+            return activeNotes.map(s => {
                 if (!s.description?.trim()) return null;
                 const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
-                return `<scenario${describesAttr}>${escapeXML(s.description)}</scenario>`;
+                return `<note${describesAttr}>${escapeXML(s.description)}</note>`;
             }).filter(Boolean).join('\n\n');
         },
         player: () => {
@@ -699,51 +699,51 @@ function initHttp() {
         } catch (error) { res.status(500).json({ message: 'Failed to delete character' }); }
     });
 
-    // Scenarios API
-    app.get('/api/scenarios', (req, res) => res.json(state.scenarios));
-    app.post('/api/scenarios', async (req, res) => {
+    // Notes API
+    app.get('/api/notes', (req, res) => res.json(state.notes));
+    app.post('/api/notes', async (req, res) => {
         try {
-            const scenario = new Scenario(req.body);
-            await fs.writeFile(path.join(SCENARIOS_DIR, `${scenario.id}.json`), JSON.stringify(scenario, null, 2));
-            state.scenarios.push(scenario);
-            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'create', data: scenario });
-            res.status(201).json(scenario);
-        } catch (e) { res.status(500).json({ message: 'Failed to create scenario.' }); }
+            const note = new Note(req.body);
+            await fs.writeFile(path.join(SCENARIOS_DIR, `${note.id}.json`), JSON.stringify(note, null, 2));
+            state.notes.push(note);
+            broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'create', data: note });
+            res.status(201).json(note);
+        } catch (e) { res.status(500).json({ message: 'Failed to create note.' }); }
     });
-    app.put('/api/scenarios/:id', async (req, res) => {
+    app.put('/api/notes/:id', async (req, res) => {
         try {
             const { id } = req.params;
-            const index = state.scenarios.findIndex(s => s.id === id);
-            if (index === -1) return res.status(404).json({ message: 'Scenario not found.' });
-            const updatedScenario = new Scenario({ ...req.body, id });
-            await fs.writeFile(path.join(SCENARIOS_DIR, `${id}.json`), JSON.stringify(updatedScenario, null, 2));
-            state.scenarios[index] = updatedScenario;
-            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'update', data: updatedScenario });
-            res.json(updatedScenario);
-        } catch (e) { res.status(500).json({ message: 'Failed to update scenario.' }); }
+            const index = state.notes.findIndex(s => s.id === id);
+            if (index === -1) return res.status(404).json({ message: 'Note not found.' });
+            const updatedNote = new Note({ ...req.body, id });
+            await fs.writeFile(path.join(SCENARIOS_DIR, `${id}.json`), JSON.stringify(updatedNote, null, 2));
+            state.notes[index] = updatedNote;
+            broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'update', data: updatedNote });
+            res.json(updatedNote);
+        } catch (e) { res.status(500).json({ message: 'Failed to update note.' }); }
     });
-    app.delete('/api/scenarios/:id', async (req, res) => {
+    app.delete('/api/notes/:id', async (req, res) => {
         try {
             const { id } = req.params;
-            if (!state.scenarios.some(s => s.id === id)) return res.status(404).json({ message: 'Scenario not found.' });
+            if (!state.notes.some(s => s.id === id)) return res.status(404).json({ message: 'Note not found.' });
             
             await fs.unlink(path.join(SCENARIOS_DIR, `${id}.json`));
-            state.scenarios = state.scenarios.filter(s => s.id !== id);
-            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'delete', data: { id } });
+            state.notes = state.notes.filter(s => s.id !== id);
+            broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'delete', data: { id } });
 
-            // Also remove this scenario from any chats that use it
+            // Also remove this note from any chats that use it
             const allChats = await loadJsonFilesFromDir(CHATS_DIR, Chat);
             for (const chat of allChats) {
-                const initialLength = chat.scenarios.length;
-                chat.scenarios = chat.scenarios.filter(s => (typeof s === 'string' ? s : s.id) !== id);
+                const initialLength = chat.notes.length;
+                chat.notes = chat.notes.filter(s => (typeof s === 'string' ? s : s.id) !== id);
 
-                if (chat.scenarios.length < initialLength) {
+                if (chat.notes.length < initialLength) {
                     await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
                     broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
                 }
             }
             res.status(204).send();
-        } catch (e) { res.status(500).json({ message: 'Failed to delete scenario.' }); }
+        } catch (e) { res.status(500).json({ message: 'Failed to delete note.' }); }
     });
 
     // Chats API
@@ -860,7 +860,7 @@ function initHttp() {
             const newChat = new Chat({
                 name: `[Branch from "${originalChat.name}"]`, // More descriptive name
                 participants: originalChat.participants,
-                scenarios: originalChat.scenarios, // Copy scenarios to branch
+                notes: originalChat.notes, // Copy notes to branch
                 parentId: originalChat.id, // Set parent ID
                 systemInstruction: originalChat.systemInstruction,
                 messages: originalChat.messages.slice(0, branchIndex + 1)
@@ -894,7 +894,7 @@ function initHttp() {
         if (!resourceType || !resourceId) {
             return res.status(400).json({ message: 'resourceType and resourceId are required.' });
         }
-        if (resourceType !== 'character' && resourceType !== 'scenario') {
+        if (resourceType !== 'character' && resourceType !== 'note') {
             return res.status(400).json({ message: 'Invalid resourceType.' });
         }
 
@@ -921,18 +921,18 @@ function initHttp() {
                 chat.participants[charIndex] = newChar.id; // Replace object with ID
                 newGlobalResource = newChar;
                 found = true;
-            } else if (resourceType === 'scenario') {
-                const scenarioIndex = chat.scenarios.findIndex(s => typeof s === 'object' && s.id === resourceId);
-                if (scenarioIndex === -1) return res.status(404).json({ message: 'Embedded scenario not found in chat.' });
+            } else if (resourceType === 'note') {
+                const noteIndex = chat.notes.findIndex(s => typeof s === 'object' && s.id === resourceId);
+                if (noteIndex === -1) return res.status(404).json({ message: 'Embedded note not found in chat.' });
 
-                const embeddedScenarioData = chat.scenarios[scenarioIndex];
-                const newScenario = new Scenario(embeddedScenarioData); // Assigns new permanent ID
+                const embeddedNoteData = chat.notes[noteIndex];
+                const newNote = new Note(embeddedNoteData); // Assigns new permanent ID
 
-                await fs.writeFile(path.join(SCENARIOS_DIR, `${newScenario.id}.json`), JSON.stringify(newScenario, null, 2));
+                await fs.writeFile(path.join(SCENARIOS_DIR, `${newNote.id}.json`), JSON.stringify(newNote, null, 2));
 
-                state.scenarios.push(newScenario);
-                chat.scenarios[scenarioIndex] = newScenario.id; // Replace object with ID
-                newGlobalResource = newScenario;
+                state.notes.push(newNote);
+                chat.notes[noteIndex] = newNote.id; // Replace object with ID
+                newGlobalResource = newNote;
                 found = true;
             }
 
@@ -1145,16 +1145,16 @@ function initHttp() {
             }
         }
 
-        const resolvedScenarios = [];
-        for (const s of chat.scenarios) {
+        const resolvedNotes = [];
+        for (const s of chat.notes) {
             if (typeof s === 'string') {
-                const scenario = state.scenarios.find(sc => sc.id === s);
-                if (scenario) resolvedScenarios.push(scenario);
+                const note = state.notes.find(sc => sc.id === s);
+                if (note) resolvedNotes.push(note);
             } else if (typeof s === 'object' && s.id && s.name) {
-                resolvedScenarios.push(new Scenario(s));
+                resolvedNotes.push(new Note(s));
             }
         }
-        return { characters: resolvedChars, scenarios: resolvedScenarios };
+        return { characters: resolvedChars, notes: resolvedNotes };
     }
 
     async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null, historyOverride = null, signal = null) {
@@ -1173,7 +1173,7 @@ function initHttp() {
         const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
         const chat = new Chat(JSON.parse(await fs.readFile(chatPath, 'utf-8')));
 
-        const { characters: chatCharacters, scenarios: activeScenarios } = await getResolvedChatContext(chat);
+        const { characters: chatCharacters, notes: activeNotes } = await getResolvedChatContext(chat);
 
         // Use the history override if provided, otherwise use the chat's actual messages.
         let historyForPrompt = historyOverride ? [...historyOverride] : [...chat.messages];
@@ -1196,7 +1196,7 @@ function initHttp() {
             allCharacters: state.characters, 
             userPersonaCharacterId, 
             chatCharacters,
-            activeScenarios
+            activeNotes
         };
 
         // 3. Assemble Prompt from Generation Config
@@ -1228,14 +1228,14 @@ function initHttp() {
                         fullPromptSequence.push(userMessageToAppend);
                     }
                 } else if (ps.stringId === SCENARIO_STRING.id) {
-                    if (activeScenarios.length > 0) {
-                        const scenarioContent = activeScenarios.map(s => {
+                    if (activeNotes.length > 0) {
+                        const noteContent = activeNotes.map(s => {
                             if (!s.description?.trim()) return null;
                             const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
-                            return `<scenario${describesAttr}>${escapeXML(s.description)}</scenario>`;
+                            return `<note${describesAttr}>${escapeXML(s.description)}</note>`;
                         }).filter(Boolean).join('\n\n');
-                        if (scenarioContent) {
-                            fullPromptSequence.push({ role: ps.role, content: scenarioContent });
+                        if (noteContent) {
+                            fullPromptSequence.push({ role: ps.role, content: noteContent });
                         }
                     }
                 } else {
@@ -1490,9 +1490,9 @@ function initHttp() {
                 return res.status(404).json({ message: 'Chat tree not found.' });
             }
 
-            // 3. Collect all unique referenced characters and scenarios
+            // 3. Collect all unique referenced characters and notes
             const exportedCharacters = new Map(); // Map of ID to full Character object
-            const exportedScenarios = new Map();   // Map of ID to full Scenario object
+            const exportedNotes = new Map();   // Map of ID to full Note object
 
             // Helper to add character to the map
             const addCharacterToExport = (charData) => {
@@ -1510,16 +1510,16 @@ function initHttp() {
                 }
             };
 
-            // Helper to add scenario to the map
-            const addScenarioToExport = (scenarioData) => {
-                if (scenarioData && !exportedScenarios.has(scenarioData.id)) {
-                    exportedScenarios.set(scenarioData.id, JSON.parse(JSON.stringify(scenarioData)));
+            // Helper to add note to the map
+            const addNoteToExport = (noteData) => {
+                if (noteData && !exportedNotes.has(noteData.id)) {
+                    exportedNotes.set(noteData.id, JSON.parse(JSON.stringify(noteData)));
                 }
             };
             
-            // Get all library characters and scenarios for lookup
+            // Get all library characters and notes for lookup
             const allLibraryCharacters = new Map(state.characters.map(c => [c.id, c]));
-            const allLibraryScenarios = new Map(state.scenarios.map(s => [s.id, s]));
+            const allLibraryNotes = new Map(state.notes.map(s => [s.id, s]));
 
             for (const chat of chatTree.values()) {
                 // Collect participants
@@ -1538,21 +1538,21 @@ function initHttp() {
                 }
                 chat.participants = newParticipants; // Update the chat's participants array
 
-                // Collect scenarios
-                const newScenarios = [];
-                for (const s of chat.scenarios) {
-                    let scenarioObj;
-                    if (typeof s === 'string') { // It's a reference to a library scenario
-                        scenarioObj = allLibraryScenarios.get(s);
-                    } else { // It's an embedded scenario object
-                        scenarioObj = new Scenario(s);
+                // Collect notes
+                const newNotes = [];
+                for (const s of chat.notes) {
+                    let noteObj;
+                    if (typeof s === 'string') { // It's a reference to a library note
+                        noteObj = allLibraryNotes.get(s);
+                    } else { // It's an embedded note object
+                        noteObj = new Note(s);
                     }
-                    if (scenarioObj) {
-                        addScenarioToExport(scenarioObj);
-                        newScenarios.push(scenarioObj); // Store as object in chat, not ID
+                    if (noteObj) {
+                        addNoteToExport(noteObj);
+                        newNotes.push(noteObj); // Store as object in chat, not ID
                     }
                 }
-                chat.scenarios = newScenarios; // Update the chat's scenarios array
+                chat.notes = newNotes; // Update the chat's notes array
 
                 // Collect characters from user messages
                 for (const msg of chat.messages) {
@@ -1571,9 +1571,9 @@ function initHttp() {
                 minervaFormat: "PackedChat",
                 version: "1.0",
                 exportedChatRootId: rootChatId,
-                chats: Object.fromEntries(chatTree), // Chat objects now have embedded participants/scenarios
+                chats: Object.fromEntries(chatTree), // Chat objects now have embedded participants/notes
                 characters: Object.fromEntries(exportedCharacters),
-                scenarios: Object.fromEntries(exportedScenarios),
+                notes: Object.fromEntries(exportedNotes),
             };
 
             // 5. Send to client
@@ -1612,7 +1612,7 @@ function initHttp() {
 
                 // Update parent/child relationships using the new ID map
                 newChat.parentId = chatData.parentId ? oldChatIdToNewChatIdMap[chatData.parentId] : null;
-                newChat.childChatIds = (chatData.childChatIds || []).map(id => oldIdToNewChatIdMap[id]).filter(Boolean);
+                newChat.childChatIds = (chatData.childChatIds || []).map(id => oldChatIdToNewChatIdMap[id]).filter(Boolean);
 
                 // This map will link old resource IDs from the file to new temp IDs for this chat
                 const resourceIdMap = {};
@@ -1626,8 +1626,8 @@ function initHttp() {
                     return p_obj; // Return the object with its new temporary ID
                 });
 
-                // Process scenarios: same logic as participants
-                newChat.scenarios = (chatData.scenarios || []).map(s_obj => {
+                // Process notes: same logic as participants
+                newChat.notes = (chatData.notes || []).map(s_obj => {
                     const oldResourceId = s_obj.id;
                     const newTempId = `temp-${uuidv4()}`;
                     resourceIdMap[oldResourceId] = newTempId;
@@ -1723,20 +1723,20 @@ async function updateCharacterIdReferences(oldId, newId) {
         }
     }
     
-    // 3. Update scenarios
-    const scenarioFiles = await glob(path.join(SCENARIOS_DIR, '*.json').replace(/\\/g, '/'));
-    for (const scenarioFile of scenarioFiles) {
+    // 3. Update notes
+    const noteFiles = await glob(path.join(SCENARIOS_DIR, '*.json').replace(/\\/g, '/'));
+    for (const noteFile of noteFiles) {
         try {
-            const scenarioData = JSON.parse(await fs.readFile(scenarioFile, 'utf-8'));
-            if (scenarioData.characterOverrides && scenarioData.characterOverrides[oldId]) {
-                scenarioData.characterOverrides[newId] = scenarioData.characterOverrides[oldId];
-                delete scenarioData.characterOverrides[oldId];
-                await fs.writeFile(scenarioFile, JSON.stringify(scenarioData, null, 2));
-                const scenarioInState = state.scenarios.find(s => s.id === scenarioData.id);
-                if (scenarioInState) scenarioInState.characterOverrides = scenarioData.characterOverrides;
+            const noteData = JSON.parse(await fs.readFile(noteFile, 'utf-8'));
+            if (noteData.characterOverrides && noteData.characterOverrides[oldId]) {
+                noteData.characterOverrides[newId] = noteData.characterOverrides[oldId];
+                delete noteData.characterOverrides[oldId];
+                await fs.writeFile(noteFile, JSON.stringify(noteData, null, 2));
+                const noteInState = state.notes.find(s => s.id === noteData.id);
+                if (noteInState) noteInState.characterOverrides = noteData.characterOverrides;
             }
         } catch (e) {
-            console.error(`Failed to update character ID in scenario file ${scenarioFile}:`, e);
+            console.error(`Failed to update character ID in note file ${noteFile}:`, e);
         }
     }
 }
@@ -1783,7 +1783,7 @@ class Chat {
     name = 'New Chat';
     messages = [];
     participants = []; // Array of string (ID) or object (embedded character)
-    scenarios = []; // Array of string (ID) or object (embedded scenario)
+    notes = []; // Array of string (ID) or object (embedded note)
     parentId = null;
     childChatIds = [];
     createdAt = new Date().toISOString();
@@ -1798,7 +1798,7 @@ class Chat {
             name: 'New Chat',
             messages: [],
             participants: [],
-            scenarios: [],
+            notes: [],
             parentId: null,
             childChatIds: [],
             createdAt: now,
@@ -1882,24 +1882,24 @@ const CHAT_HISTORY_STRING = new ReusableString({
 });
 
 const SCENARIO_STRING = new ReusableString({
-    id: 'system-scenario',
-    name: 'Scenario',
-    data: '[This will be replaced by the active scenarios content]',
+    id: 'system-note',
+    name: 'Note',
+    data: '[This will be replaced by the active notes content]',
     _rev: 1,
 });
 
-class Scenario {
+class Note {
     id = uuidv4();
-    name = 'New Scenario';
+    name = 'New Note';
     describes = '';
-    description = ''; // General scenario text
+    description = ''; // General note text
     characterOverrides = {}; // { [characterId]: "character-specific text" }
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
         Object.assign(this, {
             id: uuidv4(),
-            name: 'New Scenario',
+            name: 'New Note',
             describes: '',
             description: '',
             characterOverrides: {},

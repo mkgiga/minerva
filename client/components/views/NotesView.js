@@ -1,22 +1,23 @@
-// client/components/views/ScenariosView.js
+// client/components/views/NotesView.js
 import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier } from '../../client.js';
 import '../ItemList.js';
-import '../ScenarioEditor.js'; // Import the new component
+import '../NoteEditor.js'; // Import the new component
 
-class ScenariosView extends BaseComponent {
+class NotesView extends BaseComponent {
     #state = {
-        scenarios: [],
+        notes: [],
         allCharacters: [],
     };
-    #selectedScenario = null;
+
+    #selectedNote = null;
     #needsSave = false;
     #pendingSelectedId = null;
     #editor = null;
 
     constructor() {
         super();
-        this.handleBackToScenarios = this.handleBackToScenarios.bind(this);
+        this.handleBackToNotes = this.handleBackToNotes.bind(this);
         this.handleResourceChange = this.handleResourceChange.bind(this);
         this.handleItemAction = this.handleItemAction.bind(this);
         this.onSave = this.onSave.bind(this);
@@ -25,17 +26,17 @@ class ScenariosView extends BaseComponent {
     async connectedCallback() {
         this.render();
         this.itemList = this.shadowRoot.querySelector('item-list');
-        this.#editor = this.shadowRoot.querySelector('minerva-scenario-editor');
+        this.#editor = this.shadowRoot.querySelector('minerva-note-editor');
 
         // Listeners
         this.itemList.addEventListener('item-action', this.handleItemAction);
         this.shadowRoot.querySelector('#list-header').addEventListener('click', e => {
-            if (e.target.closest('[data-action="add"]')) this.handleScenarioAdd();
+            if (e.target.closest('[data-action="add"]')) this.handleNoteAdd();
         });
-        this.shadowRoot.querySelector('#back-to-scenarios-btn').addEventListener('click', this.handleBackToScenarios);
+        this.shadowRoot.querySelector('#back-to-notes-btn').addEventListener('click', this.handleBackToNotes);
         
-        this.shadowRoot.querySelector('#save-scenario-btn').addEventListener('click', () => this.#editor.shadowRoot.querySelector('form').requestSubmit());
-        this.#editor.addEventListener('scenario-save', this.onSave);
+        this.shadowRoot.querySelector('#save-note-btn').addEventListener('click', () => this.#editor.shadowRoot.querySelector('form').requestSubmit());
+        this.#editor.addEventListener('note-save', this.onSave);
         this.#editor.addEventListener('change', () => this.#setNeedsSave(true));
 
         window.addEventListener('minerva-resource-changed', this.handleResourceChange);
@@ -49,33 +50,33 @@ class ScenariosView extends BaseComponent {
         this.itemList.removeEventListener('item-action', this.handleItemAction);
     }
     
-    setInitialState({ selectedScenarioId }) {
-        if (!selectedScenarioId) return;
-        this._pendingSelectedId = selectedScenarioId;
+    setInitialState({ selectedNoteId }) {
+        if (!selectedNoteId) return;
+        this._pendingSelectedId = selectedNoteId;
     }
 
     async fetchData() {
         try {
-            const [scenarios, characters] = await Promise.all([
-                api.get('/api/scenarios'),
+            const [notes, characters] = await Promise.all([
+                api.get('/api/notes'),
                 api.get('/api/characters')
             ]);
-            this.#state.scenarios = scenarios;
+            this.#state.notes = notes;
             this.#state.allCharacters = characters;
             this.#editor.allCharacters = characters;
             
             if (this._pendingSelectedId) {
-                const scenarioToSelect = this.#state.scenarios.find(s => s.id === this._pendingSelectedId);
-                if (scenarioToSelect) {
-                    this.#performSelection(scenarioToSelect);
+                const noteToSelect = this.#state.notes.find(s => s.id === this._pendingSelectedId);
+                if (noteToSelect) {
+                    this.#performSelection(noteToSelect);
                 }
                 this._pendingSelectedId = null;
             }
 
             this.#updateView();
         } catch (error) {
-            console.error("Failed to fetch scenario data:", error);
-            notifier.show({ header: 'Error', message: 'Could not load scenario data.' });
+            console.error("Failed to fetch note data:", error);
+            notifier.show({ header: 'Error', message: 'Could not load note data.' });
         }
     }
     
@@ -91,25 +92,25 @@ class ScenariosView extends BaseComponent {
             return;
         }
 
-        if (resourceType === 'scenario') {
+        if (resourceType === 'note') {
             let stateChanged = false;
-            let selectedScenarioWasDeleted = false;
+            let selectedNoteWasDeleted = false;
             
             switch (eventType) {
                 case 'create':
-                    if (!this.#state.scenarios.some(s => s.id === data.id)) {
-                        this.#state.scenarios.push(data);
+                    if (!this.#state.notes.some(s => s.id === data.id)) {
+                        this.#state.notes.push(data);
                     }
-                    this.#selectedScenario = JSON.parse(JSON.stringify(data));
+                    this.#selectedNote = JSON.parse(JSON.stringify(data));
                     this.#setNeedsSave(false);
                     stateChanged = true;
                     break;
                 case 'update': {
-                    const index = this.#state.scenarios.findIndex(s => s.id === data.id);
+                    const index = this.#state.notes.findIndex(s => s.id === data.id);
                     if (index > -1) {
-                        this.#state.scenarios[index] = data;
-                        if (this.#selectedScenario?.id === data.id) {
-                            this.#selectedScenario = JSON.parse(JSON.stringify(data));
+                        this.#state.notes[index] = data;
+                        if (this.#selectedNote?.id === data.id) {
+                            this.#selectedNote = JSON.parse(JSON.stringify(data));
                             this.#setNeedsSave(false);
                         }
                         stateChanged = true;
@@ -117,13 +118,13 @@ class ScenariosView extends BaseComponent {
                     break;
                 }
                 case 'delete': {
-                    const initialLength = this.#state.scenarios.length;
-                    if (this.#selectedScenario?.id === data.id) {
-                        this.#selectedScenario = null;
-                        selectedScenarioWasDeleted = true;
+                    const initialLength = this.#state.notes.length;
+                    if (this.#selectedNote?.id === data.id) {
+                        this.#selectedNote = null;
+                        selectedNoteWasDeleted = true;
                     }
-                    this.#state.scenarios = this.#state.scenarios.filter(s => s.id !== data.id);
-                    if (this.#state.scenarios.length < initialLength) {
+                    this.#state.notes = this.#state.notes.filter(s => s.id !== data.id);
+                    if (this.#state.notes.length < initialLength) {
                         stateChanged = true;
                     }
                     break;
@@ -131,8 +132,8 @@ class ScenariosView extends BaseComponent {
             }
             if (stateChanged) {
                 const hasFocus = this.#editor.shadowRoot.activeElement;
-                if (hasFocus && !selectedScenarioWasDeleted) {
-                    this.#renderScenarioList();
+                if (hasFocus && !selectedNoteWasDeleted) {
+                    this.#renderNoteList();
                 } else {
                     this.#updateView();
                 }
@@ -142,21 +143,21 @@ class ScenariosView extends BaseComponent {
 
     handleItemAction(event) {
         const { id, action } = event.detail;
-        const scenario = this.#state.scenarios.find(s => s.id === id);
-        if (!scenario) return;
+        const note = this.#state.notes.find(s => s.id === id);
+        if (!note) return;
 
         switch(action) {
             case 'select':
-                this.handleScenarioSelect(scenario);
+                this.handleNoteSelect(note);
                 break;
             case 'delete':
-                this.handleScenarioDelete(scenario);
+                this.handleNoteDelete(note);
                 break;
         }
     }
 
-    handleScenarioSelect(item) {
-        if (this.#selectedScenario?.id === item.id) return;
+    handleNoteSelect(item) {
+        if (this.#selectedNote?.id === item.id) return;
 
         if (this.#needsSave) {
             modal.confirm({
@@ -172,31 +173,31 @@ class ScenariosView extends BaseComponent {
     }
 
     #performSelection(item) {
-        this.#selectedScenario = JSON.parse(JSON.stringify(item));
+        this.#selectedNote = JSON.parse(JSON.stringify(item));
         this.#setNeedsSave(false);
         this.#updateView();
     }
 
-    async handleScenarioAdd() {
+    async handleNoteAdd() {
         try {
-            await api.post('/api/scenarios', { name: 'New Scenario', description: '' });
-            notifier.show({ message: 'New scenario created.' });
+            await api.post('/api/notes', { name: 'New Note', description: '' });
+            notifier.show({ message: 'New note created.' });
         } catch (error) {
-            console.error('Failed to add scenario:', error);
-            notifier.show({ header: 'Error', message: 'Failed to create a new scenario.' });
+            console.error('Failed to add note:', error);
+            notifier.show({ header: 'Error', message: 'Failed to create a new note.' });
         }
     }
     
-    handleScenarioDelete(item) {
+    handleNoteDelete(item) {
         modal.confirm({
-            title: 'Delete Scenario',
+            title: 'Delete Note',
             content: `Are you sure you want to delete "${item.name}"? This will also remove it from any chats that use it.`,
             confirmLabel: 'Delete',
             confirmButtonClass: 'button-danger',
             onConfirm: async () => {
                 try {
-                    await api.delete(`/api/scenarios/${item.id}`);
-                    notifier.show({ header: 'Scenario Deleted', message: `"${item.name}" was removed.` });
+                    await api.delete(`/api/notes/${item.id}`);
+                    notifier.show({ header: 'Note Deleted', message: `"${item.name}" was removed.` });
                 } catch (error) {
                     notifier.show({ header: 'Error', message: `Failed to delete "${item.name}".` });
                 }
@@ -205,19 +206,19 @@ class ScenariosView extends BaseComponent {
     }
 
     async onSave(event) {
-        if (!this.#selectedScenario || !this.#needsSave) return;
-        const { scenario } = event.detail;
+        if (!this.#selectedNote || !this.#needsSave) return;
+        const { note } = event.detail;
         
         try {
-            await api.put(`/api/scenarios/${scenario.id}`, scenario);
-            notifier.show({ type: 'good', message: 'Scenario saved.' });
+            await api.put(`/api/notes/${note.id}`, note);
+            notifier.show({ type: 'good', message: 'Note saved.' });
             this.#setNeedsSave(false);
         } catch (error) {
-            notifier.show({ type: 'bad', header: 'Error', message: 'Could not save scenario.' });
+            notifier.show({ type: 'bad', header: 'Error', message: 'Could not save note.' });
         }
     }
     
-    handleBackToScenarios() {
+    handleBackToNotes() {
         if (this.#needsSave) {
             modal.confirm({
                 title: 'Unsaved Changes',
@@ -225,13 +226,13 @@ class ScenariosView extends BaseComponent {
                 confirmLabel: 'Discard Changes',
                 confirmButtonClass: 'button-danger',
                 onConfirm: () => {
-                    this.#selectedScenario = null;
+                    this.#selectedNote = null;
                     this.#setNeedsSave(false);
                     this.#updateView();
                 }
             });
         } else {
-            this.#selectedScenario = null;
+            this.#selectedNote = null;
             this.#updateView();
         }
     }
@@ -239,7 +240,7 @@ class ScenariosView extends BaseComponent {
     #setNeedsSave(needsSave) {
         this.#needsSave = needsSave;
         const saveIndicator = this.shadowRoot.querySelector('.save-indicator');
-        const saveButton = this.shadowRoot.querySelector('#save-scenario-btn');
+        const saveButton = this.shadowRoot.querySelector('#save-note-btn');
         if (saveIndicator) {
             saveIndicator.style.opacity = needsSave ? '1' : '0';
         }
@@ -255,11 +256,11 @@ class ScenariosView extends BaseComponent {
         const mobileHeader = this.shadowRoot.querySelector('.mobile-editor-header');
 
         if (isMobile) {
-            if (this.#selectedScenario) {
+            if (this.#selectedNote) {
                 panelLeft.style.display = 'none';
                 panelMain.style.display = 'flex';
                 mobileHeader.style.display = 'flex';
-                this.shadowRoot.querySelector('#editor-title-mobile').textContent = this.#selectedScenario.name || 'Edit Scenario';
+                this.shadowRoot.querySelector('#editor-title-mobile').textContent = this.#selectedNote.name || 'Edit Note';
             } else {
                 panelLeft.style.display = 'flex';
                 panelMain.style.display = 'none';
@@ -270,15 +271,15 @@ class ScenariosView extends BaseComponent {
             mobileHeader.style.display = 'none';
         }
 
-        this.#editor.scenario = this.#selectedScenario;
-        this.#renderScenarioList();
+        this.#editor.note = this.#selectedNote;
+        this.#renderNoteList();
     }
 
-    #renderScenarioList() {
+    #renderNoteList() {
         if (!this.itemList) return;
-        const sortedScenarios = [...this.#state.scenarios].sort((a, b) => a.name.localeCompare(b.name));
-        this.itemList.innerHTML = sortedScenarios.map(s => {
-            const isSelected = this.#selectedScenario?.id === s.id;
+        const sortedNotes = [...this.#state.notes].sort((a, b) => a.name.localeCompare(b.name));
+        this.itemList.innerHTML = sortedNotes.map(s => {
+            const isSelected = this.#selectedNote?.id === s.id;
             return `
                 <li data-id="${s.id}" class="${isSelected ? 'selected' : ''}">
                     <div class="item-name">${s.name}</div>
@@ -295,24 +296,24 @@ class ScenariosView extends BaseComponent {
             <div style="display: contents;">
                 <div class="panel-main">
                     <header class="mobile-editor-header">
-                        <button id="back-to-scenarios-btn" class="icon-btn" title="Back to list"><span class="material-icons">arrow_back</span></button>
+                        <button id="back-to-notes-btn" class="icon-btn" title="Back to list"><span class="material-icons">arrow_back</span></button>
                         <h2 id="editor-title-mobile">Editor</h2>
                     </header>
                     <div class="editor-container">
                         <header class="main-editor-header">
                              <div class="header-controls">
                                 <span class="save-indicator">Unsaved changes</span>
-                                <button type="button" id="save-scenario-btn" class="button-primary" disabled>Save</button>
+                                <button type="button" id="save-note-btn" class="button-primary" disabled>Save</button>
                             </div>
                         </header>
-                        <minerva-scenario-editor></minerva-scenario-editor>
+                        <minerva-note-editor></minerva-note-editor>
                     </div>
                 </div>
                 <div class="panel-left">
                     <header id="list-header">
-                        <h3>Scenarios</h3>
+                        <h3>Notes</h3>
                         <div class="header-actions">
-                            <button class="icon-button" data-action="add" title="Add New Scenario">
+                            <button class="icon-button" data-action="add" title="Add New Note">
                                 <span class="material-icons">add</span>
                             </button>
                         </div>
@@ -359,8 +360,8 @@ class ScenariosView extends BaseComponent {
                 border-bottom: 1px solid var(--bg-3); flex-shrink: 0; gap: var(--spacing-md);
             }
             .mobile-editor-header h2 { margin: 0; font-size: 1.1rem; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            #back-to-scenarios-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
-            #back-to-scenarios-btn:hover { color: var(--text-primary); }
+            #back-to-notes-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
+            #back-to-notes-btn:hover { color: var(--text-primary); }
 
             .editor-container { padding: var(--spacing-lg); overflow: hidden; height: 100%; display: flex; flex-direction: column; }
             .main-editor-header {
@@ -372,9 +373,9 @@ class ScenariosView extends BaseComponent {
             }
             .header-controls { display: flex; align-items: center; gap: var(--spacing-md); }
             .save-indicator { font-size: var(--font-size-sm); color: var(--accent-warn); opacity: 0; transition: opacity 0.3s; }
-            #save-scenario-btn:disabled { background-color: var(--bg-2); color: var(--text-disabled); cursor: not-allowed; opacity: 1; }
+            #save-note-btn:disabled { background-color: var(--bg-2); color: var(--text-disabled); cursor: not-allowed; opacity: 1; }
             
-            minerva-scenario-editor {
+            minerva-note-editor {
                 flex-grow: 1;
                 overflow-y: auto;
             }
@@ -389,4 +390,4 @@ class ScenariosView extends BaseComponent {
         `;
     }
 }
-customElements.define('scenarios-view', ScenariosView);
+customElements.define('notes-view', NotesView);

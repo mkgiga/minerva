@@ -116,7 +116,7 @@ export class AdventureChatMode extends BaseChatMode {
         }
         
         console.warn("XML parsing failed, attempting repair. Error:", parserError.textContent);
-        
+
         // 3. Repair Logic
         const tagNames = [
             "output", "action", "show", "text", "talk", "yell", "whisper", 
@@ -1417,7 +1417,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-action:not(:last-child) { border-bottom: 1px dashed var(--bg-3); }
             .adventure-action:nth-child(2) { border-top: 1px dashed var(--bg-3); }
             .adventure-dialogue { display: grid; grid-template-areas: "avatar name" "avatar content"; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; gap: 0 var(--spacing-md); }
-            .adventure-speaker-avatar { border-radius: var(--radius-md); object-fit: cover; background-color: var(--bg-3); grid-area: avatar; column-span: 1; height: 192px; width: 128px; cursor: pointer; } /* NEW: Added cursor: pointer */
+            .adventure-speaker-avatar { border-radius: var(--radius-md); object-fit: cover; background-color: var(--bg-3); grid-area: avatar; column-span: 1; height: 128px; width: 96px; cursor: pointer; } /* NEW: Added cursor: pointer */
             .adventure-dialogue-content { grid-area: content; }
             .adventure-speaker-name { font-size: 1.2rem; font-weight: 600; color: var(--text-primary); grid-area: name; padding-bottom: var(--spacing-xs); border-bottom: 1px solid var(--bg-3); margin-bottom: var(--spacing-sm); }
             .adventure-speech { line-height: 1.6; }
@@ -1453,7 +1453,7 @@ export class AdventureChatMode extends BaseChatMode {
                 .adventure-block { margin-bottom: var(--adventure-block-gap, var(--spacing-sm)); padding-bottom: var(--spacing-sm); padding-top: 0; }
                 .adventure-action { padding-left: var(--spacing-xs); padding-right: var(--spacing-xs); font-size: var(--font-size-md); }
                 .adventure-dialogue { gap: var(--spacing-xs) var(--spacing-sm); grid-template-columns: auto 1fr; }
-                .adventure-speaker-avatar { width: 64px; height: 96px; border-radius: var(--radius-sm); }
+                .adventure-speaker-avatar { width: 48px; height: 64px; border-radius: var(--radius-sm); }
                 .adventure-speaker-name { font-size: 1.1rem; padding-bottom: var(--spacing-xs); margin-bottom: var(--spacing-xs); }
                 .adventure-speech { font-size: var(--font-size-md); }
                 .adventure-prompt { padding: 0; }

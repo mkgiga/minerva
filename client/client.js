@@ -5,7 +5,7 @@ import './components/views/ConnectionConfigView.js';
 import './components/views/GenerationConfigView.js';
 import './components/views/UserPreferencesView.js';
 import './components/views/StringsView.js';
-import './components/views/ScenariosView.js';
+import './components/views/NotesView.js';
 import './components/views/modes/index.js';
 import { BaseComponent } from './components/BaseComponent.js';
 import './components/Notification.js';
@@ -255,9 +255,9 @@ class MinervaApp extends BaseComponent {
                         <span class="material-icons">text_fields</span>
                         <span class="btn-label">Strings</span>
                     </button>
-                     <button class="nav-button" data-view="scenarios" title="Scenarios">
+                     <button class="nav-button" data-view="notes" title="Notes">
                         <span class="material-icons">menu_book</span>
-                        <span class="btn-label">Scenarios</span>
+                        <span class="btn-label">Notes</span>
                     </button>
                     <button class="nav-button" data-view="characters" title="Characters">
                         <span class="material-icons">people</span>
@@ -270,7 +270,7 @@ class MinervaApp extends BaseComponent {
                 </aside>
                 <div class="main-view-wrapper">
                     <characters-view data-view="characters" style="display: none;"></characters-view>
-                    <scenarios-view data-view="scenarios" style="display: none;"></scenarios-view>
+                    <notes-view data-view="notes" style="display: none;"></notes-view>
                     <main-chat-view data-view="chat" style="display: none;"></main-chat-view>
                     <connection-config-view data-view="connection-config" style="display: none;"></connection-config-view>
                     <generation-config-view data-view="generation-config" style="display: none;"></generation-config-view>
@@ -350,7 +350,7 @@ class MinervaApp extends BaseComponent {
             case 'connection-config':
             case 'generation-config':
             case 'strings':
-            case 'scenarios':
+            case 'notes':
                 return ''; // Default two-panel layout (left and main)
             default:
                 return '';
