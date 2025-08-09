@@ -22,7 +22,6 @@ const PORT = serverConfig.server.port || 8077;
 const STATIC_DIR = serverConfig.data.static_dir || 'client';
 const DATA_DIR = serverConfig.data.data_dir || 'data';
 const CHARACTERS_DIR = path.join(DATA_DIR, 'characters');
-const REUSABLE_STRINGS_DIR = path.join(DATA_DIR, 'reusable_strings');
 const GENERATION_CONFIGS_DIR = path.join(DATA_DIR, 'generation_configs');
 const CONNECTION_CONFIGS_DIR = path.join(DATA_DIR, 'connection_configs');
 const CHATS_DIR = path.join(DATA_DIR, 'chats');
@@ -112,7 +111,6 @@ const galleryUpload = multer({ storage: createCharacterStorage('images') });
 const state = {
     connectionConfigs: [],
     characters: [],
-    reusableStrings: [],
     generationConfigs: [],
     chats: [],
     notes: [],
@@ -124,14 +122,13 @@ async function main() {
     
     // Create data directories early so migrations can access them.
     await fs.mkdir(CHARACTERS_DIR, { recursive: true });
-    await fs.mkdir(REUSABLE_STRINGS_DIR, { recursive: true });
     await fs.mkdir(GENERATION_CONFIGS_DIR, { recursive: true });
     await fs.mkdir(CONNECTION_CONFIGS_DIR, { recursive: true });
     await fs.mkdir(CHATS_DIR, { recursive: true });
     await fs.mkdir(SCENARIOS_DIR, { recursive: true });
     
     // Run migrations before loading any data.
-    await runMigrations({ CHARACTERS_DIR, REUSABLE_STRINGS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR, SCENARIOS_DIR });
+    await runMigrations({ CHARACTERS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR, SCENARIOS_DIR });
 
     await initializeData();
     initHttp();
@@ -146,11 +143,6 @@ async function initializeData() {
         state.characters = await loadCharacters();
         state.chats = (await loadJsonFilesFromDir(CHATS_DIR, Chat)).map(chatData => new Chat(chatData));
         state.notes = await loadJsonFilesFromDir(SCENARIOS_DIR, Note);
-        
-        // Load user-created strings and prepend the system-defined ones.
-        const userReusableStrings = await loadJsonFilesFromDir(REUSABLE_STRINGS_DIR, ReusableString);
-        state.reusableStrings = [CHAT_HISTORY_STRING, SCENARIO_STRING, ...userReusableStrings];
-
         state.generationConfigs = await loadJsonFilesFromDir(GENERATION_CONFIGS_DIR, GenerationConfig);
         state.connectionConfigs = await loadJsonFilesFromDir(CONNECTION_CONFIGS_DIR, ConnectionConfig);
 
@@ -159,7 +151,6 @@ async function initializeData() {
         console.log(`- ${state.chats.length} chats`);
         console.log(`- ${state.notes.length} notes`);
         console.log(`- ${state.connectionConfigs.length} connection configs`);
-        console.log(`- ${state.reusableStrings.length} reusable strings (including system)`);
         console.log(`- ${state.generationConfigs.length} generation configs`);
         console.log(`- Active Connection ID: ${state.settings.activeConnectionConfigId || 'None'}`);
         console.log(`- Active Gen. Config ID: ${state.settings.activeGenerationConfigId || 'None'}`);
@@ -1082,50 +1073,6 @@ function initHttp() {
         res.json(state.settings);
     });
 
-    // Reusable Strings API
-    app.get('/api/reusable-strings', (req, res) => res.json(state.reusableStrings));
-    app.post('/api/reusable-strings', async (req, res) => {
-        const newString = new ReusableString(req.body);
-        await fs.writeFile(path.join(REUSABLE_STRINGS_DIR, `${newString.id}.json`), JSON.stringify(newString, null, 2));
-        state.reusableStrings.push(newString);
-        broadcastEvent('resourceChange', { resourceType: 'reusable_string', eventType: 'create', data: newString });
-        res.status(201).json(newString);
-    });
-    app.put('/api/reusable-strings/:id', async (req, res) => {
-        const { id } = req.params;
-        if (id === CHAT_HISTORY_STRING.id || id === SCENARIO_STRING.id) {
-            return res.status(403).json({ message: 'System strings are not editable.' });
-        }
-        const index = state.reusableStrings.findIndex(s => s.id === id);
-        if (index === -1) return res.status(404).json({ message: 'String not found.' });
-        const updatedString = new ReusableString({ ...req.body, id });
-        await fs.writeFile(path.join(REUSABLE_STRINGS_DIR, `${id}.json`), JSON.stringify(updatedString, null, 2));
-        state.reusableStrings[index] = updatedString;
-        broadcastEvent('resourceChange', { resourceType: 'reusable_string', eventType: 'update', data: updatedString });
-        res.json(updatedString);
-    });
-    app.delete('/api/reusable-strings/:id', async (req, res) => {
-        const { id } = req.params;
-        if (id === CHAT_HISTORY_STRING.id || id === SCENARIO_STRING.id) {
-            return res.status(403).json({ message: 'System strings cannot be deleted.' });
-        }
-        if (!state.reusableStrings.some(s => s.id === id)) return res.status(404).json({ message: 'String not found.' });
-        await fs.unlink(path.join(REUSABLE_STRINGS_DIR, `${id}.json`));
-        state.reusableStrings = state.reusableStrings.filter(s => s.id !== id);
-        broadcastEvent('resourceChange', { resourceType: 'reusable_string', eventType: 'delete', data: { id } });
-
-        // Also remove this string from any generation configs that use it
-        for (const config of state.generationConfigs) {
-            const initialLength = config.promptStrings.length;
-            config.promptStrings = config.promptStrings.filter(ps => ps.stringId !== id);
-            if (config.promptStrings.length < initialLength) {
-                // If we removed something, save the config and broadcast the change
-                await fs.writeFile(path.join(GENERATION_CONFIGS_DIR, `${config.id}.json`), JSON.stringify(config, null, 2));
-                broadcastEvent('resourceChange', { resourceType: 'generation_config', eventType: 'update', data: config });
-            }
-        }
-        res.status(204).send();
-    });
     
     // Prompting API
     function sendSse(res, event, data) {
@@ -1215,83 +1162,16 @@ function initHttp() {
                 generationParameters = genConfig.parameters[config.adapter];
             }
             
-            // NEW PROMPT ASSEMBLY LOGIC
+            // Add the generation config's system prompt to system parts
+            if (genConfig.systemPrompt) {
+                systemParts.push(resolveMacros(genConfig.systemPrompt, macroContext));
+            }
+        }
 
-            // 1. Build a flat list of all message parts, including chat history where the placeholder is.
-            let fullPromptSequence = [];
-            const hasHistoryPlaceholder = genConfig.promptStrings.some(ps => ps.stringId === CHAT_HISTORY_STRING.id);
-
-            for (const ps of genConfig.promptStrings) {
-                if (ps.stringId === CHAT_HISTORY_STRING.id) {
-                    fullPromptSequence.push(...historyForPrompt);
-                    if (userMessageToAppend) {
-                        fullPromptSequence.push(userMessageToAppend);
-                    }
-                } else if (ps.stringId === SCENARIO_STRING.id) {
-                    if (activeNotes.length > 0) {
-                        const noteContent = activeNotes.map(s => {
-                            if (!s.description?.trim()) return null;
-                            const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
-                            return `<note${describesAttr}>${escapeXML(s.description)}</note>`;
-                        }).filter(Boolean).join('\n\n');
-                        if (noteContent) {
-                            fullPromptSequence.push({ role: ps.role, content: noteContent });
-                        }
-                    }
-                } else {
-                    const reusableString = state.reusableStrings.find(s => s.id === ps.stringId);
-                    if (reusableString) {
-                        const resolvedContent = resolveMacros(reusableString.data, macroContext);
-                        if (resolvedContent) {
-                            fullPromptSequence.push({ role: ps.role, content: resolvedContent });
-                        }
-                    }
-                }
-            }
-            
-            // Fallback: If no history placeholder was in the sequence, append history and user message at the end.
-            if (!hasHistoryPlaceholder) {
-                fullPromptSequence.push(...historyForPrompt);
-                if (userMessageToAppend) {
-                    fullPromptSequence.push(userMessageToAppend);
-                }
-            }
-
-            // 2. Separate system messages and prepare the main message list.
-            for (const msg of fullPromptSequence) {
-                if (msg.role === 'system') {
-                    systemParts.push(msg.content);
-                } else {
-                    finalMessageList.push({ ...msg }); // Add non-system messages
-                }
-            }
-            
-            // 3. Merge consecutive messages in the final list if the flag is set.
-            if (genConfig.mergeConsecutiveStrings && finalMessageList.length > 1) {
-                const mergedList = [];
-                if (finalMessageList.length > 0) {
-                    let currentGroup = { ...finalMessageList[0] };
-    
-                    for (let i = 1; i < finalMessageList.length; i++) {
-                        const nextMsg = finalMessageList[i];
-                        if (nextMsg.role === currentGroup.role) {
-                            currentGroup.content += '\n\n' + nextMsg.content;
-                        } else {
-                            mergedList.push(currentGroup);
-                            currentGroup = { ...nextMsg };
-                        }
-                    }
-                    mergedList.push(currentGroup); // Add the last group
-                    finalMessageList = mergedList;
-                }
-            }
-
-        } else {
-             // Default behavior if no generation config is active
-             finalMessageList.push(...historyForPrompt);
-             if (userMessageToAppend) {
-                finalMessageList.push(userMessageToAppend);
-            }
+        // Always include chat history and user message in the final message list
+        finalMessageList.push(...historyForPrompt);
+        if (userMessageToAppend) {
+            finalMessageList.push(userMessageToAppend);
         }
 
         const resolvedSystemInstruction = systemParts.join('\n\n');
@@ -1859,34 +1739,6 @@ class ConnectionConfig {
     toJSON() { return { id: this.id, name: this.name, adapter: this.adapter, url: this.url, apiKey: this.apiKey, _rev: this._rev }; }
 }
 
-class ReusableString {
-    id = uuidv4();
-    name = 'Untitled String';
-    data = '';
-    _rev = CURRENT_REV;
-
-    constructor({ id = uuidv4(), name = 'Untitled String', data = '', _rev = CURRENT_REV }) {
-        this.id = id;
-        this.name = name;
-        this.data = data;
-        this._rev = _rev;
-    }
-}
-
-// System-Defined Constants
-const CHAT_HISTORY_STRING = new ReusableString({
-    id: 'system-chat-history',
-    name: 'Chat History',
-    data: '[This will be replaced by the chat conversation history]',
-    _rev: 1, // System strings should be pinned to a revision
-});
-
-const SCENARIO_STRING = new ReusableString({
-    id: 'system-note',
-    name: 'Note',
-    data: '[This will be replaced by the active notes content]',
-    _rev: 1,
-});
 
 class Note {
     id = uuidv4();
@@ -1911,18 +1763,16 @@ class Note {
 class GenerationConfig {
     id = uuidv4();
     name = 'New Generation Config';
-    promptStrings = []; // Array of { stringId: string, role: string }
+    systemPrompt = ''; // Unified system prompt with macro support
     parameters = {}; // e.g. { v1: { temperature: 0.7 }, gemini: { temperature: 0.8 } }
-    mergeConsecutiveStrings = false;
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
         Object.assign(this, {
             id: uuidv4(),
             name: 'New Generation Config',
-            promptStrings: [],
+            systemPrompt: '',
             parameters: {},
-            mergeConsecutiveStrings: false,
             _rev: CURRENT_REV,
         }, data);
     }

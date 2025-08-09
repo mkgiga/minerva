@@ -7,7 +7,6 @@ import "../SchemaForm.js";
 
 class GenerationConfigView extends BaseComponent {
     #generationConfigs = [];
-    #reusableStrings = [];
     #selectedGenConfig = null;
     #activeConnection = null;
     #adapterParamSchemas = {};
@@ -44,16 +43,14 @@ class GenerationConfigView extends BaseComponent {
     // Data Fetching
     async #fetchData() {
         try {
-            const [genConfigs, strings, settings, connections, paramSchemas] =
+            const [genConfigs, settings, connections, paramSchemas] =
                 await Promise.all([
                     api.get("/api/generation-configs"),
-                    api.get("/api/reusable-strings"),
                     api.get("/api/settings"),
                     api.get("/api/connection-configs"),
                     api.get("/api/adapters/generation-schemas"),
                 ]);
             this.#generationConfigs = genConfigs;
-            this.#reusableStrings = strings;
             this.#adapterParamSchemas = paramSchemas;
             this.#activeGenConfigId = settings.activeGenerationConfigId;
             if (settings.activeConnectionConfigId) {
@@ -95,113 +92,24 @@ class GenerationConfigView extends BaseComponent {
         this.shadowRoot
             .querySelector("#back-to-configs-btn")
             .addEventListener("click", () => this.#handleBackToConfigs());
-        this.shadowRoot
-            .querySelector("#add-string-btn")
-            .addEventListener("click", () => this.#openAddStringModal());
 
-        // Listen for changes on the name input and the schema form directly
+        // Listen for changes on form inputs
         this.shadowRoot
             .querySelector("#gen-config-name")
             .addEventListener("input", () => this.#setNeedsSave(true));
         this.shadowRoot
-            .querySelector("schema-form")
+            .querySelector("#system-prompt-input")
             .addEventListener("change", () => this.#setNeedsSave(true));
         this.shadowRoot
-            .querySelector("#merge-strings-checkbox")
+            .querySelector("schema-form")
             .addEventListener("change", () => this.#setNeedsSave(true));
-
-        const promptStringsList = this.shadowRoot.querySelector(
-            "#prompt-strings-list"
-        );
-        promptStringsList.addEventListener("click", (e) => {
-            const button = e.target.closest("button[data-action]");
-            if (!button || !this.#selectedGenConfig) return;
-
-            e.stopPropagation();
-            const action = button.dataset.action;
-            const index = parseInt(button.dataset.index, 10);
-
-            const promptStrings = this.#selectedGenConfig.promptStrings;
-
-            if (action === "remove-string") {
-                promptStrings.splice(index, 1);
-            } else if (action === "move-string-up" && index > 0) {
-                [promptStrings[index], promptStrings[index - 1]] = [
-                    promptStrings[index - 1],
-                    promptStrings[index],
-                ];
-            } else if (
-                action === "move-string-down" &&
-                index < promptStrings.length - 1
-            ) {
-                [promptStrings[index], promptStrings[index + 1]] = [
-                    promptStrings[index + 1],
-                    promptStrings[index],
-                ];
-            } else if (action === "edit-string") {
-                const stringId = button.dataset.stringId;
-                this.dispatch("navigate-to-view", {
-                    view: "strings",
-                    state: { selectedStringId: stringId },
-                });
-            }
-            this.#setNeedsSave(true);
-            this.#renderPromptStringsList();
-        });
-
-        promptStringsList.addEventListener("change", (e) => {
-            if (e.target.classList.contains("role-select")) {
-                const index = parseInt(e.target.dataset.index, 10);
-                const newRole = e.target.value;
-                this.#selectedGenConfig.promptStrings[index].role = newRole;
-                this.#setNeedsSave(true);
-                this.#renderPromptStringsList();
-            }
-        });
     }
 
     #handleResourceChange(event) {
         const detail = event.detail;
         let needsFullUpdate = false;
 
-        if (detail.resourceType === "reusable_string") {
-            let stringsChanged = false;
-            switch (detail.eventType) {
-                case "create":
-                    if (
-                        !this.#reusableStrings.some(
-                            (s) => s.id === detail.data.id
-                        )
-                    ) {
-                        this.#reusableStrings.push(detail.data);
-                        stringsChanged = true;
-                    }
-                    break;
-                case "update": {
-                    const index = this.#reusableStrings.findIndex(
-                        (s) => s.id === detail.data.id
-                    );
-                    if (index > -1) {
-                        this.#reusableStrings[index] = detail.data;
-                        stringsChanged = true;
-                    }
-                    break;
-                }
-                case "delete": {
-                    const initialLength = this.#reusableStrings.length;
-                    this.#reusableStrings = this.#reusableStrings.filter(
-                        (s) => s.id !== detail.data.id
-                    );
-                    if (this.#reusableStrings.length < initialLength) {
-                        stringsChanged = true;
-                    }
-                    break;
-                }
-            }
-            if (stringsChanged) {
-                this.#renderPromptStringsList();
-            }
-        } else if (detail.resourceType === "generation_config") {
+        if (detail.resourceType === "generation_config") {
             switch (detail.eventType) {
                 case "create":
                     this.#generationConfigs.push(detail.data);
@@ -353,12 +261,11 @@ class GenerationConfigView extends BaseComponent {
             editor.style.display = "flex";
             editor.querySelector("#gen-config-name").value =
                 this.#selectedGenConfig.name;
+            editor.querySelector("#system-prompt-input").value =
+                this.#selectedGenConfig.systemPrompt || "";
             this.shadowRoot.querySelector("#active-adapter-name").textContent =
                 this.#activeConnection?.adapter || "None";
-            this.shadowRoot.querySelector("#merge-strings-checkbox").checked =
-                this.#selectedGenConfig.mergeConsecutiveStrings || false;
             this.#renderParameterFields();
-            this.#renderPromptStringsList();
         } else {
             placeholder.style.display = "flex";
             editor.style.display = "none";
@@ -407,66 +314,6 @@ class GenerationConfigView extends BaseComponent {
         schemaForm.schema = schema;
     }
 
-    #renderPromptStringsList() {
-        const container = this.shadowRoot.querySelector("#prompt-strings-list");
-        container.innerHTML = "";
-        if (
-            !this.#selectedGenConfig ||
-            this.#selectedGenConfig.promptStrings.length === 0
-        ) {
-            container.innerHTML =
-                '<li class="notice">No strings added. Click "Add String" to build your prompt.</li>';
-            return;
-        }
-
-        this.#selectedGenConfig.promptStrings.forEach((promptString, index) => {
-            const string = this.#reusableStrings.find(
-                (s) => s.id === promptString.stringId
-            );
-            if (!string) return; // Should not happen if data is consistent
-
-            const isSystemString = string.id.startsWith("system-");
-            const itemClass = isSystemString ? "system-defined" : "";
-
-            const roleSelectorHtml = isSystemString
-                ? ""
-                : `
-                <select class="role-select" data-index="${index}" title="Set role for this string">
-                    <option value="system" ${
-                        promptString.role === "system" ? "selected" : ""
-                    }>System</option>
-                    <option value="user" ${
-                        promptString.role === "user" ? "selected" : ""
-                    }>User</option>
-                    <option value="assistant" ${
-                        promptString.role === "assistant" ? "selected" : ""
-                    }>Assistant</option>
-                </select>
-            `;
-
-            const editButtonHtml = isSystemString
-                ? ""
-                : `
-                <button class="icon-btn" data-action="edit-string" data-string-id="${string.id}" title="Edit String"><span class="material-icons">edit</span></button>
-            `;
-
-            container.innerHTML += `
-                <li class="used-string-item ${itemClass}" data-id="${string.id}">
-                    <span class="string-name">${string.name}</span>
-                    <div class="string-controls">
-                        ${roleSelectorHtml}
-                        ${editButtonHtml}
-                    </div>
-                    <div class="string-actions">
-                        <button class="icon-btn" data-action="move-string-up" data-index="${index}" title="Move Up"><span class="material-icons">arrow_upward</span></button>
-                        <button class="icon-btn" data-action="move-string-down" data-index="${index}" title="Move Down"><span class="material-icons">arrow_downward</span></button>
-                        <button class="icon-btn" data-action="remove-string" data-index="${index}" title="Remove"><span class="material-icons">remove_circle_outline</span></button>
-                    </div>
-                </li>
-            `;
-        });
-    }
-
     // Event Handlers (renamed to private)
 
     #handleGenConfigItemAction({ id, action }) {
@@ -497,6 +344,7 @@ class GenerationConfigView extends BaseComponent {
         try {
             const newConfig = await api.post("/api/generation-configs", {
                 name: "New Config",
+                systemPrompt: "",
             });
             this.#generationConfigs.push(newConfig);
             this.#selectedGenConfig = newConfig;
@@ -585,10 +433,7 @@ class GenerationConfigView extends BaseComponent {
         const updatedConfig = {
             ...this.#selectedGenConfig,
             name: this.shadowRoot.querySelector("#gen-config-name").value,
-            mergeConsecutiveStrings: this.shadowRoot.querySelector(
-                "#merge-strings-checkbox"
-            ).checked,
-            // promptStrings are already updated directly on this.#selectedGenConfig
+            systemPrompt: this.shadowRoot.querySelector("#system-prompt-input").value,
             parameters,
         };
 
@@ -624,108 +469,6 @@ class GenerationConfigView extends BaseComponent {
         }
     }
 
-    #openAddStringModal() {
-        if (!this.#selectedGenConfig) return;
-
-        const modalContent = document.createElement("div");
-        const style = document.createElement("style");
-        style.textContent = `
-            #string-modal-list .avatar {
-                width: 24px;
-                height: 24px;
-                background-color: var(--bg-3);
-                border-radius: var(--radius-sm);
-                flex-shrink: 0;
-            }
-            #string-modal-list li {
-                display: flex;
-                align-items: center;
-                gap: var(--spacing-md);
-                padding: var(--spacing-sm) var(--spacing-md);
-                cursor: pointer;
-            }
-            #string-modal-list li:hover {
-                background-color: var(--bg-2);
-            }
-        `;
-        modalContent.appendChild(style);
-
-        modalContent.style.height = "60vh";
-        modalContent.style.display = "flex";
-        modalContent.style.flexDirection = "column";
-
-        const itemList = document.createElement("item-list");
-        itemList.id = "string-modal-list";
-        modalContent.append(itemList);
-
-        const sortedStrings = [...this.#reusableStrings].sort((a, b) =>
-            a.name.localeCompare(b.name)
-        );
-
-        const renderStringList = () => {
-            itemList.innerHTML = sortedStrings
-                .map((s) => {
-                    const isSystem = s.id.startsWith("system-");
-                    return `
-                <li data-id="${s.id}" class="${
-                        isSystem ? "system-defined" : ""
-                    }">
-                    <img class="avatar" src="assets/images/system_icon.svg" alt="String icon">
-                    <div class="item-name">${s.name}</div>
-                </li>
-            `;
-                })
-                .join("");
-        };
-
-        const handleAction = (e) => {
-            const { id, listItem } = e.detail;
-
-            if (listItem && listItem.classList.contains("system-defined")) {
-                notifier.show({
-                    type: "warn",
-                    message:
-                        "System strings are managed automatically and cannot be added manually.",
-                });
-                return;
-            }
-
-            const selectedString = this.#reusableStrings.find(
-                (s) => s.id === id
-            );
-            if (!selectedString) return;
-
-            this.#selectedGenConfig.promptStrings.push({
-                stringId: id,
-                role: "system", // Default role
-            });
-            this.#setNeedsSave(true);
-            this.#renderPromptStringsList();
-            modal.hide();
-            notifier.show({
-                type: "good",
-                message: `Added "${selectedString.name}"`,
-            });
-            itemList.removeEventListener("item-action", handleAction);
-        };
-
-        itemList.addEventListener("item-action", handleAction);
-
-        modal.show({
-            title: "Add String to Sequence",
-            content: modalContent,
-            buttons: [
-                {
-                    label: "Cancel",
-                    className: "button-secondary",
-                    onClick: () => modal.hide(),
-                },
-            ],
-        });
-
-        renderStringList(); // Initial render
-    }
-
     #handleBackToConfigs() {
         this.#selectedGenConfig = null;
         this.#setNeedsSave(false);
@@ -749,22 +492,15 @@ class GenerationConfigView extends BaseComponent {
                         </header>
                         <div class="editor-body">
                             <section>
+                                <h3>System Prompt</h3>
+                                <p class="section-desc">This prompt will be used as the system instruction. Supports macros like {{characters}}, {{notes}}, {{player}}, etc.</p>
+                                <text-box id="system-prompt-input" placeholder="Enter your system prompt here..."></text-box>
+                            </section>
+                            <section>
                                 <h3>Parameters</h3>
                                 <p class="section-desc">Settings for the currently active connection type (<span id="active-adapter-name">None</span>).</p>
                                 <div id="param-fields-container"></div>
                                 <schema-form></schema-form>
-                            </section>
-                            <section>
-                                <div class="section-header-with-controls">
-                                    <h3>Prompt Sequence</h3>
-                                    <div class="form-group-inline checkbox-group">
-                                        <input type="checkbox" id="merge-strings-checkbox">
-                                        <label for="merge-strings-checkbox">Merge consecutive strings of same role</label>
-                                    </div>
-                                </div>
-                                <p class="section-desc">Strings are combined in this order to form the final prompt.</p>
-                                <button id="add-string-btn" class="button-secondary">Add String</button>
-                                <ul id="prompt-strings-list"></ul>
                             </section>
                         </div>
                     </div>
@@ -822,12 +558,12 @@ class GenerationConfigView extends BaseComponent {
             item-list .activate-btn.active { color: var(--accent-primary); }
             item-list li.selected .activate-btn.active { color: var(--bg-0); }
 
-            .panel-main { display: flex; flex-direction: column; background-color: var(--bg-0); padding: 0; }
+            .panel-main { display: flex; flex-direction: column; padding: 0; }
             .panel-main .placeholder { flex-grow: 1; display: flex; align-items: center; justify-content: center; }
             .editor-content { display: none; flex-direction: column; height: 100%; overflow: hidden; }
             .editor-content header {
                 display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg);
-                border-bottom: 1px solid var(--bg-3); flex-shrink: 0; background-color: var(--bg-1);
+                border-bottom: 1px solid var(--bg-3); flex-shrink: 0;
             }
             #back-to-configs-btn {
                 background: none; border: none; color: var(--text-secondary);
@@ -841,41 +577,31 @@ class GenerationConfigView extends BaseComponent {
             .save-indicator { font-size: var(--font-size-sm); color: var(--accent-warn); opacity: 0; transition: opacity 0.3s; }
             #save-gen-config-btn:disabled { background-color: var(--bg-2); color: var(--text-disabled); cursor: not-allowed; opacity: 1; }
 
-            .editor-body { display: flex; flex-direction: column; gap: var(--spacing-lg); flex-grow: 1; overflow-y: auto; padding: var(--spacing-lg); background-color: var(--bg-1); border-radius: var(--radius-md); }
+            .editor-body { display: flex; flex-direction: column; gap: var(--spacing-lg); flex-grow: 1; overflow-y: auto; padding: var(--spacing-lg); }
             section { margin-bottom: var(--spacing-lg); }
             section:last-of-type { margin-bottom: 0; }
-            .section-header-with-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs); }
-            .section-header-with-controls h3 { margin-bottom: 0; }
-            .form-group-inline { display: flex; align-items: center; gap: var(--spacing-sm); }
-            .checkbox-group label { font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: 400; cursor: pointer; }
-            .checkbox-group input[type="checkbox"] { margin: 0; }
             
             section h3 { margin-bottom: var(--spacing-xs); }
             .section-desc { font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--spacing-md); }
             .notice { color: var(--text-disabled); font-style: italic; background-color: var(--bg-0); padding: var(--spacing-sm); }
             #param-fields-container { margin-bottom: var(--spacing-md); }
-            #add-string-btn { width: 100%; margin-bottom: var(--spacing-md); padding: var(--spacing-sm) var(--spacing-md); }
             
-            #prompt-strings-list { list-style: none; padding:0; display: flex; flex-direction: column; gap: var(--spacing-xs); }
-            .used-string-item { display: flex; align-items: center; gap: var(--spacing-md); background: var(--bg-0); padding: var(--spacing-sm) var(--spacing-md); border-radius: var(--radius-sm); }
-            .used-string-item.system-defined { background-color: var(--bg-2); }
-            .used-string-item.system-defined .string-name { font-style: italic; color: var(--text-secondary); }
-            
-            .string-name { flex-grow: 1; }
-            .string-controls { display: flex; align-items: center; gap: var(--spacing-sm); }
-            .string-controls .role-select { padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--bg-3); background-color: var(--bg-1); }
-            .string-controls .icon-btn { color: var(--text-secondary); padding: 4px; background: none; border: none; cursor: pointer; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-            .string-controls .icon-btn:hover { color: var(--text-primary); background: var(--bg-2); }
-            .string-controls .icon-btn .material-icons { font-size: 1.1rem; }
-            .string-actions { display: flex; }
-            .string-actions .icon-btn { color: var(--text-secondary); padding: 4px; background: none; border: none; cursor: pointer; border-radius: 50%; display: flex; align-items: center;}
-            .string-actions .icon-btn:hover { color: var(--text-primary); background: var(--bg-2); }
-            .string-actions .icon-btn .material-icons { font-size: 1.25rem; }
+            #system-prompt-input { 
+                min-height: 200px; max-height: 400px; width: 100%; resize: vertical; 
+                padding: 0.75rem;
+                background-color: var(--bg-1); 
+                border: 1px solid var(--bg-3); 
+                border-radius: var(--radius-md); 
+                font-family: var(--font-family);
+            }
+            #system-prompt-input:focus-within { 
+                border-color: var(--accent-primary); 
+                box-shadow: none; 
+            }
 
             @media (max-width: 768px) {
                 .editor-body { padding: var(--spacing-md); }
                 .editor-content header { padding: var(--spacing-sm) var(--spacing-md); gap: var(--spacing-sm); }
-                .section-header-with-controls { flex-direction: column; align-items: flex-start; gap: var(--spacing-xs); }
             }
         `;
     }

@@ -4,7 +4,6 @@ import './components/views/MainChatView.js';
 import './components/views/ConnectionConfigView.js';
 import './components/views/GenerationConfigView.js';
 import './components/views/UserPreferencesView.js';
-import './components/views/StringsView.js';
 import './components/views/NotesView.js';
 import './components/views/modes/index.js';
 import { BaseComponent } from './components/BaseComponent.js';
@@ -251,10 +250,6 @@ class MinervaApp extends BaseComponent {
                         <span class="material-icons">tune</span>
                         <span class="btn-label">Generation</span>
                     </button>
-                    <button class="nav-button" data-view="strings" title="Strings">
-                        <span class="material-icons">text_fields</span>
-                        <span class="btn-label">Strings</span>
-                    </button>
                      <button class="nav-button" data-view="notes" title="Notes">
                         <span class="material-icons">menu_book</span>
                         <span class="btn-label">Notes</span>
@@ -275,7 +270,6 @@ class MinervaApp extends BaseComponent {
                     <connection-config-view data-view="connection-config" style="display: none;"></connection-config-view>
                     <generation-config-view data-view="generation-config" style="display: none;"></generation-config-view>
                     <user-preferences-view data-view="preferences" style="display: none;"></user-preferences-view>
-                    <strings-view data-view="strings" style="display: none;"></strings-view>
                 </div>
             </div>
 
@@ -349,7 +343,6 @@ class MinervaApp extends BaseComponent {
             case 'characters':
             case 'connection-config':
             case 'generation-config':
-            case 'strings':
             case 'notes':
                 return ''; // Default two-panel layout (left and main)
             default:
