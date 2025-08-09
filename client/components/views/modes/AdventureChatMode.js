@@ -1202,26 +1202,32 @@ export class AdventureChatMode extends BaseChatMode {
         const speaker = this.#findCharacter(speakerId);
         
         let speakerName;
+        let avatarUrl;
         if (speaker) {
-            // Found a defined character, use their proper name
+            // Character found - use their name and avatar
             speakerName = speaker.name;
-        } else if (speakerId && speakerId !== 'null') {
-            // No defined character, but an ID was provided. Use it as an ad-hoc name.
+            avatarUrl = speaker.avatarUrl;
+        } else if (speakerId) {
+            // Character not found but ID provided - show the ID, no avatar
             speakerName = speakerId;
+            avatarUrl = null;
         } else {
-            // No ID, or ID was explicitly 'null'. Default to Narrator.
+            // No ID provided - default to Narrator
             speakerName = 'Narrator';
+            avatarUrl = "assets/images/system_icon.svg";
         }
-
-        const avatarUrl = speaker?.avatarUrl || "assets/images/system_icon.svg";
 
         const nameEl = document.createElement("div");
         nameEl.className = "adventure-speaker-name";
         nameEl.textContent = speakerName;
-        const avatarEl = document.createElement("img");
-        avatarEl.className = "adventure-speaker-avatar"; // Added class for click handling
-        avatarEl.src = avatarUrl;
-        avatarEl.alt = speakerName;
+        
+        let avatarEl = null;
+        if (avatarUrl) {
+            avatarEl = document.createElement("img");
+            avatarEl.className = "adventure-speaker-avatar"; // Added class for click handling
+            avatarEl.src = avatarUrl;
+            avatarEl.alt = speakerName;
+        }
         const contentEl = document.createElement("div");
         contentEl.className = "adventure-dialogue-content";
         const speechEl = document.createElement("div");
@@ -1267,7 +1273,9 @@ export class AdventureChatMode extends BaseChatMode {
 
         contentEl.appendChild(speechEl);
         block.appendChild(nameEl);
-        block.appendChild(avatarEl);
+        if (avatarEl) {
+            block.appendChild(avatarEl);
+        }
         block.appendChild(contentEl);
 
         return block;
