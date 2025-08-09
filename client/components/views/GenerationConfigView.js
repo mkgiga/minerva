@@ -18,6 +18,7 @@ class GenerationConfigView extends BaseComponent {
     constructor() {
         super();
         this.handleResourceChange = this.#handleResourceChange.bind(this);
+        this._hasAutoSelectedFirst = false; // Track if we've auto-selected the first item
     }
 
     async connectedCallback() {
@@ -58,6 +59,14 @@ class GenerationConfigView extends BaseComponent {
                     (c) => c.id === settings.activeConnectionConfigId
                 );
             }
+            
+            // Auto-select the first item if no item is selected and we haven't auto-selected before
+            if (!this._hasAutoSelectedFirst && !this.#selectedGenConfig && genConfigs.length > 0) {
+                const sortedConfigs = genConfigs.sort((a, b) => a.name.localeCompare(b.name));
+                this.#selectedGenConfig = JSON.parse(JSON.stringify(sortedConfigs[0]));
+                this._hasAutoSelectedFirst = true;
+            }
+            
             this.#updateView();
         } catch (error) {
             console.error(

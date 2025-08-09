@@ -17,6 +17,7 @@ class CharactersView extends BaseComponent {
         this.handleItemAction = this.handleItemAction.bind(this);
         this.handleListHeaderClick = this.handleListHeaderClick.bind(this);
         this._pendingSelectedId = null; // To hold an ID before data is fetched
+        this._hasAutoSelectedFirst = false; // Track if we've auto-selected the first item
     }
 
     async connectedCallback() {
@@ -119,6 +120,13 @@ class CharactersView extends BaseComponent {
                     this.state.selectedCharacter = charToSelect;
                 }
                 this._pendingSelectedId = null;
+            }
+            
+            // Auto-select the first item if no item is selected and we haven't auto-selected before
+            if (!this._hasAutoSelectedFirst && !this.state.selectedCharacter && this.state.characters.length > 0) {
+                const sortedCharacters = [...this.state.characters].sort((a, b) => a.name.localeCompare(b.name));
+                this.state.selectedCharacter = sortedCharacters[0];
+                this._hasAutoSelectedFirst = true;
             }
 
             this.updateView();

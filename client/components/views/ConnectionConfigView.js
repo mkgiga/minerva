@@ -15,6 +15,7 @@ class ConnectionConfigView extends BaseComponent {
         this.handleBackToConfigs = this.handleBackToConfigs.bind(this);
         this.handleResourceChange = this.handleResourceChange.bind(this);
         this.handleItemAction = this.handleItemAction.bind(this);
+        this._hasAutoSelectedFirst = false; // Track if we've auto-selected the first item
     }
 
     async connectedCallback() {
@@ -127,6 +128,14 @@ class ConnectionConfigView extends BaseComponent {
             this.state.configs = configs;
             this.state.activeConfigId = settings.activeConnectionConfigId;
             this.state.adapterSchemas = schemas;
+            
+            // Auto-select the first item if no item is selected and we haven't auto-selected before
+            if (!this._hasAutoSelectedFirst && !this.state.selectedConfig && configs.length > 0) {
+                const sortedConfigs = configs.sort((a, b) => a.name.localeCompare(b.name));
+                this.state.selectedConfig = sortedConfigs[0];
+                this._hasAutoSelectedFirst = true;
+            }
+            
             this.updateView();
         } catch (error) {
             console.error("Failed to fetch connection configs:", error);
