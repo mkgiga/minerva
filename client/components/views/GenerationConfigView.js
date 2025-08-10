@@ -2,7 +2,7 @@
 import { BaseComponent } from "../BaseComponent.js";
 import { api, modal, notifier } from "../../client.js";
 import "../ItemList.js";
-import "../TextBox.js";
+import "../common/TextBox.js";
 import "../SchemaForm.js";
 
 class GenerationConfigView extends BaseComponent {

@@ -9,8 +9,8 @@ import './components/views/modes/index.js';
 import { BaseComponent } from './components/BaseComponent.js';
 import './components/Notification.js';
 import './components/Modal.js';
-import './components/TextBox.js';
-import './components/Spinner.js';
+import './components/common/TextBox.js';
+import './components/common/Spinner.js';
 import './components/SchemaForm.js';
 import './components/ImagePreview.js';
 

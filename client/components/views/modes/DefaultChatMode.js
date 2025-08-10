@@ -2,8 +2,8 @@
 import { BaseChatMode } from './BaseChatMode.js';
 import { chatModeRegistry } from '../../../ChatModeRegistry.js';
 import { uuidv4, imagePreview } from '../../../client.js';
-import '../../TextBox.js';
-import '../../Spinner.js';
+import '../../common/TextBox.js';
+import '../../common/Spinner.js';
 
 export class DefaultChatMode extends BaseChatMode {
     #historyContainer = null;

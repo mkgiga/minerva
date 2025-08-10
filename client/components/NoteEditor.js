@@ -1,7 +1,7 @@
 // client/components/NoteEditor.js
 import { BaseComponent } from './BaseComponent.js';
 import { api, modal, notifier } from '../../client.js';
-import './TextBox.js';
+import './common/TextBox.js';
 
 class NoteEditor extends BaseComponent {
     #note = null;

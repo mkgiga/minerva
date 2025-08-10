@@ -1,4 +1,4 @@
-import { BaseComponent } from './BaseComponent.js';
+import { BaseComponent } from '../BaseComponent.js';
 
 class MinervaSpinner extends BaseComponent {
     constructor() {

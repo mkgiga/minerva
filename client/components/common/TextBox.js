@@ -1,4 +1,4 @@
-import { BaseComponent } from './BaseComponent.js';
+import { BaseComponent } from '../BaseComponent.js';
 
 /**
  * A custom multi-line text input component that wraps a native <textarea>.
