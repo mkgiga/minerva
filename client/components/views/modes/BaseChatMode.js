@@ -310,13 +310,51 @@ export class BaseChatMode extends BaseComponent {
     // API for Mode-to-Controller Communication
 
     /**
-     * A helper to quickly find a character from the main list by their ID.
+     * A helper to quickly find a character by ID, prioritizing embedded characters in the current chat.
+     * This method first checks embedded characters in the chat participants, then falls back to global characters.
      * @param {string} characterId - The ID of the character to find.
      * @returns {object|undefined} The character object or undefined if not found.
      */
     getCharacterById(characterId) {
         if (!characterId) return undefined;
+        
+        // First priority: check embedded characters in the current chat's participants
+        if (this.chat?.participants) {
+            for (const participant of this.chat.participants) {
+                if (typeof participant === 'object' && participant.id === characterId) {
+                    return participant;
+                }
+            }
+        }
+        
+        // Fallback: check global characters
         return this.allCharacters.find(c => c.id === characterId);
+    }
+
+    /**
+     * A helper to quickly find a note by ID, prioritizing embedded notes in the current chat.
+     * This method first checks embedded notes in the chat notes array, then falls back to global notes.
+     * @param {string} noteId - The ID of the note to find.
+     * @returns {object|undefined} The note object or undefined if not found.
+     */
+    getNoteById(noteId) {
+        if (!noteId) return undefined;
+        
+        // First priority: check embedded notes in the current chat's notes
+        if (this.chat?.notes) {
+            for (const note of this.chat.notes) {
+                if (typeof note === 'object' && note.id === noteId) {
+                    return note;
+                }
+            }
+        }
+        
+        // Fallback: check global notes (if available via mainView)
+        if (this.mainView?.state?.allNotes) {
+            return this.mainView.state.allNotes.find(n => n.id === noteId);
+        }
+        
+        return undefined;
     }
 
     /**
