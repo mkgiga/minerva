@@ -128,7 +128,7 @@ async function main() {
     await fs.mkdir(SCENARIOS_DIR, { recursive: true });
     
     // Run migrations before loading any data.
-    await runMigrations({ CHARACTERS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR, SCENARIOS_DIR });
+    // await runMigrations({ CHARACTERS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR, SCENARIOS_DIR });
 
     await initializeData();
     initHttp();

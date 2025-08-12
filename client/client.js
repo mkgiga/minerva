@@ -1,8 +1,7 @@
 // client/client.js
 import './components/views/CharactersView.js';
 import './components/views/MainChatView.js';
-import './components/views/ConnectionConfigView.js';
-import './components/views/GenerationConfigView.js';
+import './components/views/AIConfigView.js';
 import './components/views/UserPreferencesView.js';
 import './components/views/NotesView.js';
 import './components/views/modes/index.js';
@@ -242,13 +241,9 @@ class MinervaApp extends BaseComponent {
                         <span class="material-icons">settings</span>
                         <span class="btn-label">Preferences</span>
                     </button>
-                    <button class="nav-button" data-view="connection-config" title="Connection Settings">
-                        <span class="material-icons">wifi</span>
-                        <span class="btn-label">Connection</span>
-                    </button>
-                    <button class="nav-button" data-view="generation-config" title="Generation Settings">
-                        <span class="material-icons">tune</span>
-                        <span class="btn-label">Generation</span>
+                    <button class="nav-button" data-view="ai-config" title="AI Configuration">
+                        <span class="material-icons">psychology</span>
+                        <span class="btn-label">AI Config</span>
                     </button>
                      <button class="nav-button" data-view="notes" title="Notes">
                         <span class="material-icons">menu_book</span>
@@ -267,8 +262,7 @@ class MinervaApp extends BaseComponent {
                     <characters-view data-view="characters" style="display: none;"></characters-view>
                     <notes-view data-view="notes" style="display: none;"></notes-view>
                     <main-chat-view data-view="chat" style="display: none;"></main-chat-view>
-                    <connection-config-view data-view="connection-config" style="display: none;"></connection-config-view>
-                    <generation-config-view data-view="generation-config" style="display: none;"></generation-config-view>
+                    <ai-config-view data-view="ai-config" style="display: none;"></ai-config-view>
                     <user-preferences-view data-view="preferences" style="display: none;"></user-preferences-view>
                 </div>
             </div>
@@ -341,8 +335,7 @@ class MinervaApp extends BaseComponent {
             case 'preferences':
                 return 'layout-main-only';
             case 'characters':
-            case 'connection-config':
-            case 'generation-config':
+            case 'ai-config':
             case 'notes':
                 return ''; // Default two-panel layout (left and main)
             default:
