@@ -6,8 +6,8 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { glob } from 'glob';
-import { OpenAIV1Adapter } from './server/providers/v1.js';
-import { GoogleGeminiAdapter } from './server/providers/gemini.js';
+import { OpenAIV1Provider } from './server/providers/v1.js';
+import { GoogleGeminiProvider } from './server/providers/gemini.js';
 import yaml from 'yaml';
 import cors from 'cors';
 import { CURRENT_REV, runMigrations, migrateData } from './server/migrations.js';
@@ -55,10 +55,10 @@ function broadcastEvent(type, data) {
     }
 }
 
-/** Maps provider id to their respective adapter class. */
+/** Maps provider id to their respective provider class. */
 const ADAPTERS = {
-    v1: OpenAIV1Adapter,
-    gemini: GoogleGeminiAdapter,
+    v1: OpenAIV1Provider,
+    gemini: GoogleGeminiProvider,
 };
 
 // Helper to escape XML special characters to prevent XSS
@@ -946,22 +946,22 @@ function initHttp() {
         }
     });
 
-    // Adapters API
-    app.get('/api/adapters/schemas', (req, res) => {
+    // Providers API
+    app.get('/api/providers/schemas', (req, res) => {
         const schemas = {};
-        for (const [id, adapterClass] of Object.entries(ADAPTERS)) {
-            if (typeof adapterClass.getAdapterSchema === 'function') {
-                schemas[id] = adapterClass.getAdapterSchema();
+        for (const [id, providerClass] of Object.entries(ADAPTERS)) {
+            if (typeof providerClass.getProviderSchema === 'function') {
+                schemas[id] = providerClass.getProviderSchema();
             }
         }
         res.json(schemas);
     });
 
-    app.get('/api/adapters/generation-schemas', (req, res) => {
+    app.get('/api/providers/generation-schemas', (req, res) => {
         const schemas = {};
-        for (const [id, adapterClass] of Object.entries(ADAPTERS)) {
-            if (typeof adapterClass.getGenerationParametersSchema === 'function') {
-                schemas[id] = adapterClass.getGenerationParametersSchema();
+        for (const [id, providerClass] of Object.entries(ADAPTERS)) {
+            if (typeof providerClass.getGenerationParametersSchema === 'function') {
+                schemas[id] = providerClass.getGenerationParametersSchema();
             }
         }
         res.json(schemas);
@@ -1014,12 +1014,12 @@ function initHttp() {
     app.post('/api/connection-configs/test', async (req, res) => {
         try {
             const config = new ConnectionConfig(req.body);
-            const AdapterClass = ADAPTERS[config.adapter];
-            if (!AdapterClass) {
-                return res.status(400).json({ ok: false, message: `Unsupported adapter type: '${config.adapter}'` });
+            const ProviderClass = ADAPTERS[config.provider];
+            if (!ProviderClass) {
+                return res.status(400).json({ ok: false, message: `Unsupported provider type: '${config.provider}'` });
             }
-            const adapterInstance = new AdapterClass(config);
-            const result = await adapterInstance.healthCheck();
+            const providerInstance = new ProviderClass(config);
+            const result = await providerInstance.healthCheck();
             res.json(result);
         } catch (error) {
             res.status(500).json({ ok: false, message: error.message });
@@ -1105,16 +1105,16 @@ function initHttp() {
     }
 
     async function processPrompt(chatId, userMessageContent = null, isRegen = false, messageIdToRegen = null, historyOverride = null, signal = null) {
-        // 1. Get Active Connection and Adapter
+        // 1. Get Active Connection and Provider
         const { activeConnectionConfigId, userPersonaCharacterId, activeGenerationConfigId } = state.settings;
         if (!activeConnectionConfigId) throw new Error('No active connection configuration set.');
         
         const config = state.connectionConfigs.find(c => c.id === activeConnectionConfigId);
         if (!config) throw new Error(`Active connection config (ID: ${activeConnectionConfigId}) not found.`);
         
-        const AdapterClass = ADAPTERS[config.adapter];
-        if (!AdapterClass) throw new Error(`Unsupported adapter type: ${config.adapter}`);
-        const adapter = new AdapterClass(config);
+        const ProviderClass = ADAPTERS[config.provider];
+        if (!ProviderClass) throw new Error(`Unsupported provider type: ${config.provider}`);
+        const provider = new ProviderClass(config);
 
         // 2. Prepare Prompt Data
         const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
@@ -1158,8 +1158,8 @@ function initHttp() {
         }
 
         if (genConfig) {
-            if (genConfig.parameters && genConfig.parameters[config.adapter]) {
-                generationParameters = genConfig.parameters[config.adapter];
+            if (genConfig.parameters && genConfig.parameters[config.provider]) {
+                generationParameters = genConfig.parameters[config.provider];
             }
             
             // Add the generation config's system prompt to system parts
@@ -1182,8 +1182,8 @@ function initHttp() {
         await fs.writeFile(tempPromptPath, JSON.stringify({system: resolvedSystemInstruction, messages: finalMessageList}, null, 2));
         console.log('Final prompt messages:', resolvedSystemInstruction, finalMessageList);
 
-        // 5. Stream response from adapter
-        const stream = adapter.prompt(finalMessageList, {
+        // 5. Stream response from provider
+        const stream = provider.prompt(finalMessageList, {
             systemInstruction: resolvedSystemInstruction,
             signal,
             ...generationParameters,
@@ -1721,7 +1721,7 @@ class Chat {
 class ConnectionConfig {
     id = uuidv4();
     name = 'New Config';
-    adapter = 'v1'; // 'v1' or 'gemini'
+    provider = 'v1'; // 'v1' or 'gemini'
     url = '';
     apiKey = '';
     _rev = CURRENT_REV;
@@ -1730,13 +1730,13 @@ class ConnectionConfig {
         Object.assign(this, { 
             id: uuidv4(), 
             name: 'New Config', 
-            adapter: 'v1', 
+            provider: 'v1', 
             url: '', 
             apiKey: '',
             _rev: CURRENT_REV,
         }, data); 
     }
-    toJSON() { return { id: this.id, name: this.name, adapter: this.adapter, url: this.url, apiKey: this.apiKey, _rev: this._rev }; }
+    toJSON() { return { id: this.id, name: this.name, provider: this.provider, url: this.url, apiKey: this.apiKey, _rev: this._rev }; }
 }
 
 

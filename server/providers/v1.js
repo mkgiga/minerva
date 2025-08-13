@@ -1,16 +1,16 @@
-import { BaseAdapter } from './base.js';
+import { BaseProvider } from './base.js';
 
 // for example talking to a local inference server like ollama or lmstudio on 'http://localhost:1234/v1'
-export class OpenAIV1Adapter extends BaseAdapter {
+export class OpenAIV1Provider extends BaseProvider {
     constructor(config) {
         super(config);
     }
 
-    static getAdapterSchema() {
-        // This adapter uses the default schema which includes url and apiKey.
-        // We explicitly define it here for clarity, but `return super.getAdapterSchema()` would also work.
+    static getProviderSchema() {
+        // This provider uses the default schema which includes url and apiKey.
+        // We explicitly define it here for clarity, but `return super.getProviderSchema()` would also work.
         return [
-            ...super.getAdapterSchema(),
+            ...super.getProviderSchema(),
         ];
     }
     

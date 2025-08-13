@@ -13,13 +13,13 @@ class AIConfigView extends BaseComponent {
             connectionConfigs: [],
             selectedConnectionConfig: null,
             activeConnectionConfigId: null,
-            adapterSchemas: {},
+            providerSchemas: {},
             
             // Generation Config State
             generationConfigs: [],
             selectedGenerationConfig: null,
             activeGenerationConfigId: null,
-            adapterParamSchemas: {},
+            providerParamSchemas: {},
             needsSave: false,
             
             // UI State
@@ -173,20 +173,20 @@ class AIConfigView extends BaseComponent {
 
     async fetchData() {
         try {
-            const [connectionConfigs, generationConfigs, settings, adapterSchemas, paramSchemas] = await Promise.all([
+            const [connectionConfigs, generationConfigs, settings, providerSchemas, paramSchemas] = await Promise.all([
                 api.get('/api/connection-configs'),
                 api.get('/api/generation-configs'),
                 api.get('/api/settings'),
-                api.get('/api/adapters/schemas'),
-                api.get('/api/adapters/generation-schemas'),
+                api.get('/api/providers/schemas'),
+                api.get('/api/providers/generation-schemas'),
             ]);
             
             this.state.connectionConfigs = connectionConfigs;
             this.state.generationConfigs = generationConfigs;
             this.state.activeConnectionConfigId = settings.activeConnectionConfigId;
             this.state.activeGenerationConfigId = settings.activeGenerationConfigId;
-            this.state.adapterSchemas = adapterSchemas;
-            this.state.adapterParamSchemas = paramSchemas;
+            this.state.providerSchemas = providerSchemas;
+            this.state.providerParamSchemas = paramSchemas;
             
             // Auto-select first items if available
             if (!this._hasAutoSelectedFirst) {
@@ -230,9 +230,9 @@ class AIConfigView extends BaseComponent {
         }
     }
 
-    handleConnectionFormChange({ adapter }) {
-        if (adapter && this.state.selectedConnectionConfig) {
-            this.state.selectedConnectionConfig.adapter = adapter;
+    handleConnectionFormChange({ provider }) {
+        if (provider && this.state.selectedConnectionConfig) {
+            this.state.selectedConnectionConfig.provider = provider;
             this.updateConnectionEditor();
         }
     }
@@ -428,10 +428,10 @@ class AIConfigView extends BaseComponent {
 
         const paramData = this.generationSchemaForm.serialize();
         const activeConnection = this.state.connectionConfigs.find(c => c.id === this.state.activeConnectionConfigId);
-        const adapterId = activeConnection?.adapter;
+        const providerId = activeConnection?.provider;
         let parameters = this.state.selectedGenerationConfig.parameters;
-        if (adapterId) {
-            parameters = { ...parameters, [adapterId]: paramData };
+        if (providerId) {
+            parameters = { ...parameters, [providerId]: paramData };
         }
 
         const updatedConfig = {
@@ -499,11 +499,11 @@ class AIConfigView extends BaseComponent {
                 const isSelected = this.state.selectedConnectionConfig?.id === config.id;
                 const isActive = this.state.activeConnectionConfigId === config.id;
                 const activateTitle = isActive ? 'Currently active' : 'Set as active config';
-                const iconUrl = this.getAdapterIcon(config.adapter);
+                const iconUrl = this.getProviderIcon(config.provider);
 
                 return `
                     <li data-id="${config.id}" class="${isSelected ? 'selected' : ''}">
-                        <div class="adapter-icon" style="--icon-url: url('${iconUrl}')"></div>
+                        <div class="provider-icon" style="--icon-url: url('${iconUrl}')"></div>
                         <div class="item-name">${config.name}</div>
                         <div class="actions">
                             <button class="icon-button activate-btn ${isActive ? 'active' : ''}" data-action="activate" title="${activateTitle}">
@@ -594,7 +594,7 @@ class AIConfigView extends BaseComponent {
 
             this.shadowRoot.querySelector('#connection-name-input').value = this.state.selectedConnectionConfig.name || '';
 
-            const adapterOptions = Object.keys(this.state.adapterSchemas).map(id => {
+            const providerOptions = Object.keys(this.state.providerSchemas).map(id => {
                 let label = id;
                 if (id === 'v1') label = 'OpenAI-compatible';
                 if (id === 'gemini') label = 'Google Gemini';
@@ -602,11 +602,11 @@ class AIConfigView extends BaseComponent {
             });
 
             const baseSchema = [
-                { name: 'adapter', label: 'Adapter Type', type: 'select', options: adapterOptions }
+                { name: 'provider', label: 'Provider Type', type: 'select', options: providerOptions }
             ];
 
-            const selectedAdapterId = this.state.selectedConnectionConfig.adapter || 'v1';
-            const dynamicSchema = this.state.adapterSchemas[selectedAdapterId] || [];
+            const selectedProviderId = this.state.selectedConnectionConfig.provider || 'v1';
+            const dynamicSchema = this.state.providerSchemas[selectedProviderId] || [];
 
             this.connectionSchemaForm.schema = [...baseSchema, ...dynamicSchema];
             this.connectionSchemaForm.data = this.state.selectedConnectionConfig;
@@ -630,7 +630,7 @@ class AIConfigView extends BaseComponent {
             this.shadowRoot.querySelector('#system-prompt-input').value = this.state.selectedGenerationConfig.systemPrompt || '';
             
             const activeConnection = this.state.connectionConfigs.find(c => c.id === this.state.activeConnectionConfigId);
-            this.shadowRoot.querySelector('#active-adapter-name').textContent = activeConnection?.adapter || 'None';
+            this.shadowRoot.querySelector('#active-provider-name').textContent = activeConnection?.provider || 'None';
             this.renderGenerationParameterFields();
         } else {
             formWrapper.style.display = 'none';
@@ -649,11 +649,11 @@ class AIConfigView extends BaseComponent {
             return;
         }
 
-        const adapterId = activeConnection.adapter;
-        const schema = this.state.adapterParamSchemas[adapterId];
+        const providerId = activeConnection.provider;
+        const schema = this.state.providerParamSchemas[providerId];
 
         if (!schema || schema.length === 0) {
-            container.innerHTML = `<p class="notice">Adapter "${adapterId}" has no configurable parameters.</p>`;
+            container.innerHTML = `<p class="notice">Provider "${providerId}" has no configurable parameters.</p>`;
             this.generationSchemaForm.style.display = 'none';
             return;
         }
@@ -668,15 +668,15 @@ class AIConfigView extends BaseComponent {
             }
         }
 
-        const savedParamsForAdapter = this.state.selectedGenerationConfig.parameters[adapterId] || {};
-        const finalParams = { ...defaultParams, ...savedParamsForAdapter };
+        const savedParamsForProvider = this.state.selectedGenerationConfig.parameters[providerId] || {};
+        const finalParams = { ...defaultParams, ...savedParamsForProvider };
 
         this.generationSchemaForm.data = finalParams;
         this.generationSchemaForm.schema = schema;
     }
     
-    getAdapterIcon(adapter) {
-        switch (adapter) {
+    getProviderIcon(provider) {
+        switch (provider) {
             case 'v1':
                 return 'assets/images/providers/v1.svg';
             case 'gemini':
@@ -732,7 +732,7 @@ class AIConfigView extends BaseComponent {
                                 </section>
                                 <section>
                                     <h3>Parameters</h3>
-                                    <p class="section-desc">Settings for the currently active connection type (<span id="active-adapter-name">None</span>).</p>
+                                    <p class="section-desc">Settings for the currently active connection type (<span id="active-provider-name">None</span>).</p>
                                     <div id="param-fields-container"></div>
                                     <schema-form id="generation-schema-form"></schema-form>
                                 </section>
@@ -840,13 +840,13 @@ class AIConfigView extends BaseComponent {
             item-list li:hover { background-color: var(--bg-2); }
             item-list li.selected { background-color: var(--accent-primary); color: var(--bg-0); }
             item-list li.selected .item-name { font-weight: 600; }
-            item-list .adapter-icon {
+            item-list .provider-icon {
                 width: 40px; height: 40px; flex-shrink: 0;
                 background-color: var(--accent-primary);
                 mask-image: var(--icon-url); -webkit-mask-image: var(--icon-url);
                 mask-size: 80%; mask-repeat: no-repeat; mask-position: center;
             }
-            item-list li.selected .adapter-icon { background-color: var(--bg-0); }
+            item-list li.selected .provider-icon { background-color: var(--bg-0); }
             item-list .item-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
             item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
             item-list .icon-button {

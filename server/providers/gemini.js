@@ -1,15 +1,15 @@
-import { BaseAdapter } from './base.js';
+import { BaseProvider } from './base.js';
 
 const GEMINI_MODEL_ID = 'gemini-2.5-pro-preview-06-05'; // for now, we use a fixed model ID
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:streamGenerateContent`;
 
-export class GoogleGeminiAdapter extends BaseAdapter {
+export class GoogleGeminiProvider extends BaseProvider {
     constructor(config) {
         super(config);
     }
     
-    static getAdapterSchema() {
-        // Gemini adapter only requires an API key, as the URL is fixed.
+    static getProviderSchema() {
+        // Gemini provider only requires an API key, as the URL is fixed.
         return [
             { name: 'apiKey', label: 'API Key', type: 'password', required: false, placeholder: '' },
         ];
@@ -39,23 +39,23 @@ export class GoogleGeminiAdapter extends BaseAdapter {
                 safetySettings: [
                     {
                         category: 'HARM_CATEGORY_HARASSMENT',
-                        threshold: 'OFF'
+                        threshold: 'BLOCK_NONE'
                     },
                     {
                         category: 'HARM_CATEGORY_HATE_SPEECH',
-                        threshold: 'OFF'
+                        threshold: 'BLOCK_NONE'
                     },
                     {
                         category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-                        threshold: 'OFF'
+                        threshold: 'BLOCK_NONE'
                     },
                     {
                         category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-                        threshold: 'OFF'
+                        threshold: 'BLOCK_NONE'
                     },
                     {
                         category: 'HARM_CATEGORY_CIVIC_INTEGRITY',
-                        threshold: 'OFF'    
+                        threshold: 'BLOCK_NONE'
                     }
                 ]
             }

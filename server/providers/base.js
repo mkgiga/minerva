@@ -1,30 +1,30 @@
 /**
- * Abstract base class for all LLM connection adapters.
+ * Abstract base class for all LLM connection providers.
  * Defines the required interface for prompting and health checks.
  * @todo: Refactor to use generation parameter schemas for specific models. This means each model offered by a provider must be known in advance and be manually updated in the code whenever a new model is added, changed, or removed from the provider's API.
  */
-export class BaseAdapter {
+export class BaseProvider {
     constructor(config) {
-        if (this.constructor === BaseAdapter) {
+        if (this.constructor === BaseProvider) {
             throw new Error("Abstract classes can't be instantiated.");
         }
-        // Config includes name, id, url, apiKey, adapter type
+        // Config includes name, id, url, apiKey, provider type
         this.config = config;
     }
 
     /**
-     * Returns a schema defining the configuration fields for this adapter.
+     * Returns a schema defining the configuration fields for this provider.
      * This schema is used by the frontend to dynamically generate configuration forms.
      * @returns {Array<object>} An array of field definition objects.
      */
-    static getAdapterSchema() {
+    static getProviderSchema() {
         return [
             
         ];
     }
 
     /**
-     * Returns a schema for the generation parameters supported by this adapter.
+     * Returns a schema for the generation parameters supported by this provider.
      * @returns {Array<object>} An array of parameter definition objects for building forms.
      */
     static getGenerationParametersSchema() {
@@ -53,7 +53,7 @@ export class BaseAdapter {
 
     /**
      * Returns a list of all available models for this provider.
-     * This method must be overridden by concrete adapter implementations.
+     * This method must be overridden by concrete provider implementations.
      * @returns {Promise<Array<Object>>} A promise that resolves to an array of model objects.
      */
     async getModels() {
@@ -64,12 +64,12 @@ export class BaseAdapter {
      * Prepares the message history for the specific API provider's format.
      * Providers might have different role names or content structures,
      * and may require merging consecutive messages of the same role.
-     * This method must be overridden by concrete adapter implementations.
+     * This method must be overridden by concrete provider implementations.
      * @param {Array<Object>} messages - The standard message array [{ role: 'user'|'assistant', content: '...' }].
      * @returns {Array<Object>} The provider-specific message array compatible with their API.
      */
     prepareMessages(messages) {
-        throw new Error("Method 'prepareMessages()' must be implemented by concrete adapters.");
+        throw new Error("Method 'prepareMessages()' must be implemented by concrete providers.");
     }   
 }
 

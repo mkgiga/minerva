@@ -1,13 +1,13 @@
-import { BaseAdapter } from "./base";
+import { BaseProvider as BaseProvider } from "./base";
 
-export class DeepSeekAdapter extends BaseAdapter {
+export class DeepSeekProvider extends BaseProvider {
     constructor(config) {
         super(config);
     }
 
-    static getAdapterSchema() {
+    static getProviderSchema() {
         return [
-            ...super.getAdapterSchema(),
+            ...super.getProviderSchema(),
         ];
     }
 

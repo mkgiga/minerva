@@ -73,7 +73,7 @@ Follow these steps to get Minerva up and running on your computer.
 Here is a quick guide to the core workflow. The interface is navigated using the sidebar buttons on the left (or bottom on mobile).
 
 ### 1. Set Up an API Connection
-Navigate to **Connection Settings** (wifi icon). Create a new configuration, select the correct adapter for your service (e.g., 'OpenAI-compatible' for LM Studio, Oobabooga, etc.), and enter your API URL and key if required. Click the radio button to make it the active connection.
+Navigate to **Connection Settings** (wifi icon). Create a new configuration, select the correct provider for your service (e.g., 'OpenAI-compatible' for LM Studio, Oobabooga, etc.), and enter your API URL and key if required. Click the radio button to make it the active connection.
 
 ### 2. Create Characters
 Navigate to **Characters** (people icon). Click the '+' button to create a new character. Fill in their name, description, and upload an avatar. To set a character as your own persona in chats, click the user icon next to their name in the list.
@@ -91,7 +91,7 @@ Minerva is built with a modular and extensible architecture. Contributions are w
     -   `📁 components/`: Reusable Web Components that make up the UI.
     -   `client.js`: The main entry point for the frontend application.
 -   `📁 server/`: Contains all backend Node.js server logic.
-    -   `📁 providers/`: Home to the LLM adapter classes (`base.js`, `v1.js`, `gemini.js`).
+    -   `📁 providers/`: Home to the LLM provider classes (`base.js`, `v1.js`, `gemini.js`).
     -   `server.js`: The main Express server file that defines API endpoints and manages state.
 -   `📁 data/`: The default directory where all user-created data (characters, chats, configs) is stored. This directory is created on first run.
 -   `📄 config.yaml`: The main configuration file for the server.
@@ -100,7 +100,7 @@ Minerva is built with a modular and extensible architecture. Contributions are w
 
 The backend is a Node.js server using Express. It serves the static frontend files and provides a RESTful API for all data operations. It uses a Server-Sent Events (SSE) endpoint (`/api/events`) to push real-time updates to the client, ensuring the UI always reflects the current state of the data on disk.
 
-Provider-specific logic is abstracted into **Adapter** classes located in `server/providers`. Each adapter extends `BaseAdapter` and implements the logic required to communicate with a specific LLM API.
+Provider-specific logic is abstracted into **Provider** classes located in `server/providers`. Each provider extends `BaseProvider` and implements the logic required to communicate with a specific LLM API.
 
 ### Frontend Overview
 
@@ -137,11 +137,11 @@ A key feature of Minerva is the ability to create new chat experiences.
 
 To add support for a new LLM backend:
 
-1.  **Create Adapter Class**: Create a new file in `server/providers/`, for example `newprovider.js`.
-2.  **Extend BaseAdapter**: Your class must extend `BaseAdapter`.
+1.  **Create Provider Class**: Create a new file in `server/providers/`, for example `newprovider.js`.
+2.  **Extend BaseProvider**: Your class must extend `BaseProvider`.
     ```javascript
-    import { BaseAdapter } from './base.js';
-    export class NewProviderAdapter extends BaseAdapter {
+    import { BaseProvider } from './base.js';
+    export class NewProviderProvider extends BaseProvider {
         // ... implementation ...
     }
     ```
@@ -149,15 +149,15 @@ To add support for a new LLM backend:
     -   `async *prompt()`: The core method for sending a prompt and yielding response tokens.
     -   `async healthCheck()`: A method to test the connection to the provider.
     -   `prepareMessages()`: A method to transform the standard message format into the provider-specific format.
-4.  **Define Schemas**: Implement the static methods `getAdapterSchema()` and `getGenerationParametersSchema()` to define the fields that will appear on the frontend for connection and generation settings.
-5.  **Register Adapter**: In `server.js`, import your new adapter and add it to the `ADAPTERS` map.
+4.  **Define Schemas**: Implement the static methods `getProviderSchema()` and `getGenerationParametersSchema()` to define the fields that will appear on the frontend for connection and generation settings.
+5.  **Register Provider**: In `server.js`, import your new provider and add it to the `ADAPTERS` map.
     ```javascript
-    import { NewProviderAdapter } from './server/providers/newprovider.js';
+    import { NewProviderProvider } from './server/providers/newprovider.js';
     // ...
     const ADAPTERS = {
-        v1: OpenAIV1Adapter,
-        gemini: GoogleGeminiAdapter,
-        newprovider: NewProviderAdapter // Add your new adapter here
+        v1: OpenAIV1Provider,
+        gemini: GoogleGeminiProvider,
+        newprovider: NewProviderProvider // Add your new provider here
     };
     ```
 
