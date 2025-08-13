@@ -712,8 +712,20 @@ export class AdventureChatMode extends BaseChatMode {
         const finalContent = this.#streamingContent.get(messageId);
         if (finalContent === undefined) return;
 
-        // Use the reliable class selector to find the element, immune to race conditions
-        const messageEl = this.shadowRoot.querySelector('.optimistic-assistant-message');
+        // Use multiple selectors to handle race conditions with SSE updates
+        let messageEl = this.shadowRoot.querySelector('.optimistic-assistant-message') || 
+                        this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+
+        // If we can't find the element immediately, try searching by all assistant messages and find the one with spinner
+        if (!messageEl) {
+            const assistantMessages = this.shadowRoot.querySelectorAll('.chat-message.assistant');
+            for (const msg of assistantMessages) {
+                if (msg.innerHTML.includes('<minerva-spinner')) {
+                    messageEl = msg;
+                    break;
+                }
+            }
+        }
 
         if (messageEl) {
             // Flag this message as having been animated. We use the element's *current* ID,
@@ -730,6 +742,9 @@ export class AdventureChatMode extends BaseChatMode {
             await this.#animateAdventureModeResponse(messageEl, messageToAnimate);
             // Clean up the temporary class now that its job is done.
             messageEl.classList.remove('optimistic-assistant-message');
+        } else {
+            console.warn(`[AdventureChatMode] Could not find message element for messageId: ${messageId}, content will be lost:`, finalContent);
+            notifier.warning(`Failed to render response: Could not find message element (ID: ${messageId})`);
         }
 
         this.#streamingContent.delete(messageId);
