@@ -1180,15 +1180,22 @@ function initHttp() {
         await fs.mkdir(TEMP_DIR, { recursive: true });
         const tempPromptPath = path.join(TEMP_DIR, `prompt-${chatId}-${Date.now()}.json`);
         await fs.writeFile(tempPromptPath, JSON.stringify({system: resolvedSystemInstruction, messages: finalMessageList}, null, 2));
-        console.log('Final prompt messages:', resolvedSystemInstruction, finalMessageList);
 
         // 5. Stream response from provider
+        console.log('About to call provider.prompt with:', {
+            provider: config.provider,
+            messageCount: finalMessageList.length,
+            systemInstructionLength: resolvedSystemInstruction.length,
+            generationParameters
+        });
+        
         const stream = provider.prompt(finalMessageList, {
             systemInstruction: resolvedSystemInstruction,
             signal,
             ...generationParameters,
         });
-
+        
+        console.log('Provider returned stream:', !!stream);
         return { stream, chat, userMessageToAppend, historyForPrompt, isRegen, messageIdToRegen };
     }
 
@@ -1205,10 +1212,16 @@ function initHttp() {
             const { stream, chat } = await processPrompt(chatId, null, true, messageId, history, abortController.signal);
 
             let newContent = '';
+            let tokenCount = 0;
+            console.log('Starting stream for regenerate...');
             for await (const token of stream) {
+                tokenCount++;
+                console.log(`Token ${tokenCount}:`, JSON.stringify(token));
                 newContent += token;
                 sendSse(res, 'token', { token });
             }
+            console.log('Stream ended. Total tokens:', tokenCount);
+            console.log('AI Response (Regenerate):', JSON.stringify(newContent));
 
             const regenIndex = chat.messages.findIndex(m => m.id === messageId);
             if (regenIndex === -1) {
@@ -1260,6 +1273,8 @@ function initHttp() {
                 assistantMessage.content += token;
                 sendSse(res, 'token', { token });
             }
+            
+            console.log('AI Response (Resend):', assistantMessage.content);
 
             chat.messages.push(assistantMessage);
             chat.lastModifiedAt = new Date().toISOString();
@@ -1291,10 +1306,16 @@ function initHttp() {
             const { stream, chat, userMessageToAppend } = await processPrompt(chatId, message, false, null, history, abortController.signal);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
+            let tokenCount = 0;
+            console.log('Starting stream for prompt...');
             for await (const token of stream) {
+                tokenCount++;
+                console.log(`Token ${tokenCount}:`, JSON.stringify(token));
                 assistantMessage.content += token;
                 sendSse(res, 'token', { token });
             }
+            console.log('Stream ended. Total tokens:', tokenCount);
+            console.log('AI Response (Prompt):', JSON.stringify(assistantMessage.content));
             
             if (userMessageToAppend) chat.addMessage(userMessageToAppend);
             chat.addMessage(assistantMessage);

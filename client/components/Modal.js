@@ -96,7 +96,7 @@ class MinervaModal extends BaseComponent {
     styles() {
         return `
             :host {
-                position: fixed; inset: 0; z-index: 1000;
+                position: fixed; inset: 0; z-index: 1200;
                 display: none; /* Hidden by default */
                 opacity: 0;
                 transition: opacity 0.2s ease-in-out;

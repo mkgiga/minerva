@@ -259,22 +259,22 @@ class NotesView extends BaseComponent {
 
     #updateView() {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
-        const panelLeft = this.shadowRoot.querySelector('.panel-left');
+        const panelRightSidebar = this.shadowRoot.querySelector('.panel-right-sidebar');
         const panelMain = this.shadowRoot.querySelector('.panel-main');
         const mobileHeader = this.shadowRoot.querySelector('.mobile-editor-header');
 
         if (isMobile) {
             if (this.#selectedNote) {
-                panelLeft.style.display = 'none';
+                panelRightSidebar.style.display = 'none';
                 panelMain.style.display = 'flex';
                 mobileHeader.style.display = 'flex';
                 this.shadowRoot.querySelector('#editor-title-mobile').textContent = this.#selectedNote.name || 'Edit Note';
             } else {
-                panelLeft.style.display = 'flex';
+                panelRightSidebar.style.display = 'flex';
                 panelMain.style.display = 'none';
             }
         } else {
-            panelLeft.style.display = 'flex';
+            panelRightSidebar.style.display = 'flex';
             panelMain.style.display = 'flex';
             mobileHeader.style.display = 'none';
         }
@@ -317,7 +317,7 @@ class NotesView extends BaseComponent {
                         <minerva-note-editor></minerva-note-editor>
                     </div>
                 </div>
-                <div class="panel-left">
+                <div class="panel-right-sidebar">
                     <header id="list-header">
                         <h3>Notes</h3>
                         <div class="header-actions">
@@ -334,13 +334,13 @@ class NotesView extends BaseComponent {
 
     styles() {
         return `
-            .panel-left { flex-direction: column; border-right: none; border-left: 1px solid var(--bg-3); }
-            .panel-left header {
+            .panel-right-sidebar { flex-direction: column; }
+            .panel-right-sidebar header {
                 display: flex; justify-content: space-between; align-items: center;
                 padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
                 flex-shrink: 0; gap: var(--spacing-sm);
             }
-            .panel-left header h3 { margin: 0; }
+            .panel-right-sidebar header h3 { margin: 0; }
             .header-actions .icon-button {
                 background: none; border: none; color: var(--text-secondary); cursor: pointer;
                 transition: var(--transition-fast); display: flex; align-items: center;

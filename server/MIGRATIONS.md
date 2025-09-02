@@ -1,3 +1,9 @@
+# --- TEMP OVERRIDE ---
+
+Because this application has no users yet, no migrations are necessary. Skip the migration process.
+
+# --- END TEMP OVERRIDE ---
+
 ## How to Handle Data Format Changes (Migrations)
 
 This project uses a file-based migration system to handle breaking changes in the structure of user data (like characters, chats, and configurations). This ensures that users who update the application after a long time won't have their data corrupted.

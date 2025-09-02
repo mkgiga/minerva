@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minerva Asset Repository - Admin Panel</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3a3a3a;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --accent: #007acc;
+            --accent-danger: #ff4444;
+            --accent-success: #00aa44;
+            --border: #404040;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+        }
+        
+        .auth-section {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        .stat-card h3 {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-card .number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+        
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            background: var(--bg-tertiary);
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .section-content {
+            padding: 1.5rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0066aa;
+        }
+        
+        .btn-danger {
+            background: var(--accent-danger);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dd3333;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th, .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .table th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-active { color: var(--accent-success); }
+        .status-inactive { color: var(--accent-danger); }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+        
+        .error {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid var(--accent-danger);
+            color: var(--accent-danger);
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .success {
+            background: rgba(0, 170, 68, 0.1);
+            border: 1px solid var(--accent-success);
+            color: var(--accent-success);
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem;
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .container {
+                padding: 1rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Minerva Asset Repository - Admin Panel</h1>
+        <div class="auth-section">
+            <div id="userInfo" class="hidden">
+                Logged in as: <strong id="username"></strong>
+            </div>
+            <button id="loginBtn" class="btn btn-primary">Login</button>
+            <button id="logoutBtn" class="btn btn-danger hidden">Logout</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Login Form -->
+        <div id="loginForm" class="section">
+            <div class="section-header">
+                <h2>Admin Login</h2>
+            </div>
+            <div class="section-content">
+                <div id="loginError" class="error hidden"></div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" class="form-control" placeholder="admin@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" class="form-control" placeholder="Password">
+                </div>
+                <button id="submitLogin" class="btn btn-primary">Login</button>
+            </div>
+        </div>
+        
+        <!-- Admin Dashboard -->
+        <div id="dashboard" class="hidden">
+            <!-- Stats Overview -->
+            <div class="stats-grid" id="statsGrid">
+                <div class="loading">Loading stats...</div>
+            </div>
+            
+            <!-- Users Management -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>Users Management</h2>
+                </div>
+                <div class="section-content">
+                    <div id="usersTable" class="loading">Loading users...</div>
+                </div>
+            </div>
+            
+            <!-- System Health -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>System Health</h2>
+                </div>
+                <div class="section-content">
+                    <div id="healthStatus" class="loading">Checking system health...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let authToken = localStorage.getItem('adminToken');
+        let eventSource = null;
+        
+        // DOM elements
+        const loginForm = document.getElementById('loginForm');
+        const dashboard = document.getElementById('dashboard');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const userInfo = document.getElementById('userInfo');
+        const username = document.getElementById('username');
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            if (authToken) {
+                showDashboard();
+            }
+            
+            // Event listeners
+            document.getElementById('submitLogin').addEventListener('click', handleLogin);
+            loginBtn.addEventListener('click', showLogin);
+            logoutBtn.addEventListener('click', handleLogout);
+            
+            // Enter key support for login
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleLogin();
+            });
+        });
+        
+        async function handleLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (!email || !password) {
+                showError('Please fill in all fields', errorDiv);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.accessToken;
+                    localStorage.setItem('adminToken', authToken);
+                    username.textContent = data.user.username;
+                    
+                    // Check if user is admin/moderator
+                    if (!['admin', 'moderator'].includes(data.user.role)) {
+                        showError('Access denied. Admin privileges required.', errorDiv);
+                        handleLogout();
+                        return;
+                    }
+                    
+                    showDashboard();
+                } else {
+                    showError(data.message, errorDiv);
+                }
+            } catch (error) {
+                showError('Login failed. Please try again.', errorDiv);
+            }
+        }
+        
+        function handleLogout() {
+            authToken = null;
+            localStorage.removeItem('adminToken');
+            showLogin();
+        }
+        
+        function showLogin() {
+            loginForm.classList.remove('hidden');
+            dashboard.classList.add('hidden');
+            loginBtn.classList.remove('hidden');
+            logoutBtn.classList.add('hidden');
+            userInfo.classList.add('hidden');
+        }
+        
+        function showDashboard() {
+            loginForm.classList.add('hidden');
+            dashboard.classList.remove('hidden');
+            loginBtn.classList.add('hidden');
+            logoutBtn.classList.remove('hidden');
+            userInfo.classList.remove('hidden');
+            
+            loadDashboardData();
+        }
+        
+        async function loadDashboardData() {
+            await Promise.all([
+                loadStats(),
+                loadUsers(),
+                loadHealth()
+            ]);
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/stats`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    renderStats(data);
+                } else {
+                    throw new Error('Failed to load stats');
+                }
+            } catch (error) {
+                document.getElementById('statsGrid').innerHTML = '<div class="error">Failed to load stats</div>';
+            }
+        }
+        
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/users?limit=10`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    renderUsers(data.users);
+                } else {
+                    throw new Error('Failed to load users');
+                }
+            } catch (error) {
+                document.getElementById('usersTable').innerHTML = '<div class="error">Failed to load users</div>';
+            }
+        }
+        
+        async function loadHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/health`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    renderHealth(data);
+                } else {
+                    throw new Error('Failed to load health status');
+                }
+            } catch (error) {
+                document.getElementById('healthStatus').innerHTML = '<div class="error">Failed to load health status</div>';
+            }
+        }
+        
+        function renderStats(data) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <div class="number">${data.users.total}</div>
+                    <small>${data.users.active} active, ${data.users.inactive} inactive</small>
+                </div>
+                <div class="stat-card">
+                    <h3>Characters</h3>
+                    <div class="number">${data.resources.characters.total}</div>
+                    <small>${data.resources.characters.public} public</small>
+                </div>
+                <div class="stat-card">
+                    <h3>Notes</h3>
+                    <div class="number">${data.resources.notes.total}</div>
+                    <small>${data.resources.notes.public} public</small>
+                </div>
+                <div class="stat-card">
+                    <h3>Scenarios</h3>
+                    <div class="number">${data.resources.scenarios.total}</div>
+                    <small>${data.resources.scenarios.public} public</small>
+                </div>
+            `;
+        }
+        
+        function renderUsers(users) {
+            const usersTable = document.getElementById('usersTable');
+            usersTable.innerHTML = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(user => `
+                            <tr>
+                                <td>${user.username}</td>
+                                <td>${user.email}</td>
+                                <td><span class="badge">${user.role}</span></td>
+                                <td><span class="status-${user.isActive ? 'active' : 'inactive'}">${user.isActive ? 'Active' : 'Inactive'}</span></td>
+                                <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        function renderHealth(data) {
+            const healthStatus = document.getElementById('healthStatus');
+            const isHealthy = data.status === 'healthy';
+            
+            healthStatus.innerHTML = `
+                <div class="${isHealthy ? 'success' : 'error'}">
+                    <strong>System Status: ${data.status.toUpperCase()}</strong>
+                    ${isHealthy ? '✅' : '❌'}
+                </div>
+                <p><strong>Database:</strong> ${data.database?.state || 'unknown'} (${data.database?.ping || 'unknown'})</p>
+                <p><strong>Uptime:</strong> ${Math.floor(data.system?.uptime / 3600)}h ${Math.floor((data.system?.uptime % 3600) / 60)}m</p>
+                <p><strong>Memory:</strong> ${Math.round(data.system?.memory?.heapUsed / 1024 / 1024)}MB used</p>
+                <p><strong>Last Updated:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+            `;
+        }
+        
+        function showError(message, container) {
+            container.textContent = message;
+            container.classList.remove('hidden');
+            setTimeout(() => {
+                container.classList.add('hidden');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -87,10 +87,6 @@ class MainChatView extends BaseComponent {
         this.shadowRoot.querySelector('#close-char-modal-btn').addEventListener('click', this.closeCharacterModal);
         this.shadowRoot.querySelector('#modal-character-list').addEventListener('item-action', this.handleModalCharacterAction);
         this.shadowRoot.querySelector('#modal-search-input').addEventListener('input', this.handleModalSearch);
-        this.shadowRoot.querySelector('#create-embedded-char-btn').addEventListener('click', () => {
-            this.closeCharacterModal();
-            this.handleCreateEmbedded('character');
-        });
         
         const noteModalEl = this.shadowRoot.querySelector('#add-note-modal');
         noteModalEl.addEventListener('click', (e) => { if (e.target === noteModalEl) this.closeNoteModal(); });
@@ -101,8 +97,7 @@ class MainChatView extends BaseComponent {
             this.handleCreateEmbedded('note');
         });
 
-        this.shadowRoot.querySelector('#participants-btn').addEventListener('click', this.handleParticipantsToggle);
-        this.shadowRoot.querySelector('#notes-btn').addEventListener('click', this.openNoteModal);
+        this.shadowRoot.querySelector('#sidebar-btn').addEventListener('click', this.handleParticipantsToggle);
         this.shadowRoot.querySelector('#back-to-chats-btn').addEventListener('click', this.handleBackToChats);
         this.shadowRoot.querySelector('.view-overlay').addEventListener('click', () => this.toggleParticipantsPanel(false));
         
@@ -496,6 +491,7 @@ class MainChatView extends BaseComponent {
             case 'delete': this.handleParticipantDelete(id); break;
             case 'edit': this.handleResourceEdit('character', id); break;
             case 'promote': this.handlePromoteToLibrary('character', id); break;
+            case 'embed': this.handleEmbedResource('character', id); break;
         }
     }
 
@@ -571,6 +567,66 @@ class MainChatView extends BaseComponent {
             case 'delete': this.handleModalNoteToggle(id, true); break; // true to force removal
             case 'edit': this.handleResourceEdit('note', id); break;
             case 'promote': this.handlePromoteToLibrary('note', id); break;
+            case 'embed': this.handleEmbedResource('note', id); break;
+        }
+    }
+    
+    async handleEmbedResource(resourceType, resourceId) {
+        const selectedChat = this.state.selectedChat;
+        if (!selectedChat) return;
+
+        try {
+            let resourceData, resourceArray;
+            
+            if (resourceType === 'character') {
+                const character = this.state.allCharacters.find(c => c.id === resourceId);
+                if (!character) {
+                    notifier.show({ header: 'Error', message: 'Character not found in library.', type: 'bad' });
+                    return;
+                }
+                resourceData = character;
+                resourceArray = selectedChat.participants;
+            } else if (resourceType === 'note') {
+                const note = this.state.allNotes.find(n => n.id === resourceId);
+                if (!note) {
+                    notifier.show({ header: 'Error', message: 'Note not found in library.', type: 'bad' });
+                    return;
+                }
+                resourceData = note;
+                resourceArray = selectedChat.notes;
+            } else {
+                return;
+            }
+
+            // Find the index of the resource ID in the array and replace it with the full object
+            const resourceIndex = resourceArray.findIndex(r => r === resourceId);
+            if (resourceIndex === -1) {
+                notifier.show({ header: 'Error', message: `${resourceType} not found in chat.`, type: 'bad' });
+                return;
+            }
+
+            // Replace ID with full object (embedded version)
+            resourceArray[resourceIndex] = { ...resourceData };
+
+            // Save the updated chat
+            await api.put(`/api/chats/${selectedChat.id}`, selectedChat);
+            
+            // Update the view
+            this.#updateRightPanel();
+            
+            notifier.show({ 
+                header: 'Success', 
+                message: `${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} embedded in chat.`,
+                type: 'good' 
+            });
+
+        } catch (error) {
+            console.error(`Failed to embed ${resourceType}:`, error);
+            notifier.show({ 
+                header: 'Error', 
+                message: `Failed to embed ${resourceType}: ${error.message}`,
+                type: 'bad' 
+            });
         }
     }
 
@@ -1109,15 +1165,109 @@ class MainChatView extends BaseComponent {
     }
 
     async handlePromoteToLibrary(resourceType, resourceId) {
+        const selectedChat = this.state.selectedChat;
+        if (!selectedChat) return;
+
         try {
-            await api.post(`/api/chats/${this.state.selectedChat.id}/promote-to-library`, {
-                resourceType,
-                resourceId
-            });
-            notifier.show({ type: 'good', header: 'Saved to Library', message: `The ${resourceType} has been saved.` });
+            // Find the embedded resource in the chat
+            let embeddedResource;
+            if (resourceType === 'character') {
+                embeddedResource = selectedChat.participants.find(p => typeof p === 'object' && p.id === resourceId);
+            } else if (resourceType === 'note') {
+                embeddedResource = selectedChat.notes.find(n => typeof n === 'object' && n.id === resourceId);
+            }
+
+            if (!embeddedResource) {
+                notifier.show({ 
+                    type: 'bad', 
+                    header: 'Error', 
+                    message: `Embedded ${resourceType} not found in chat.` 
+                });
+                return;
+            }
+
+            // Check if a resource with the same name already exists in the library
+            const existingResource = resourceType === 'character' 
+                ? this.state.allCharacters.find(c => c.name.toLowerCase() === embeddedResource.name.toLowerCase())
+                : this.state.allNotes.find(n => n.name.toLowerCase() === embeddedResource.name.toLowerCase());
+
+            if (existingResource) {
+                // Show conflict resolution modal
+                this.showConflictResolutionModal(resourceType, resourceId, embeddedResource, existingResource);
+            } else {
+                // No conflict, proceed with promotion
+                await this.promoteToLibraryDirect(resourceType, resourceId);
+            }
+
         } catch (error) {
-            notifier.show({ type: 'bad', header: 'Error', message: `Could not save ${resourceType} to library.` });
+            console.error(`Error promoting ${resourceType}:`, error);
+            notifier.show({ 
+                type: 'bad', 
+                header: 'Error', 
+                message: `Could not save ${resourceType} to library: ${error.message}` 
+            });
         }
+    }
+
+    async promoteToLibraryDirect(resourceType, resourceId) {
+        await api.post(`/api/chats/${this.state.selectedChat.id}/promote-to-library`, {
+            resourceType,
+            resourceId
+        });
+        notifier.show({ 
+            type: 'good', 
+            header: 'Saved to Library', 
+            message: `The ${resourceType} has been saved to your library.` 
+        });
+        this.#updateRightPanel(); // Update UI to reflect the change
+    }
+
+    showConflictResolutionModal(resourceType, resourceId, embeddedResource, existingResource) {
+        const resourceName = resourceType === 'character' ? 'Character' : 'Note';
+        
+        modal.confirm({
+            title: `${resourceName} Already Exists`,
+            content: `A ${resourceType} named "${embeddedResource.name}" already exists in your library. Do you want to overwrite it with this embedded version?`,
+            confirmLabel: 'Overwrite',
+            confirmButtonClass: 'button-danger',
+            onConfirm: async () => {
+                try {
+                    // Update the existing resource with the embedded data
+                    const apiEndpoint = resourceType === 'character' ? 'characters' : 'notes';
+                    await api.put(`/api/${apiEndpoint}/${existingResource.id}`, embeddedResource);
+                    
+                    // Replace embedded resource with reference to existing library resource
+                    const resourceArray = resourceType === 'character' 
+                        ? this.state.selectedChat.participants 
+                        : this.state.selectedChat.notes;
+                    
+                    const resourceIndex = resourceArray.findIndex(r => 
+                        typeof r === 'object' && r.id === resourceId
+                    );
+                    
+                    if (resourceIndex !== -1) {
+                        resourceArray[resourceIndex] = existingResource.id;
+                        await api.put(`/api/chats/${this.state.selectedChat.id}`, this.state.selectedChat);
+                    }
+                    
+                    notifier.show({ 
+                        type: 'good', 
+                        header: 'Overwritten', 
+                        message: `Library ${resourceType} updated and linked to chat.` 
+                    });
+                    
+                    this.#updateRightPanel();
+                    
+                } catch (error) {
+                    console.error(`Error overwriting ${resourceType}:`, error);
+                    notifier.show({ 
+                        type: 'bad', 
+                        header: 'Error', 
+                        message: `Failed to overwrite ${resourceType}: ${error.message}` 
+                    });
+                }
+            }
+        });
     }
 
     _buildChatTree(chats) {
@@ -1232,10 +1382,12 @@ class MainChatView extends BaseComponent {
         return this.state.selectedChat.participants.map(p => {
             if (typeof p === 'string') {
                 const char = this.state.allCharacters.find(c => c.id === p);
-                return char ? { ...char, isEmbedded: false } : null;
+                return char 
+                    ? { ...char, isEmbedded: false } 
+                    : { id: p, name: 'Unknown Character', isEmbedded: false, isMissing: true };
             }
             return { ...p, isEmbedded: true };
-        }).filter(Boolean);
+        });
     }
 
     #getResolvedNotes() {
@@ -1243,10 +1395,12 @@ class MainChatView extends BaseComponent {
         return this.state.selectedChat.notes.map(s => {
             if (typeof s === 'string') {
                 const note = this.state.allNotes.find(sc => sc.id === s);
-                return note ? { ...note, isEmbedded: false } : null;
+                return note 
+                    ? { ...note, isEmbedded: false } 
+                    : { id: s, name: 'Unknown Note', isEmbedded: false, isMissing: true };
             }
             return { ...s, isEmbedded: true };
-        }).filter(Boolean);
+        });
     }
     
     updateView() {
@@ -1351,15 +1505,35 @@ class MainChatView extends BaseComponent {
         const participants = this.#getResolvedParticipants();
 
         listEl.innerHTML = participants.map(char => {
-            const promoteBtn = char.isEmbedded ? `<button class="icon-button" data-action="promote" title="Save to Library"><span class="material-icons">library_add</span></button>` : '';
+            // Toggle button: embed/reference (disabled for missing resources)
+            let toggleBtn;
+            if (char.isMissing) {
+                toggleBtn = `<button class="icon-button" disabled title="Character not found in library"><span class="material-icons">help_outline</span></button>`;
+            } else if (char.isEmbedded) {
+                toggleBtn = `<button class="icon-button" data-action="promote" title="Save to Library (Convert to Reference)"><span class="material-icons">library_add</span></button>`;
+            } else {
+                toggleBtn = `<button class="icon-button" data-action="embed" title="Embed in Chat (Anchor Data)"><span class="material-icons">anchor</span></button>`;
+            }
+            
+            // Status indicator
+            let statusIcon;
+            if (char.isMissing) {
+                statusIcon = `<div class="status-indicator missing"><span class="material-icons">error</span></div>`;
+            } else if (char.isEmbedded) {
+                statusIcon = `<div class="status-indicator embedded"><span class="material-icons">link_off</span></div>`;
+            } else {
+                statusIcon = `<div class="status-indicator library"><span class="material-icons">check</span></div>`;
+            }
+            
             return `
                  <li data-id="${char.id}">
                     <div class="item-row">
+                        ${statusIcon}
                         <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
                         <div class="item-name">${char.name}</div>
                         <div class="actions">
-                            ${promoteBtn}
-                            <button class="icon-button" data-action="edit" title="Edit"><span class="material-icons">edit</span></button>
+                            ${toggleBtn}
+                            <button class="icon-button" data-action="edit" title="Edit" ${char.isMissing ? 'disabled' : ''}><span class="material-icons">edit</span></button>
                             <button class="icon-button delete-btn" data-action="delete" title="Remove"><span class="material-icons">close</span></button>
                         </div>
                     </div>
@@ -1378,14 +1552,34 @@ class MainChatView extends BaseComponent {
         }
 
         listEl.innerHTML = activeNotes.map(note => {
-             const promoteBtn = note.isEmbedded ? `<button class="icon-button" data-action="promote" title="Save to Library"><span class="material-icons">library_add</span></button>` : '';
+            // Toggle button: embed/reference (disabled for missing resources)
+            let toggleBtn;
+            if (note.isMissing) {
+                toggleBtn = `<button class="icon-button" disabled title="Note not found in library"><span class="material-icons">help_outline</span></button>`;
+            } else if (note.isEmbedded) {
+                toggleBtn = `<button class="icon-button" data-action="promote" title="Save to Library (Convert to Reference)"><span class="material-icons">library_add</span></button>`;
+            } else {
+                toggleBtn = `<button class="icon-button" data-action="embed" title="Embed in Chat (Anchor Data)"><span class="material-icons">anchor</span></button>`;
+            }
+            
+            // Status indicator
+            let statusIcon;
+            if (note.isMissing) {
+                statusIcon = `<div class="status-indicator missing"><span class="material-icons">error</span></div>`;
+            } else if (note.isEmbedded) {
+                statusIcon = `<div class="status-indicator embedded"><span class="material-icons">link_off</span></div>`;
+            } else {
+                statusIcon = `<div class="status-indicator library"><span class="material-icons">check</span></div>`;
+            }
+            
             return `
                 <li data-id="${note.id}">
                     <div class="item-row">
+                        ${statusIcon}
                         <div class="item-name">${this._escapeHtml(note.name)}</div>
                         <div class="actions">
-                            ${promoteBtn}
-                            <button class="icon-button" data-action="edit" title="Edit"><span class="material-icons">edit</span></button>
+                            ${toggleBtn}
+                            <button class="icon-button" data-action="edit" title="Edit" ${note.isMissing ? 'disabled' : ''}><span class="material-icons">edit</span></button>
                             <button class="icon-button delete-btn" data-action="delete" title="Remove Note"><span class="material-icons">close</span></button>
                         </div>
                     </div>
@@ -1457,10 +1651,7 @@ class MainChatView extends BaseComponent {
                     <header class="mobile-chat-header">
                         <button id="back-to-chats-btn" class="icon-button" title="Back to Chats"><span class="material-icons">arrow_back</span></button>
                         <h2 id="chat-title-mobile">Select a Chat</h2>
-                        <div>
-                            <button id="notes-btn" class="icon-button" title="View Notes"><span class="material-icons">menu_book</span></button>
-                            <button id="participants-btn" class="icon-button" title="View Participants"><span class="material-icons">people</span></button>
-                        </div>
+                        <button id="sidebar-btn" class="icon-button" title="View Sidebar"><span class="material-icons">view_sidebar</span></button>
                     </header>
                     <header class="chat-main-header">
                         <input type="text" id="chat-name-input" placeholder="Chat Name">
@@ -1501,9 +1692,6 @@ class MainChatView extends BaseComponent {
                     <div class="modal-body">
                         <div class="modal-search-bar"><span class="material-icons">search</span><input type="text" id="modal-search-input" placeholder="Search for characters..."></div>
                         <item-list id="modal-character-list"></item-list>
-                    </div>
-                    <div class="modal-footer">
-                        <button id="create-embedded-char-btn" class="button-secondary">Create new embedded character</button>
                     </div>
                 </div>
             </div>
@@ -1567,7 +1755,7 @@ class MainChatView extends BaseComponent {
             #chat-name-input:focus { background-color: var(--bg-1); }
             #chat-mode-container { display: none; flex-grow: 1; flex-direction: column; overflow: hidden; }
             .placeholder { flex-grow: 1; display: flex; align-items: center; justify-content: center; color: var(--text-disabled); text-align: center; }
-            .modal-backdrop { position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+            .modal-backdrop { position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1100; }
             .modal-content { background-color: var(--bg-1); border: 1px solid var(--bg-3); border-radius: var(--radius-md); width: 90%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
             .modal-content.large { max-width: 800px; }
             .modal-content header { display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; }
@@ -1597,6 +1785,15 @@ class MainChatView extends BaseComponent {
             #modal-character-list .avatar { width: 32px; height: 32px; }
             item-list .item-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
             item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
+            
+            /* Status indicators for embedded/library items */
+            .status-indicator { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: var(--spacing-xs); }
+            .status-indicator.library { background-color: var(--accent-good); }
+            .status-indicator.library .material-icons { font-size: 14px; color: white; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+            .status-indicator.embedded { background-color: var(--bg-3); }
+            .status-indicator.embedded .material-icons { font-size: 12px; color: var(--text-disabled); text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+            .status-indicator.missing { background-color: var(--accent-danger); }
+            .status-indicator.missing .material-icons { font-size: 14px; color: white; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
             
             /* Specifics for Participant & Modal Lists */
             #modal-character-list li.is-participant > .item-row, #modal-note-list li.is-participant > .item-row { background-color: var(--accent-primary-faded); border-left: 3px solid var(--accent-primary); padding-left: calc(var(--spacing-md) - 3px); }
@@ -1636,7 +1833,7 @@ class MainChatView extends BaseComponent {
                 .mobile-chat-header h2 { flex-grow: 1; }
                 #back-to-chats-btn { display: flex; }
                 #chat-title-mobile { font-size: 1.1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-                #participants-btn, #notes-btn { display: flex; }
+                #sidebar-btn { display: flex; }
                 .panel-right { position: fixed; top: 0; right: 0; width: 85%; max-width: 320px; height: 100%; z-index: 1001; transform: translateX(100%); transition: transform 0.3s ease-in-out; box-shadow: -2px 0 8px rgba(0,0,0,0.3); border-left: 1px solid var(--bg-3); }
                 .panel-right.visible { transform: translateX(0); }
                 .view-overlay.visible { display: block; position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); z-index: 1000; }

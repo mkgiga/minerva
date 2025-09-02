@@ -31,12 +31,14 @@ class CharactersView extends BaseComponent {
         this.shadowRoot.querySelector('#back-to-characters-btn').addEventListener('click', this.handleBackToCharacters);
         
         window.addEventListener('minerva-resource-changed', this.handleResourceChange);
+        window.addEventListener('resize', () => this.updateView());
 
         await this.fetchData();
     }
     
     disconnectedCallback() {
         window.removeEventListener('minerva-resource-changed', this.handleResourceChange);
+        window.removeEventListener('resize', () => this.updateView());
         this.itemList.removeEventListener('item-action', this.handleItemAction);
         this.shadowRoot.querySelector('#list-header').removeEventListener('click', this.handleListHeaderClick);
     }
@@ -392,7 +394,7 @@ class CharactersView extends BaseComponent {
 
     updateView() {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
-        const panelLeft = this.shadowRoot.querySelector('.panel-left');
+        const panelLeft = this.shadowRoot.querySelector('.panel-right-sidebar');
         const panelMain = this.shadowRoot.querySelector('.panel-main');
         const mobileHeader = this.shadowRoot.querySelector('.mobile-editor-header');
 
@@ -430,7 +432,7 @@ class CharactersView extends BaseComponent {
                     </header>
                     <minerva-character-editor></minerva-character-editor>
                 </div>
-                <div class="panel-left">
+                <div class="panel-right-sidebar">
                     <header id="list-header">
                         <h3>Characters</h3>
                         <div class="header-actions">
@@ -450,16 +452,15 @@ class CharactersView extends BaseComponent {
 
     styles() {
         return `
-            .panel-left {
+            .panel-right-sidebar {
                 flex-direction: column;
-                border-left: 1px solid var(--bg-3);
             }
-            .panel-left header {
+            .panel-right-sidebar header {
                 display: flex; justify-content: space-between; align-items: center;
                 padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
                 flex-shrink: 0; gap: var(--spacing-sm);
             }
-            .panel-left header h3 { margin: 0; }
+            .panel-right-sidebar header h3 { margin: 0; }
             .header-actions { display: flex; align-items: center; gap: var(--spacing-xs); }
             .header-actions .icon-button {
                 background: none; border: none; color: var(--text-secondary); cursor: pointer;

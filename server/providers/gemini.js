@@ -1,6 +1,6 @@
 import { BaseProvider } from './base.js';
 
-const GEMINI_MODEL_ID = 'gemini-2.5-pro-preview-06-05'; // for now, we use a fixed model ID
+const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // for now, we use a fixed model ID
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:streamGenerateContent`;
 
 export class GoogleGeminiProvider extends BaseProvider {
@@ -65,6 +65,9 @@ export class GoogleGeminiProvider extends BaseProvider {
             // Use the streaming endpoint with SSE enabled
             const streamingUrl = `${GEMINI_API_URL}?key=${apiKey}&alt=sse`;
             
+            console.log('Gemini request body:', JSON.stringify(body, null, 2));
+            console.log('Gemini URL:', streamingUrl);
+            
             const response = await fetch(streamingUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -72,30 +75,50 @@ export class GoogleGeminiProvider extends BaseProvider {
                 signal,
             });
 
+            console.log('Gemini response status:', response.status);
+            console.log('Gemini response headers:', Object.fromEntries(response.headers.entries()));
+
             if (!response.ok || !response.body) {
                 const errorBody = await response.json().catch(() => ({ message: response.statusText }));
+                console.error('Gemini API Error:', errorBody);
                 throw new Error(`Gemini API Error: ${errorBody.error?.message || response.statusText}`);
             }
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let chunkCount = 0;
+            let tokenCount = 0;
 
+            console.log('Starting to read from Gemini stream...');
             while(true) {
                 const { value, done } = await reader.read();
-                if (done) break;
+                if (done) {
+                    console.log('Gemini stream finished. Total chunks:', chunkCount, 'Total tokens:', tokenCount);
+                    break;
+                }
 
-                buffer += decoder.decode(value, { stream: true });
+                chunkCount++;
+                const chunk = decoder.decode(value, { stream: true });
+                console.log(`Gemini chunk ${chunkCount}:`, JSON.stringify(chunk));
+                
+                buffer += chunk;
                 const lines = buffer.split('\n');
                 buffer = lines.pop(); // Keep any partial line in the buffer
 
                 for (const line of lines) {
+                    console.log('Processing line:', JSON.stringify(line));
                     if (line.startsWith('data: ')) {
                         try {
                             const jsonData = JSON.parse(line.substring(6));
+                            console.log('Parsed JSON data:', JSON.stringify(jsonData, null, 2));
                             const token = jsonData.candidates?.[0]?.content?.parts?.[0]?.text;
                             if (token) {
+                                tokenCount++;
+                                console.log(`Yielding token ${tokenCount}:`, JSON.stringify(token));
                                 yield token;
+                            } else {
+                                console.log('No token found in JSON data');
                             }
                         } catch (e) {
                             console.error('Error parsing Gemini SSE chunk:', e, line);

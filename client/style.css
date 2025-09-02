@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/icon?family=Material+Icons");
 
 :root {
     /* Color Palette */
@@ -34,6 +35,21 @@
     --transition-fast: all 0.15s ease-in-out;
 }
 
+.material-icons {
+    font-family: 'Material Icons';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;  /* Default icon size */
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
 /* Global Resets & Defaults */
 * {
     box-sizing: border-box;
@@ -42,6 +58,12 @@
     color: inherit;
     margin: 0;
     padding: 0;
+}
+
+button {
+    appearance: none;
+    background: none;
+    border: none;
 }
 
 html,
@@ -99,381 +121,266 @@ minerva-app {
 }
 
 .icon-sidebar {
-    min-width: 50px;
     background-color: var(--bg-0);
     border-right: 1px solid var(--bg-3);
     display: flex;
-    flex-direction: column-reverse; /* Icons from bottom up */
+    flex-direction: column;
     align-items: center;
-    padding: var(--spacing-sm) 0;
-    gap: var(--spacing-xs);
+    justify-content: space-between;
+    padding: 0;
     flex-shrink: 0;
+    min-width: 50px;
+}
 
-    
-}
-@media (min-width: 1280px) {
-    .icon-sidebar {
-        align-items: flex-start; /* Align icons to the left on larger screens */
-        text-align: left; /* Align text labels to the left */
-    }
-    .icon-sidebar .nav-button {
-        width: 100%; /* Full width buttons */
-        display: inline-flex; /* Allow text labels to appear */
-        align-items: flex-start; /* Align icons to the left */
-        justify-content: flex-start; /* Align text labels to the left */
-    }
-}
-.icon-sidebar .nav-button {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: var(--spacing-sm);
-    border-radius: var(--radius-md);
-    transition: var(--transition-fast);
+.icon-sidebar .nav-section {
+    width: 100%;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    width: 100%;   
+    gap: var(--spacing-xs);
 }
 
+/* NEW: Desktop Hierarchical Sidebar Styles */
+.nav-group {
+    width: 100%;
+    position: relative;
+}
 
+.nav-children {
+    display: none;
+    padding-left: 24px;
+    position: relative;
+}
+
+.nav-group.expanded .nav-children {
+    display: block;
+}
+
+/* Tree connecting lines - only for nav groups that have children */
+.nav-group:has(.nav-children).expanded .nav-children::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 0;
+    bottom: 12px;
+    width: 1px;
+    background: linear-gradient(to bottom, 
+        var(--bg-3) 0%, 
+        var(--bg-3) 80%, 
+        transparent 100%
+    );
+}
+
+.nav-group:has(.nav-children) .nav-children .nav-button {
+    position: relative;
+}
+
+.nav-group:has(.nav-children) .nav-children .nav-button::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    width: 8px;
+    height: 1px;
+    background: var(--bg-3);
+    transform: translateY(-50%);
+}
+
+.nav-group:has(.nav-children) .nav-children .nav-button:last-child::after {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    bottom: -50px;
+    width: 1px;
+    background: var(--bg-0);
+    z-index: 1;
+}
+
+.nav-button.child {
+    padding-left: var(--spacing-sm);
+}
+
+.nav-button.child .material-icons {
+    font-size: 1.1rem;
+    opacity: 0.8;
+}
+
+.nav-button.child:hover .material-icons {
+    opacity: 1;
+}
+
+.icon-sidebar .nav-button {
+    background: none; border: none; color: var(--text-secondary); cursor: pointer;
+    padding: var(--spacing-sm); border-radius: var(--radius-md); transition: var(--transition-fast);
+    display: flex; align-items: center; justify-content: center; width: 100%;
+}
 .icon-sidebar .nav-button:hover {
-    color: var(--text-primary);
-    background-color: var(--bg-2);
+    color: var(--text-primary); background-color: var(--bg-2);
 }
 .icon-sidebar .nav-button.active {
-    color: var(--accent-primary);
+    color: var(--accent-primary); background-color: var(--bg-2);
+}
+.nav-group.expanded > .nav-button.parent {
+    color: var(--text-primary);
+}
+
+/* NEW: Hide labels by default and show on wide screens */
+.icon-sidebar .btn-label { display: none; }
+
+@media (min-width: 1280px) {
+    .icon-sidebar { align-items: flex-start; min-width: 220px; }
+    .icon-sidebar .nav-button { justify-content: flex-start; gap: 10px; }
+    .icon-sidebar .btn-label { display: inline-block; font-weight: 500; }
+    
+    /* Enhanced tree styling for wide screens */
+    .nav-children { 
+        padding-left: 32px; 
+        margin-top: 4px;
+    }
+    
+    .nav-group:has(.nav-children).expanded .nav-children::before {
+        left: 16px;
+    }
+    
+    .nav-group:has(.nav-children) .nav-children .nav-button::before {
+        left: -16px;
+        width: 12px;
+    }
+    
+    .nav-group:has(.nav-children) .nav-children .nav-button:last-child::after {
+        left: -16px;
+        bottom: -50px;
+    }
+    
+    .nav-button.parent {
+        font-weight: 500;
+        margin-bottom: 2px;
+    }
+    
+    .nav-button.child {
+        padding: 6px var(--spacing-sm);
+        margin: 1px 0;
+        border-radius: var(--radius-sm);
+        font-size: 0.9rem;
+    }
 }
 
 .main-view-wrapper {
-    flex-grow: 1;
-    display: grid;
-    height: 100%;
-    overflow: hidden;
     /* Default to two panels, left and main */
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 320px 1fr; 
 }
-
-.system-defined:not(.used-partial-item) {
-    cursor: not-allowed;
-
-    /* It's 2025 - Modern browsers support nested selectors now. */
-    & .item-name {
-        opacity: 0.25;
-    }
-}
-
-.system-defined:not(.used-partial-item):hover {
-    background-color: initial;
-}
-
-/* View-specific layouts */
-.main-view-wrapper.layout-three-panel {
-    grid-template-columns: 320px 1fr 280px;
-}
-.main-view-wrapper.layout-main-only {
-    grid-template-columns: 1fr;
-}
+.main-view-wrapper.layout-three-panel { grid-template-columns: 320px 1fr 280px; }
+.main-view-wrapper.layout-main-only { grid-template-columns: 1fr; }
+.main-view-wrapper.layout-main-right { grid-template-columns: 1fr 320px; } /* NEW LAYOUT */
 
 /* Main View Panels */
-.panel-left,
-.panel-main,
-.panel-right {
-    background-color: var(--bg-0);
-    height: 100%;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+.panel-left, .panel-main, .panel-right, .panel-right-sidebar {
+    background-color: var(--bg-1); height: 100%; overflow-y: auto;
+    display: flex; flex-direction: column;
 }
-.panel-left,
-.panel-right {
-    border-right: 1px solid var(--bg-3);
-}
-.panel-main {
-    background-color: var(--bg-0);
-}
+.panel-left { border-right: 1px solid var(--bg-3); background-color: var(--bg-0); }
+.panel-right { border-left: 1px solid var(--bg-3); background-color: var(--bg-0); }
+.panel-right-sidebar { border-left: 1px solid var(--bg-3); background-color: var(--bg-0); } /* NEW */
+.panel-main { background-color: var(--bg-1); }
 
 /* Global Overlay Elements */
 #notification-container {
-    position: fixed;
-    bottom: var(--spacing-md);
-    right: var(--spacing-md);
-    display: flex;
-    flex-direction: column-reverse; /* New notifications appear at the bottom */
-    gap: var(--spacing-md);
-    z-index: 2000;
-    max-width: 380px;
-    width: 100%;
-    pointer-events: none; /* Let clicks pass through the container to the UI below */
+    position: fixed; bottom: var(--spacing-md); right: var(--spacing-md);
+    display: flex; flex-direction: column-reverse; gap: var(--spacing-md);
+    z-index: 2000; max-width: 380px; width: 100%; pointer-events: none;
 }
-
-/* Component-specific Styles */
 .view-container {
-    padding: var(--spacing-lg);
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
+    padding: var(--spacing-lg); flex-grow: 1; display: flex; flex-direction: column;
 }
-
-/* Character Editor & Generic Forms */
-.form-group {
-    margin-bottom: var(--spacing-lg);
-}
-.form-group label {
-    display: block;
-    margin-bottom: var(--spacing-sm);
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-.form-group input,
-.form-group textarea,
-.form-group select {
-    width: 100%;
-    padding: 0.75rem;
-    background-color: var(--bg-1);
-    border: 1px solid var(--bg-3);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: var(--font-size-md);
-    /* NO global transition */
-}
-.form-group input:focus,
-.form-group textarea:focus,
-.form-group select:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px var(--accent-primary-faded, rgba(138, 180, 248, 0.3));
-    transition: var(--transition-fast); /* Transition only on focus */
-}
-.form-group textarea {
-    min-height: 250px;
-    resize: vertical;
-}
-
-/* Custom Form Elements */
-input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 6px;
-    background: var(--bg-2);
-    border-radius: 3px;
-    outline: none;
-    padding: 0;
-    margin: 0.6rem 0;
-    transition: var(--transition-fast);
-}
-input[type="range"]:hover {
-    background: var(--bg-3);
-}
-input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    background: var(--accent-primary);
-    cursor: pointer;
-    border-radius: 50%;
-    border: 2px solid var(--bg-0);
-}
-input[type="range"]::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    background: var(--accent-primary);
-    cursor: pointer;
-    border-radius: 50%;
-    border: 2px solid var(--bg-0);
-}
-input[type="range"]:focus {
-    box-shadow: 0 0 0 2px var(--accent-primary-faded);
-}
-
-input[type="checkbox"] {
-    -webkit-appearance: none;
-    appearance: none;
-    background-color: var(--bg-1);
-    margin: 0;
-    font: inherit;
-    color: currentColor;
-    width: 1.25em;
-    height: 1.25em;
-    border: 1px solid var(--bg-3);
-    border-radius: var(--radius-sm);
-    transform: translateY(-0.075em);
-    display: grid;
-    place-content: center;
-    cursor: pointer;
-}
-input[type="checkbox"]::before {
-    content: "";
-    width: 0.75em;
-    height: 0.75em;
-    transform: scale(0);
-    transition: 120ms transform ease-in-out;
-    box-shadow: inset 1em 1em var(--accent-primary);
-    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
-}
-input[type="checkbox"]:checked::before {
-    transform: scale(1);
-}
-input[type="checkbox"]:focus-visible {
-    outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px var(--accent-primary-faded);
-}
+/* Form Styles */
+.form-group { margin-bottom: var(--spacing-lg); }
+.form-group label { display: block; margin-bottom: var(--spacing-sm); color: var(--text-secondary); font-weight: 500; }
+.form-group input, .form-group textarea, .form-group select { width: 100%; padding: 0.75rem; background-color: var(--bg-1); border: 1px solid var(--bg-3); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--font-size-md); }
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-primary-faded); transition: var(--transition-fast); }
+.form-group textarea { min-height: 250px; resize: vertical; }
 
 /* Generic Button Styles */
-.button-primary {
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: var(--font-size-md);
-    font-weight: 500;
-    background-color: var(--accent-primary);
-    color: var(--bg-0);
-    transition: var(--transition-fast);
-}
-.button-primary:hover {
-    opacity: 0.9;
+.button-primary { padding: 0.75rem 1.5rem; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-md); font-weight: 500; background-color: var(--accent-primary); color: var(--bg-0); transition: var(--transition-fast); }
+.button-primary:hover { opacity: 0.9; }
+.button-secondary { padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-md); font-weight: 500; background-color: var(--bg-2); color: var(--text-primary); border: 1px solid var(--bg-3); transition: var(--transition-fast); }
+.button-secondary:hover { background-color: var(--bg-3); }
+.button-danger { padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-md); font-weight: 500; background-color: var(--accent-danger); color: var(--text-primary); transition: var(--transition-fast); }
+.button-danger:hover { opacity: 0.9; }
+
+button > .material-icons {
+    font-size: 1.5rem; vertical-align: middle;
 }
 
-.button-secondary {
-    padding: 0.75rem 1.5rem;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: var(--font-size-md);
-    font-weight: 500;
-    background-color: var(--bg-2);
-    color: var(--text-primary);
-    border: 1px solid var(--bg-3);
-    transition: var(--transition-fast);
-}
-.button-secondary:hover {
-    background-color: var(--bg-3);
-}
-
-.button-danger {
-    padding: 0.75rem 1.5rem;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: var(--font-size-md);
-    font-weight: 500;
-    background-color: var(--accent-danger);
-    color: var(--text-primary);
-    transition: var(--transition-fast);
-}
-.button-danger:hover {
-    opacity: 0.9;
-}
-
-
-/* Modal form layout for prompt partial editor */
-.modal-form-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-.form-group-stretch {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-}
-.form-group-stretch text-box {
-    flex-grow: 1;
-    min-height: 150px;
-}
-
-@media (min-width: 1280px) {
-    .sidebar {
-        display: flex;
-        flex-direction: column;
-        width: 300px;
-        border-right: 1px solid var(--bg-3);
-    }
+user-card {
+    margin-top: 0;
 }
 
 /* Mobile Support */
 @media (max-width: 768px) {
-    /* Move main nav bar to the bottom of the screen */
     .app-layout-container {
-        flex-direction: column-reverse;
+        flex-direction: column-reverse; /* Reverses order: main-view-host first, icon-sidebar last */
+    }
+    .main-view-host {
+        /* This is now the top-level container for content, it should grow and its children will stack */
+        flex-grow: 1;
+        flex-direction: column; /* Stack content above sub-nav */
+        overflow: hidden; /* Prevent content from overflowing the host */
+        display: flex; /* Ensure it's a flex container */
+    }
+    .main-view-wrapper {
+        flex-grow: 1; /* Take up available space */
+        overflow-y: auto; /* Allows only the view content to scroll */
+        display: grid; /* Maintain grid layout */
     }
 
     .icon-sidebar {
-        flex-direction: row-reverse;
-        justify-content: space-around;
+        flex-direction: row; /* Main nav items side-by-side */
+        justify-content: flex-start; width: 100%; height: 55px;
+        border-right: none; border-top: 1px solid var(--bg-3);
+        padding: 0 var(--spacing-sm); flex-shrink: 0;
+    }
+    .nav-section {
+        display: flex !important;
+        flex-direction: row !important;
         width: 100%;
-        height: 55px; /* Taller for touch targets */
-        border-right: none;
+        justify-content: space-around;
+        align-items: center;
+        gap: 0;
+    }
+    .nav-section > * { flex: 1; }
+    .nav-section .nav-button { 
+        flex: 1; 
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .nav-children { display: none !important; } /* Hide desktop dropdown on mobile */
+    .icon-sidebar user-card { display: none; } /* Hide user card on mobile */
+
+    /* NEW: Mobile Sub-Navigation Bar */
+    .mobile-sub-nav {
+        display: none; /* Hidden by default, shown by JS */
+        flex-direction: row; 
+        justify-content: center; /* FIX: Center content within buttons */
+        width: 100%; background-color: var(--bg-1);
         border-top: 1px solid var(--bg-3);
-        padding: 0 var(--spacing-sm);
         flex-shrink: 0;
     }
+    .mobile-sub-nav .nav-button {
+        background: none; border: none; color: var(--text-secondary); cursor: pointer;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border-radius: 0; transition: var(--transition-fast);
+        display: flex; flex-direction: column; align-items: center;
+        flex: 1; /* FIX: This will now properly expand the buttons */
+        font-size: var(--font-size-sm);
+    }
+    .mobile-sub-nav .nav-button .material-icons { font-size: 1.25rem; }
+    .mobile-sub-nav .nav-button.active { color: var(--accent-primary); }
 
-    /* Force all views into a single-column layout */
-    .main-view-wrapper {
-        grid-template-columns: 1fr !important;
-        overflow-y: auto; /* Allow the entire view area to scroll */
-    }
-
-    /* In a single-column layout, all panels need to be full-width */
-    .panel-left,
-    .panel-main,
-    .panel-right {
-        border-right: none;
-        border-bottom: 1px solid var(--bg-3);
-        height: auto; /* Allow panels to size to their content */
-    }
-
-    /* Reduce padding on mobile */
-    .view-container {
-        padding: var(--spacing-md);
-    }
-
-    /* Make chat messages wider and reduce avatar size */
-    .chat-message {
-        max-width: 95%;
-        gap: var(--spacing-sm);
-    }
-    .chat-message .avatar {
-        width: 32px;
-        height: 32px;
-    }
-
-    #chat-form .send-button {
-        width: 56px;
-        height: 100%;
-    }
-
-    /* Stack character editor header */
-    minerva-character-editor .editor-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--spacing-md);
-    }
-
-    /* Make modals take up more of the screen */
-    minerva-modal .modal-content,
-    main-chat-view .modal-content {
-        width: 95%;
-        height: auto;
-        max-height: 85vh;
-    }
-    main-chat-view .modal-content {
-        height: 80vh; /* Keep character picker modal tall */
-    }
-    minerva-modal .modal-body {
-        max-height: 60vh;
-    }
-
-    /* Move notifications above the new bottom nav bar */
-    #notification-container {
-        bottom: 65px; /* 55px bar height + 10px margin */
-        left: var(--spacing-sm);
-        right: var(--spacing-sm);
-        width: auto;
-        max-width: none;
-    }
+    .main-view-wrapper { grid-template-columns: 1fr !important; }
+    .panel-left, .panel-main, .panel-right, .panel-right-sidebar { border: none; height: auto; }
+    .view-container { padding: var(--spacing-md); }
+    #notification-container { bottom: 65px; left: var(--spacing-sm); right: var(--spacing-sm); width: auto; max-width: none; }
+    minerva-modal .modal-content { width: 95%; max-height: 85vh; }
 }

@@ -1,3 +1,5 @@
+import { BaseComponent } from '../BaseComponent.js';
+
 /**
  * A minimal tab container component.
  * 
@@ -9,120 +11,111 @@
  *   <div tab="browse">Browse content...</div>
  * </tab-container>
  */
-export class TabContainer extends HTMLElement {
-    #activeTab = null;
-
+class TabContainer extends BaseComponent {
     constructor() {
         super();
-        this.attachShadow({ mode: 'open' });
-        this.render();
+        this.activeTabId = null;
+        this._isInitialized = false;
     }
 
     connectedCallback() {
-        this.shadowRoot.addEventListener('click', this.#handleTabClick.bind(this));
-        this.addEventListener('slotchange', this.#handleSlotChange.bind(this));
+        this.render();
+        this.tabSlot = this.shadowRoot.querySelector('slot[name="tabs"]');
+        this.contentSlot = this.shadowRoot.querySelector('slot:not([name])');
+
+        // Listen for changes in slotted content
+        this.tabSlot.addEventListener('slotchange', () => this.initialize());
+        this.contentSlot.addEventListener('slotchange', () => this.initialize());
         
-        // Initialize the first tab as active
-        this.#initializeActiveTab();
+        // Run once in case content is already present
+        this.initialize();
     }
 
-    #handleSlotChange() {
-        this.#initializeActiveTab();
-    }
+    initialize() {
+        // Prevent re-initialization
+        if (this._isInitialized) return;
+        
+        this.tabs = this.tabSlot.assignedElements({ flatten: true }).flatMap(el => el.matches('[tab]') ? [el] : Array.from(el.querySelectorAll('[tab]')));
+        this.panels = this.contentSlot.assignedElements({ flatten: true }).filter(el => el.hasAttribute('tab'));
+        
+        if (this.tabs.length === 0 || this.panels.length === 0) return;
 
-    #initializeActiveTab() {
-        const tabs = this.#getTabButtons();
-        if (tabs.length > 0 && !this.#activeTab) {
-            this.#setActiveTab(tabs[0].getAttribute('tab'));
+        this._isInitialized = true;
+
+        this.tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.setActiveTab(tab.getAttribute('tab'));
+            });
+        });
+
+        const preSelectedTab = this.tabs.find(tab => tab.classList.contains('active'));
+        if (preSelectedTab) {
+            this.setActiveTab(preSelectedTab.getAttribute('tab'));
+        } else if (this.tabs.length > 0) {
+            // Default to the first tab if none are pre-selected
+            this.setActiveTab(this.tabs[0].getAttribute('tab'));
         }
     }
 
-    #handleTabClick(event) {
-        const clickedTab = event.target.closest('[slot="tabs"][tab]');
-        if (!clickedTab) return;
+    setActiveTab(tabId) {
+        if (!tabId || this.activeTabId === tabId) return;
 
-        const tabId = clickedTab.getAttribute('tab');
-        this.#setActiveTab(tabId);
-        
+        this.activeTabId = tabId;
+
+        this.tabs.forEach(tab => {
+            tab.classList.toggle('active', tab.getAttribute('tab') === tabId);
+        });
+
+        this.panels.forEach(panel => {
+            const isTargetPanel = panel.getAttribute('tab') === tabId;
+            // Use 'display: contents' if the panel is a simple wrapper like <div>
+            // to avoid breaking flex/grid layouts of the child element.
+            // Check if the panel is a simple div or has its own display style defined.
+            // For now, '' will restore its default/stylesheet display property.
+            panel.style.display = isTargetPanel ? '' : 'none';
+        });
+
         this.dispatchEvent(new CustomEvent('tab-change', {
             detail: { activeTab: tabId },
-            bubbles: true
+            bubbles: true,
+            composed: true
         }));
     }
 
-    #setActiveTab(tabId) {
-        if (this.#activeTab === tabId) return;
-
-        const tabButtons = this.#getTabButtons();
-        const tabPanels = this.#getTabPanels();
-
-        // Update button states
-        tabButtons.forEach(button => {
-            if (button.getAttribute('tab') === tabId) {
-                button.classList.add('active');
-            } else {
-                button.classList.remove('active');
-            }
-        });
-
-        // Update panel visibility
-        tabPanels.forEach(panel => {
-            if (panel.getAttribute('tab') === tabId) {
-                panel.style.display = 'block';
-            } else {
-                panel.style.display = 'none';
-            }
-        });
-
-        this.#activeTab = tabId;
-    }
-
-    #getTabButtons() {
-        return Array.from(this.querySelectorAll('[slot="tabs"][tab]'));
-    }
-
-    #getTabPanels() {
-        return Array.from(this.querySelectorAll(':scope > [tab]:not([slot])'));
-    }
-
-    // Public API
-    get activeTab() {
-        return this.#activeTab;
-    }
-
-    setActiveTab(tabId) {
-        this.#setActiveTab(tabId);
-    }
-
     render() {
-        this.shadowRoot.innerHTML = `
+        super._initShadow(`
             <style>
                 :host {
                     display: flex;
                     flex-direction: column;
-                    width: 100%;
                     height: 100%;
-                    margin: 0;
-                    padding: 0;
-                }
-
-                .tab-buttons {
-                    display: flex;
-                    flex-shrink: 0;
-                }
-
-                .tab-panels {
-                    flex: 1;
                     overflow: hidden;
                 }
+                .tab-header {
+                    flex-shrink: 0;
+                }
+                .tab-content-container {
+                    flex-grow: 1;
+                    overflow: hidden;
+                    position: relative; /* For containing positioned children */
+                }
+                /* Hide panels by default to prevent flash of unstyled content */
+                ::slotted([tab]) {
+                    display: none; 
+                }
+                /* The active panel should fill the container */
+                ::slotted([tab][style=""]) {
+                    height: 100%;
+                }
             </style>
-            <div class="tab-buttons">
+            <div class="tab-header">
                 <slot name="tabs"></slot>
             </div>
-            <div class="tab-panels">
+            <div class="tab-content-container">
                 <slot></slot>
             </div>
-        `;
+        `);
     }
 }
 
