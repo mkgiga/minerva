@@ -1,4 +1,3 @@
-// client/components/views/modes/AdventureChatMode.js
 import { BaseChatMode } from "./BaseChatMode.js";
 import { chatModeRegistry } from "../../../ChatModeRegistry.js";
 import { notifier, uuidv4, imagePreview } from "../../../client.js";
@@ -17,6 +16,7 @@ export class AdventureChatMode extends BaseChatMode {
     #settings = {};
     #streamingContent = new Map();
     #strippedHistory = [];
+    #isLoadingHistory = false;
 
     static getSettingsSchema() {
         return [
@@ -188,6 +188,40 @@ export class AdventureChatMode extends BaseChatMode {
         this.updateInputState();
     }
 
+    onHistoryLoading(isLoading) {
+        this.#isLoadingHistory = isLoading;
+        this.#renderHistoryLoader();
+    }
+
+    onHistoryLoaded(newMessages, hasMore) {
+        if (newMessages.length === 0) {
+            this.#isLoadingHistory = false;
+            this.#renderHistoryLoader();
+            return;
+        }
+    
+        const fragment = document.createDocumentFragment();
+        const container = this.#historyContainer;
+        const oldScrollHeight = container.scrollHeight;
+        const oldScrollTop = container.scrollTop;
+    
+        for (const msg of newMessages) {
+            const messageEl = this.#createMessageElement(msg);
+            this.#updateMessageContent(messageEl, msg, -1);
+            fragment.appendChild(messageEl);
+        }
+        
+        const loaderContainer = this.shadowRoot.querySelector('#history-loader-container');
+        loaderContainer.after(fragment);
+    
+        // Restore scroll position to keep view stable
+        const newScrollHeight = container.scrollHeight;
+        container.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
+    
+        this.#isLoadingHistory = false;
+        this.#renderHistoryLoader();
+    }
+
     onPromptStart(userMessage) {
         this.appendMessage(userMessage);
         const assistantSpinnerMessage = { id: `assistant-${uuidv4()}`, role: "assistant", content: '<minerva-spinner mode="infinite"></minerva-spinner>', timestamp: new Date().toISOString() };
@@ -240,6 +274,12 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     #handleHistoryClick(event) {
+        const loadMoreBtn = event.target.closest('#load-more-btn');
+        if (loadMoreBtn) {
+            this.loadMoreMessages();
+            return;
+        }
+        
         const header = event.target.closest(".adventure-prompt-header");
         if (header) {
             const promptBlock = header.closest(".adventure-prompt");
@@ -370,16 +410,34 @@ export class AdventureChatMode extends BaseChatMode {
 
     refreshChatHistory() {
         if (!this.#historyContainer || !this.chat) { this.#historyContainer.innerHTML = ""; return; }
+
+        this.#historyContainer.innerHTML = '<div id="history-loader-container"></div>';
+        this.#renderHistoryLoader();
+        
         this.#lastUnansweredPromptEl = null;
-        this.#historyContainer.innerHTML = "";
         for (let i = 0; i < this.chat.messages.length; i++) this.appendMessage(this.chat.messages[i], false, i);
+        
         if (this.#lastUnansweredPromptEl) {
             this.#lastUnansweredPromptEl.classList.remove("collapsed");
             const icon = this.#lastUnansweredPromptEl.querySelector(".expand-icon");
             if (icon) icon.textContent = "unfold_less";
         }
+        
         setTimeout(() => { this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight; }, 0);
         this.updateInputState(this.isSending);
+    }
+
+    #renderHistoryLoader() {
+        const container = this.shadowRoot.querySelector('#history-loader-container');
+        if (!container) return;
+    
+        if (this.#isLoadingHistory) {
+            container.innerHTML = '<div class="loader-wrapper"><minerva-spinner></minerva-spinner></div>';
+        } else if (this.chat?.hasMoreMessages) {
+            container.innerHTML = '<div class="loader-wrapper"><button id="load-more-btn" class="button-secondary">Load Older Messages</button></div>';
+        } else {
+            container.innerHTML = '';
+        }
     }
 
     appendMessage(message, scrollToBottom = true, index = -1) {
@@ -640,10 +698,28 @@ export class AdventureChatMode extends BaseChatMode {
         block.className = "adventure-block adventure-dialogue";
         const speaker = this.#findCharacter(dialogueNode.getAttribute("id")?.trim());
         const speakerName = speaker?.name || dialogueNode.getAttribute("id") || 'Narrator';
-        const avatarUrl = speaker?.avatarUrl || (dialogueNode.getAttribute("id") ? null : "assets/images/system_icon.svg");
+        // FIX: Ensure expressionName is safely parsed and defaults to null if attribute is missing
+        const expressionAttr = dialogueNode.getAttribute("expression");
+        const expressionName = expressionAttr ? expressionAttr.trim().toLowerCase() : null;
+        
+        let avatarUrl = speaker?.avatarUrl || (dialogueNode.getAttribute("id") ? null : "assets/images/system_icon.svg");
+
+        if (expressionName && speaker?.expressions?.length > 0) {
+            // FIX: Make the find condition more robust against whitespace in saved data.
+            const expression = speaker.expressions.find(e => e.name?.trim().toLowerCase() === expressionName);
+            if (expression) {
+                avatarUrl = expression.url;
+            }
+        }
+
         const nameEl = document.createElement("div"); nameEl.className = "adventure-speaker-name"; nameEl.textContent = speakerName;
         let avatarEl = null;
-        if (avatarUrl) { avatarEl = document.createElement("img"); avatarEl.className = "adventure-speaker-avatar"; avatarEl.src = avatarUrl; avatarEl.alt = speakerName; }
+        if (avatarUrl) { 
+            avatarEl = document.createElement("img"); 
+            avatarEl.className = "adventure-speaker-avatar"; 
+            avatarEl.src = avatarUrl; 
+            avatarEl.alt = speakerName; 
+        }
         const contentEl = document.createElement("div"); contentEl.className = "adventure-dialogue-content";
         const speechContainer = document.createElement("div"); speechContainer.className = "adventure-speech-container";
         for (const child of Array.from(dialogueNode.childNodes)) {
@@ -706,7 +782,9 @@ export class AdventureChatMode extends BaseChatMode {
 
     render() {
         super._initShadow(`
-            <div id="chat-history"></div>
+            <div id="chat-history">
+                <div id="history-loader-container"></div>
+            </div>
             <form id="chat-form">
                 <button id="quick-regen-btn" type="button" title="Regenerate Last Response"><span class="material-icons">replay</span></button>
                 <text-box name="message" placeholder="Type your message... (Ctrl+Enter to send)"></text-box>
@@ -719,6 +797,9 @@ export class AdventureChatMode extends BaseChatMode {
         return `
             :host { display: flex; flex-direction: column; height: 100%; position: relative; }
             #chat-history { flex-grow: 1; overflow-y: auto; padding: var(--spacing-xl); }
+            #history-loader-container { min-height: 48px; }
+            .loader-wrapper { display: flex; justify-content: center; padding: var(--spacing-md) 0; }
+            #load-more-btn { padding: var(--spacing-sm) var(--spacing-lg); font-size: var(--font-size-sm); }
             #chat-form { display: flex; padding: var(--spacing-md); gap: var(--spacing-md); border-top: 1px solid var(--bg-3); background-color: var(--bg-1); flex-shrink: 0; }
             #quick-regen-btn { flex-shrink: 0; width: 48px; height: 48px; border: none; background-color: var(--bg-2); color: var(--text-secondary); border-radius: var(--radius-md); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--transition-fast); }
             #quick-regen-btn:hover { background-color: var(--bg-3); color: var(--text-primary); }
@@ -793,20 +874,71 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-image-content .adventure-dialogue .adventure-speaker-name { color: white; border-bottom-color: rgba(255,255,255,0.3); }
 
             @media (max-width: 768px) {
-                #chat-history { padding: var(--spacing-md); }
+                #chat-history { padding: var(--spacing-md) var(--spacing-sm); }
                 .chat-message .message-controls, .chat-message.assistant.adventure-mode .message-controls { opacity: 1; pointer-events: auto; }
-                .adventure-block { margin-bottom: var(--adventure-block-gap, var(--spacing-sm)); }
-                .adventure-narrate { font-size: var(--font-size-md); }
+
+                /* Make layout more compact */
+                .adventure-block { margin-bottom: var(--spacing-md); } /* Consistent spacing between all blocks */
+                .adventure-narrate { font-size: var(--font-size-sm); }
                 .adventure-dialogue { gap: var(--spacing-xs) var(--spacing-sm); }
                 .adventure-speaker-avatar { border-radius: var(--radius-sm); }
                 .adventure-speaker-avatar img { width: 100%; height: auto; border-radius: var(--radius-sm); }
-                .adventure-speaker-name { font-size: 1.1rem; }
-                .adventure-speech { font-size: var(--font-size-md); }
+                .adventure-speaker-name { font-size: 1rem; }
+                .adventure-speech { font-size: var(--font-size-sm); }
                 .adventure-prompt-body { padding: var(--spacing-sm); gap: var(--spacing-xs); }
-                .adventure-prompt-info { font-size: var(--font-size-md); }
-                .adventure-choice-button { padding: 0.5rem 1rem; font-size: var(--font-size-md); }
-                .adventure-image.layout-side-by-side { grid-template-columns: 1fr; } /* Stack side-by-side on mobile */
-                .adventure-image.layout-side-by-side .adventure-image-content { grid-area: auto; padding-left: 0; padding-right: 0; }
+                .adventure-prompt-info { font-size: var(--font-size-sm); }
+                .adventure-choice-button { padding: 0.5rem 1rem; font-size: var(--font-size-sm); }
+
+                /* --- Image Block Overrides for Mobile --- */
+                /* Stack image and content vertically */
+                .adventure-image,
+                .adventure-image.layout-side-by-side,
+                .adventure-image.layout-overlay {
+                    display: flex;
+                    flex-direction: column;
+                    background-color: var(--bg-0); /* A subtle background for the whole block */
+                }
+                
+                .adventure-image-container {
+                    order: 1; /* Image first */
+                    max-height: 250px; /* Constrain image height */
+                }
+
+                .adventure-image-display {
+                    object-fit: contain; /* Show full image without cropping */
+                    background-color: var(--bg-0);
+                }
+
+                /* Reset grid-area and styles for content */
+                .adventure-image-content,
+                .adventure-image.layout-side-by-side .adventure-image-content,
+                .adventure-image.layout-overlay .adventure-image-content {
+                    order: 2; /* Content second */
+                    grid-area: auto;
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: none; /* Remove overlay gradient */
+                    color: inherit;
+                    text-shadow: none;
+                }
+
+                .adventure-image-content .adventure-block,
+                .adventure-image.layout-overlay .adventure-image-content .adventure-block {
+                    color: inherit;
+                    text-shadow: none;
+                    margin-bottom: var(--spacing-xs);
+                }
+
+                /* Override for dialogue inside image on mobile */
+                .adventure-image-content .adventure-dialogue {
+                    backdrop-filter: none;
+                    -webkit-backdrop-filter: none;
+                    margin-bottom: 0;
+                }
+                .adventure-image-content .adventure-dialogue .adventure-speaker-name,
+                .adventure-image.layout-overlay .adventure-image-content .adventure-dialogue .adventure-speaker-name {
+                    color: var(--text-primary);
+                    border-bottom-color: var(--bg-3);
+                }
             }
         `;
     }

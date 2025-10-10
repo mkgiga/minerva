@@ -45,6 +45,7 @@ class AIGenerationView extends BaseComponent {
         });
         
         this.shadowRoot.querySelector('#save-btn').addEventListener('click', () => this.saveConfig());
+        this.shadowRoot.querySelector('#save-btn-mobile').addEventListener('click', () => this.saveConfig());
         this.shadowRoot.querySelector('#generation-name-input').addEventListener('input', () => this.setNeedsSave(true));
         this.shadowRoot.querySelector('#system-prompt-input').addEventListener('change', () => this.setNeedsSave(true));
         this.schemaForm.addEventListener('change', () => this.setNeedsSave(true));
@@ -187,9 +188,14 @@ class AIGenerationView extends BaseComponent {
     setNeedsSave(needsSave) {
         this.state.needsSave = needsSave;
         const saveIndicator = this.shadowRoot.querySelector('.save-indicator');
+        const mobileSaveIndicator = this.shadowRoot.querySelector('.mobile-save-indicator');
         const saveButton = this.shadowRoot.querySelector('#save-btn');
+        const mobileSaveButton = this.shadowRoot.querySelector('#save-btn-mobile');
+        
         if (saveIndicator) saveIndicator.style.opacity = needsSave ? '1' : '0';
+        if (mobileSaveIndicator) mobileSaveIndicator.style.opacity = needsSave ? '1' : '0';
         if (saveButton) saveButton.disabled = !needsSave;
+        if (mobileSaveButton) mobileSaveButton.disabled = !needsSave;
     }
 
     handleBackToList() {
@@ -279,6 +285,10 @@ class AIGenerationView extends BaseComponent {
                     <header class="mobile-editor-header">
                         <button id="back-to-list-btn" class="icon-btn" title="Back"><span class="material-icons">arrow_back</span></button>
                         <h2 id="editor-title-mobile">Editor</h2>
+                        <div class="mobile-header-controls">
+                            <span class="save-indicator mobile-save-indicator">Unsaved changes</span>
+                            <button id="save-btn-mobile" class="button-primary" disabled>Save</button>
+                        </div>
                     </header>
                     <div class="editor-container">
                         <div class="placeholder"><h2>Select a generation config to edit.</h2></div>
@@ -345,6 +355,9 @@ class AIGenerationView extends BaseComponent {
         .panel-main[style*="display: flex"] .placeholder { display: none; }
         .mobile-editor-header { display: none; align-items: center; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; gap: var(--spacing-md); }
         #editor-title-mobile { font-size: 1.1rem; flex-grow: 1; }
+        .mobile-header-controls { display: flex; align-items: center; gap: var(--spacing-sm); }
+        .mobile-save-indicator { font-size: var(--font-size-sm); color: var(--accent-warn); opacity: 0; transition: opacity 0.3s; }
+        #save-btn-mobile:disabled { background-color: var(--bg-2); color: var(--text-disabled); cursor: not-allowed; }
         
         .main-editor-header { display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md); border-bottom: 1px solid var(--bg-3); }
         .editor-title-input { font-size: 1.5rem; font-weight: 600; background: none; border: none; outline: none; width: 100%; color: var(--text-primary); flex-grow: 1; }

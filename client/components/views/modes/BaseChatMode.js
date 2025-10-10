@@ -239,6 +239,24 @@ export class BaseChatMode extends BaseComponent {
     onSettingsChanged(newSettings) {
         /* No-op by default. Child classes can implement this. */
     }
+
+    /**
+     * Called when an older page of message history has been loaded.
+     * The mode should prepend these messages to its display.
+     * @param {Array<object>} newMessages - The array of older messages fetched from the server.
+     * @param {boolean} hasMore - A flag indicating if there are even more older messages to load.
+     */
+    onHistoryLoaded(newMessages, hasMore) {
+        /* No-op by default. */
+    }
+
+    /**
+     * Called when the main view starts or stops fetching older messages.
+     * @param {boolean} isLoading - True if loading is starting, false if it has finished.
+     */
+    onHistoryLoading(isLoading) {
+        /* No-op by default. */
+    }
     
     // Stream Lifecycle Hooks
 
@@ -457,6 +475,13 @@ export class BaseChatMode extends BaseComponent {
      */
     abortGeneration() {
         this.dispatch('chat-mode-abort-generation');
+    }
+
+    /**
+     * Requests that the main controller load the next page of older messages.
+     */
+    loadMoreMessages() {
+        this.dispatch('chat-mode-load-more', {});
     }
     
     /**

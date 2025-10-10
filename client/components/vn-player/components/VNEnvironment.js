@@ -1,1 +1,0 @@
-// an environment is the background (and optionally a foreground) of a visual novel scene

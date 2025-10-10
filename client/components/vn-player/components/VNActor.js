@@ -1,1 +1,0 @@
-// an actor is a character that can be visible in the scene

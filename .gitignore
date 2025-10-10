@@ -26,3 +26,5 @@ data
 GEMINI.md
 CLAUDE.md
 .sysprompt*
+
+minerva-asset-repo/*

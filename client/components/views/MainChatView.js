@@ -1,4 +1,3 @@
-
 import { BaseComponent } from '../BaseComponent.js';
 import { api, modal, notifier, uuidv4 } from '../../client.js';
 import { chatModeRegistry } from '../../ChatModeRegistry.js';
@@ -121,6 +120,7 @@ class MainChatView extends BaseComponent {
         modeContainer.addEventListener('chat-mode-copy-message', e => this.#copyMessageContent(e.detail.content));
         modeContainer.addEventListener('chat-mode-go-to-parent', this.handleGoToParentChat);
         modeContainer.addEventListener('chat-mode-abort-generation', () => this.#abortController?.abort());
+        modeContainer.addEventListener('chat-mode-load-more', () => this.#handleLoadMoreMessages());
     }
 
     async fetchInitialData() {
@@ -930,6 +930,30 @@ class MainChatView extends BaseComponent {
             this.state.isSending = false;
             this.#abortController = null;
             this.#activeChatMode?.updateInputState(false);
+        }
+    }
+
+    async #handleLoadMoreMessages() {
+        if (!this.state.selectedChat || !this.state.selectedChat.hasMoreMessages) return;
+
+        const oldestMessageId = this.state.selectedChat.messages[0]?.id;
+        if (!oldestMessageId) return;
+
+        this.#activeChatMode?.onHistoryLoading(true);
+
+        try {
+            const response = await api.get(`/api/chats/${this.state.selectedChat.id}/messages?limit=50&before=${oldestMessageId}`);
+            
+            this.state.selectedChat.messages.unshift(...response.messages);
+            this.state.selectedChat.hasMoreMessages = response.hasMoreMessages;
+            this.#activeChatMode.chat = this.state.selectedChat; // Important: update the mode's chat object reference
+
+            this.#activeChatMode?.onHistoryLoaded(response.messages, response.hasMoreMessages);
+
+        } catch (error) {
+            notifier.show({ type: 'bad', header: 'Error', message: 'Could not load older messages.' });
+        } finally {
+            this.#activeChatMode?.onHistoryLoading(false);
         }
     }
 

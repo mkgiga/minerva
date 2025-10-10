@@ -9,6 +9,9 @@ import './components/views/AIConnectionView.js';
 import './components/views/AIGenerationView.js';
 import './components/views/BrowseScenariosView.js';
 import './components/views/BrowseView.js';
+import './components/views/PluginsView.js';
+// Plugin imports
+import './components/plugins/CharacterCardGeneratorPlugin.js';
 
 import { BaseComponent } from './components/BaseComponent.js';
 import './components/Notification.js';
@@ -181,6 +184,7 @@ class MinervaApp extends BaseComponent {
         notes: { label: 'Notes', icon: 'menu_book', component: 'notes-view', layout: 'layout-main-right' },
         characters: { label: 'Characters', icon: 'people', component: 'characters-view', layout: 'layout-main-right' },
         browse: { label: 'Browse', icon: 'travel_explore', component: 'browse-view', layout: 'layout-main-right' },
+        plugins: { label: 'Plugins', icon: 'extension', component: 'plugins-view', layout: 'layout-main-right' },
         chat: { label: 'Chat', icon: 'chat', component: 'main-chat-view', layout: 'layout-three-panel' },
     };
 

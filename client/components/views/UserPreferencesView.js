@@ -27,6 +27,7 @@ class UserPreferencesView extends BaseComponent {
                         { value: 'raw', label: 'Raw Text' },
                         { value: 'markdown', label: 'Markdown' },
                         { value: 'adventure', label: 'Adventure' },
+                        { value: 'visual-novel', label: 'Visual Novel' },
                     ],
                     description: 'Determines how chat messages are displayed. Markdown supports rich text formatting and code blocks.'
                 }
@@ -234,7 +235,7 @@ class UserPreferencesView extends BaseComponent {
                 const fieldset = document.createElement('fieldset');
                 const legend = document.createElement('legend');
                 // Display name for the mode (e.g., 'Raw', 'Markdown', 'Adventure')
-                const modeDisplayName = modeInfo.renderer.charAt(0).toUpperCase() + modeInfo.renderer.slice(1);
+                const modeDisplayName = modeInfo.renderer.charAt(0).toUpperCase() + modeInfo.renderer.slice(1).replace('-', ' ');
                 legend.textContent = `${modeDisplayName} Mode Settings`;
 
                 const form = document.createElement('schema-form');

@@ -29,6 +29,26 @@ class CharacterEditor extends BaseComponent {
     }
 
     handleFormClick(event) {
+        // Expression handlers
+        const addExprBtn = event.target.closest('#add-expression-btn');
+        if (addExprBtn) {
+            this.onAddExpression();
+            return;
+        }
+
+        const deleteExprBtn = event.target.closest('.delete-expression-item-btn');
+        if (deleteExprBtn) {
+            this.onDeleteExpression(deleteExprBtn.closest('.expression-item').dataset.filename);
+            return;
+        }
+
+        const previewExpression = event.target.closest('.expression-item-preview');
+        if (previewExpression) {
+            imagePreview.show({ src: previewExpression.src, alt: previewExpression.alt });
+            return; 
+        }
+
+        // Gallery handlers
         const addImageBtn = event.target.closest('#add-gallery-image-btn');
         if (addImageBtn) {
             this.onAddGalleryImage();
@@ -37,22 +57,7 @@ class CharacterEditor extends BaseComponent {
         
         const deleteBtn = event.target.closest('.delete-gallery-item-btn');
         if (deleteBtn) {
-            const itemEl = deleteBtn.closest('.gallery-item');
-            const filename = itemEl.dataset.filename;
-            modal.confirm({
-                title: 'Delete Image',
-                content: 'Are you sure you want to delete this image from the gallery?',
-                confirmLabel: 'Delete',
-                confirmButtonClass: 'button-danger',
-                onConfirm: async () => {
-                    try {
-                        await api.delete(`/api/characters/${this.character.id}/gallery/${filename}`);
-                        notifier.show({ message: 'Image deleted.' });
-                    } catch (e) {
-                        notifier.show({ type: 'bad', header: 'Error', message: e.message });
-                    }
-                }
-            });
+            this.onDeleteGalleryImage(deleteBtn.closest('.gallery-item').dataset.filename);
             return;
         }
 
@@ -65,20 +70,34 @@ class CharacterEditor extends BaseComponent {
     }
 
     handleFormChange(event) {
-        // Not used for now, using blur to save alt text
+        // Not used for now, using blur to save inputs
     }
 
     handleFormBlur(event) {
+        // Handle Expression Name change
+        const nameInput = event.target.closest('.expression-name-input');
+        if (nameInput) {
+            const itemEl = nameInput.closest('.expression-item');
+            const filename = itemEl.dataset.filename;
+            const newName = nameInput.value.trim();
+            const originalName = this.character.expressions.find(item => item.src === filename)?.name;
+            if (newName && newName !== originalName) {
+                this.onExpressionNameChange(filename, newName);
+            }
+            return;
+        }
+
+        // Handle Gallery Alt Text change
         const altInput = event.target.closest('.alt-text-input');
         if (altInput) {
             const itemEl = altInput.closest('.gallery-item');
             const filename = itemEl.dataset.filename;
             const newAlt = altInput.value;
-            // Find original alt to see if it changed
             const originalAlt = this.character.gallery.find(item => item.src === filename)?.alt;
             if (newAlt !== originalAlt) {
                 this.onAltTextChange(filename, newAlt);
             }
+            return;
         }
     }
 
@@ -106,6 +125,84 @@ class CharacterEditor extends BaseComponent {
         } catch (error) {
             console.error('Failed to upload avatar:', error);
         }
+    }
+    
+    async onAddExpression() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.onchange = async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const content = document.createElement('div');
+            content.innerHTML = `<p class="field-description">Provide a short, unique name for this expression (e.g., happy, sad, angry).</p>`;
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'form-group';
+            nameInput.placeholder = 'e.g., smiling';
+            content.appendChild(nameInput);
+
+            modal.show({
+                title: 'Add Expression',
+                content,
+                buttons: [
+                    { label: 'Cancel', className: 'button-secondary', onClick: () => modal.hide() },
+                    { 
+                        label: 'Upload', 
+                        className: 'button-primary',
+                        onClick: async () => {
+                            const name = nameInput.value.trim();
+                            if (!name) {
+                                notifier.show({type: 'bad', message: 'Expression name cannot be empty.'});
+                                return;
+                            }
+
+                            const formData = new FormData();
+                            formData.append('image', file);
+                            formData.append('name', name);
+                            
+                            modal.hide();
+                            notifier.show({ header: 'Uploading...', message: `Adding expression for ${this.character.name}.` });
+                            try {
+                                await api.post(`/api/characters/${this.character.id}/expressions`, formData);
+                                notifier.show({ type: 'good', message: 'Expression added.' });
+                            } catch (e) {
+                                notifier.show({ type: 'bad', header: 'Upload Failed', message: e.message });
+                            }
+                        }
+                    }
+                ]
+            });
+            setTimeout(() => nameInput.focus(), 100);
+        };
+        fileInput.click();
+    }
+
+    async onExpressionNameChange(filename, newName) {
+        try {
+            await api.put(`/api/characters/${this.character.id}/expressions/${filename}`, { name: newName });
+            notifier.show({ message: 'Expression name updated.' });
+        } catch(e) {
+            notifier.show({ type: 'bad', header: 'Error', message: 'Could not update expression name.' });
+        }
+    }
+    
+    onDeleteExpression(filename) {
+        modal.confirm({
+            title: 'Delete Expression',
+            content: 'Are you sure you want to delete this expression?',
+            confirmLabel: 'Delete',
+            confirmButtonClass: 'button-danger',
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/api/characters/${this.character.id}/expressions/${filename}`);
+                    notifier.show({ message: 'Expression deleted.' });
+                } catch (e) {
+                    notifier.show({ type: 'bad', header: 'Error', message: e.message });
+                }
+            }
+        });
     }
 
     async onAddGalleryImage() {
@@ -162,6 +259,23 @@ class CharacterEditor extends BaseComponent {
         }
     }
     
+    onDeleteGalleryImage(filename) {
+        modal.confirm({
+            title: 'Delete Image',
+            content: 'Are you sure you want to delete this image from the gallery?',
+            confirmLabel: 'Delete',
+            confirmButtonClass: 'button-danger',
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/api/characters/${this.character.id}/gallery/${filename}`);
+                    notifier.show({ message: 'Image deleted.' });
+                } catch (e) {
+                    notifier.show({ type: 'bad', header: 'Error', message: e.message });
+                }
+            }
+        });
+    }
+    
     #updateView() {
         const formWrapper = this.shadowRoot.querySelector('.form-wrapper');
         const placeholder = this.shadowRoot.querySelector('.placeholder');
@@ -191,8 +305,34 @@ class CharacterEditor extends BaseComponent {
             this.shadowRoot.querySelector('#character-description').value = this._character.description || '';
             this.shadowRoot.querySelector('#replace-char-id').textContent = this._character.id || 'id';
 
+            this.#renderExpressions();
             this.#renderGallery();
         }
+    }
+
+    #renderExpressions() {
+        const grid = this.shadowRoot.querySelector('#expressions-grid');
+        if (!grid || !this.character?.expressions) return;
+
+        if (this.character.expressions.length === 0) {
+            grid.innerHTML = '<p class="field-description">No expressions defined.</p>';
+            return;
+        }
+
+        grid.innerHTML = `
+            <div class="expression-grid-header">
+                <div class="expression-header-preview">Preview</div>
+                <div class="expression-header-name">Name (key)</div>
+                <div class="expression-header-actions">Actions</div>
+            </div>
+            ${this.character.expressions.map(item => `
+                <div class="expression-item" data-filename="${item.src}">
+                    <img src="${item.url}" alt="${item.name}" class="expression-item-preview">
+                    <input type="text" class="expression-name-input form-group" value="${item.name || ''}" placeholder="Name this expression...">
+                    <button type="button" class="delete-expression-item-btn icon-btn" title="Delete Expression"><span class="material-icons">delete</span></button>
+                </div>
+            `).join('')}
+        `;
     }
 
     #renderGallery() {
@@ -248,6 +388,13 @@ class CharacterEditor extends BaseComponent {
                             <label for="character-description">Description</label>
                             <p class="field-description">The main prompt for the character. You can use macros like {{player.name}}.</p>
                             <text-box id="character-description" name="description"></text-box>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Expressions</label>
+                            <p class="field-description">Named images for expressions. Can be referenced by name in chat modes, or included in prompts with {{<span id="replace-char-id">&lt;id&gt;</span>.expressions}}.</p>
+                            <div id="expressions-grid"></div>
+                            <button type="button" id="add-expression-btn" class="button-secondary">Add Expression</button>
                         </div>
 
                         <div class="form-group">
@@ -405,17 +552,18 @@ class CharacterEditor extends BaseComponent {
                 transition: var(--transition-fast);
             }
             
-            #add-gallery-image-btn {
+            #add-gallery-image-btn, #add-expression-btn {
                 margin-top: var(--spacing-md);
                 width: 100%;
             }
 
-            #gallery-grid {
+            #expressions-grid, #gallery-grid {
                 display: flex;
                 flex-direction: column;
                 gap: var(--spacing-xs);
                 margin-top: var(--spacing-sm);
             }
+            .expression-grid-header, .expression-item,
             .gallery-grid-header, .gallery-item {
                 display: grid;
                 grid-template-columns: 80px 1fr 40px;
@@ -423,16 +571,16 @@ class CharacterEditor extends BaseComponent {
                 align-items: center;
                 padding: var(--spacing-xs);
             }
-            .gallery-grid-header {
+            .expression-grid-header, .gallery-grid-header {
                 font-weight: 500;
                 font-size: var(--font-size-sm);
                 color: var(--text-secondary);
                 border-bottom: 1px solid var(--bg-3);
                 padding-bottom: var(--spacing-sm);
             }
-            .gallery-header-actions { text-align: center; }
+            .expression-header-actions, .gallery-header-actions { text-align: center; }
 
-            .gallery-item-preview {
+            .expression-item-preview, .gallery-item-preview {
                 width: 80px;
                 height: 80px;
                 object-fit: cover;
@@ -440,15 +588,17 @@ class CharacterEditor extends BaseComponent {
                 background-color: var(--bg-0);
                 cursor: pointer; /* Indicate it's clickable */
             }
-            .alt-text-input { width: 100%; margin: 0; }
-            .delete-gallery-item-btn { 
+            
+            .expression-name-input, .alt-text-input { width: 100%; margin: 0; }
+
+            .delete-expression-item-btn, .delete-gallery-item-btn { 
                 padding: var(--spacing-xs);
                 color: var(--text-secondary);
                 background: none;
                 border: none;
                 cursor: pointer;
             }
-            .delete-gallery-item-btn:hover { color: var(--accent-danger); }
+            .delete-expression-item-btn:hover, .delete-gallery-item-btn:hover { color: var(--accent-danger); }
 
             .field-description {
                 font-size: var(--font-size-sm);

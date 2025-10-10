@@ -106,6 +106,7 @@ const createCharacterStorage = (subfolder = '') => {
 
 const avatarUpload = multer({ storage: createCharacterStorage('') });
 const galleryUpload = multer({ storage: createCharacterStorage('images') });
+const expressionUpload = multer({ storage: createCharacterStorage('expressions') });
 
 // Application state, loaded from filesystem
 const state = {
@@ -225,6 +226,16 @@ async function loadCharacters() {
                     charData.avatarUrl = null;
                 }
                 
+                // Load expressions and build full URLs
+                if (charData.expressions && Array.isArray(charData.expressions)) {
+                    charData.expressions = charData.expressions.map(item => ({
+                        ...item,
+                        url: `/data/characters/${charId}/expressions/${item.src}?t=${Date.now()}`
+                    }));
+                } else {
+                    charData.expressions = [];
+                }
+
                 // Load gallery and build full URLs
                 if (charData.gallery && Array.isArray(charData.gallery)) {
                     charData.gallery = charData.gallery.map(item => ({
@@ -315,6 +326,14 @@ function resolveMacros(text, context) {
                 }
                 if (props.includes('description') && c.description) {
                     characterLines.push(`    <description>\n        ${escapeXML(c.description)}\n    </description>`);
+                }
+                if (props.includes('expressions') && c.expressions && c.expressions.length > 0) {
+                    const expressionLines = c.expressions.map(expr => {
+                        return `        <expression name="${escapeXML(expr.name)}">${escapeXML(expr.src)}</expression>`;
+                    });
+                    if (expressionLines.length > 0) {
+                        characterLines.push(`    <expressions>\n${expressionLines.join('\n')}\n    </expressions>`);
+                    }
                 }
                 if (props.includes('images') && c.gallery && c.gallery.length > 0) {
                     const imageLines = c.gallery.map(img => {
@@ -532,6 +551,92 @@ function initHttp() {
         } catch (error) { res.status(500).json({ message: 'Failed to upload avatar' }); }
     });
 
+    // Expression Endpoints
+    app.post('/api/characters/:id/expressions', expressionUpload.single('image'), async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { name } = req.body;
+            if (!req.file) return res.status(400).json({ message: 'No image file provided.' });
+            if (!name) return res.status(400).json({ message: 'Expression name is required.' });
+            
+            const character = state.characters.find(c => c.id === id);
+            if (!character) return res.status(404).json({ message: 'Character not found' });
+    
+            const newExpressionItem = { src: req.file.filename, name };
+            character.expressions.push(newExpressionItem);
+    
+            await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
+            
+            const updatedCharacter = await loadSingleCharacter(id);
+            if (updatedCharacter) {
+                const charIndex = state.characters.findIndex(c => c.id === id);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+                res.status(201).json(updatedCharacter);
+            } else {
+                 res.status(404).json({ message: 'Character not found after update.' });
+            }
+        } catch (error) {
+            console.error('Error adding expression image:', error);
+            res.status(500).json({ message: 'Failed to add expression.' });
+        }
+    });
+    
+    app.put('/api/characters/:id/expressions/:filename', async (req, res) => {
+        try {
+            const { id, filename } = req.params;
+            const { name } = req.body;
+            if (!name) return res.status(400).json({ message: 'Expression name is required.' });
+    
+            const character = state.characters.find(c => c.id === id);
+            if (!character) return res.status(404).json({ message: 'Character not found.' });
+    
+            const expressionItem = character.expressions.find(item => item.src === filename);
+            if (!expressionItem) return res.status(404).json({ message: 'Expression not found.' });
+    
+            expressionItem.name = name;
+            await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
+            
+            const updatedCharacter = await loadSingleCharacter(id);
+            if (updatedCharacter) {
+                const charIndex = state.characters.findIndex(c => c.id === id);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+                res.json(updatedCharacter);
+            } else {
+                 res.status(404).json({ message: 'Character not found after update.' });
+            }
+        } catch (error) {
+            res.status(500).json({ message: 'Failed to update expression.' });
+        }
+    });
+    
+    app.delete('/api/characters/:id/expressions/:filename', async (req, res) => {
+        try {
+            const { id, filename } = req.params;
+            const character = state.characters.find(c => c.id === id);
+            if (!character) return res.status(404).json({ message: 'Character not found.' });
+    
+            const imagePath = path.join(CHARACTERS_DIR, id, 'expressions', filename);
+            await fs.unlink(imagePath).catch(err => console.warn(`Could not delete file ${imagePath}: ${err.message}`));
+    
+            character.expressions = character.expressions.filter(item => item.src !== filename);
+            await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
+    
+            const updatedCharacter = await loadSingleCharacter(id);
+            if (updatedCharacter) {
+                const charIndex = state.characters.findIndex(c => c.id === id);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+                res.status(204).send();
+            } else {
+                 res.status(404).json({ message: 'Character not found after update.' });
+            }
+        } catch (error) {
+            res.status(500).json({ message: 'Failed to delete expression.' });
+        }
+    });
+
     // Gallery Endpoints
     app.post('/api/characters/:id/gallery', galleryUpload.single('image'), async (req, res) => {
         try {
@@ -549,9 +654,11 @@ function initHttp() {
             
             // Re-load character to get the full URL for the new image in the broadcast
             const updatedCharacter = await loadSingleCharacter(id);
-            if (updatedCharacter) {
-                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
-                 res.status(201).json(updatedCharacter);
+             if (updatedCharacter) {
+                const charIndex = state.characters.findIndex(c => c.id === id);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+                res.status(201).json(updatedCharacter);
             } else {
                  res.status(404).json({ message: 'Character not found after update.' });
             }
@@ -577,8 +684,10 @@ function initHttp() {
             
             const updatedCharacter = await loadSingleCharacter(id);
              if (updatedCharacter) {
-                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
-                 res.json(updatedCharacter);
+                const charIndex = state.characters.findIndex(c => c.id === id);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+                res.json(updatedCharacter);
             } else {
                  res.status(404).json({ message: 'Character not found after update.' });
             }
@@ -601,8 +710,10 @@ function initHttp() {
 
             const updatedCharacter = await loadSingleCharacter(id);
              if (updatedCharacter) {
-                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
-                 res.status(204).send();
+                const charIndex = state.characters.findIndex(c => c.id === id);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+                res.status(204).send();
             } else {
                  res.status(404).json({ message: 'Character not found after update.' });
             }
@@ -753,17 +864,63 @@ function initHttp() {
         res.status(201).json(newChat);
     });
     app.get('/api/chats/:id', async (req, res) => {
+        const INITIAL_MESSAGE_LIMIT = 50;
         try {
             const chatPath = path.join(CHATS_DIR, `${req.params.id}.json`);
             const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            
+            const messageCount = chatData.messages?.length || 0;
+            const hasMoreMessages = messageCount > INITIAL_MESSAGE_LIMIT;
+            
+            // Slice messages to return only the last page for the initial load
+            if (chatData.messages) {
+                chatData.messages = chatData.messages.slice(-INITIAL_MESSAGE_LIMIT);
+            }
+
             const chat = new Chat(chatData);
-            res.json(chat);
+
+            // Add pagination info to the response object
+            res.json({ ...chat, messageCount, hasMoreMessages });
+
         } catch (e) { 
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
             console.error(`Error processing chat ${req.params.id}:`, e);
             res.status(500).json({ message: 'Failed to retrieve chat' });
         }
     });
+
+    app.get('/api/chats/:id/messages', async (req, res) => {
+        const { id } = req.params;
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const beforeMessageId = req.query.before;
+
+        if (!beforeMessageId) {
+            return res.status(400).json({ message: 'A "before" message ID is required.' });
+        }
+
+        try {
+            const chatPath = path.join(CHATS_DIR, `${id}.json`);
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            const allMessages = chatData.messages || [];
+
+            const beforeIndex = allMessages.findIndex(m => m.id === beforeMessageId);
+
+            if (beforeIndex === -1) {
+                return res.status(404).json({ message: 'The "before" message ID was not found.' });
+            }
+
+            const startIndex = Math.max(0, beforeIndex - limit);
+            const messages = allMessages.slice(startIndex, beforeIndex);
+            const hasMoreMessages = startIndex > 0;
+
+            res.json({ messages, hasMoreMessages });
+
+        } catch (e) {
+            if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
+            res.status(500).json({ message: 'Failed to retrieve messages' });
+        }
+    });
+
     app.put('/api/chats/:id', async (req, res) => {
         const { id } = req.params;
         try {
@@ -1342,6 +1499,90 @@ function initHttp() {
         }
     });
 
+    // Simple completions endpoint for plugins/tools
+    app.post('/api/completions', async (req, res) => {
+        try {
+            const { messages, stream = false, temperature, max_tokens } = req.body;
+            
+            // Get active connection config
+            const { activeConnectionConfigId, activeGenerationConfigId } = state.settings;
+            if (!activeConnectionConfigId) {
+                return res.status(400).json({ message: 'No active connection configuration set.' });
+            }
+            
+            const config = state.connectionConfigs.find(c => c.id === activeConnectionConfigId);
+            if (!config) {
+                return res.status(404).json({ message: `Active connection config not found.` });
+            }
+            
+            const ProviderClass = ADAPTERS[config.provider];
+            if (!ProviderClass) {
+                return res.status(400).json({ message: `Unsupported provider: ${config.provider}` });
+            }
+            
+            const provider = new ProviderClass(config);
+            
+            // Get generation config if exists
+            let generationParams = {};
+            if (activeGenerationConfigId) {
+                const genConfig = state.generationConfigs.find(g => g.id === activeGenerationConfigId);
+                if (genConfig && genConfig.params) {
+                    generationParams = { ...genConfig.params };
+                }
+            }
+            
+            // Override with request params if provided
+            if (temperature !== undefined) generationParams.temperature = temperature;
+            
+            // Handle max_tokens based on provider
+            if (max_tokens !== undefined) {
+                if (config.provider === 'gemini') {
+                    generationParams.maxOutputTokens = max_tokens;
+                } else {
+                    generationParams.max_tokens = max_tokens;
+                }
+            }
+            
+            // For non-streaming response
+            if (!stream) {
+                // Extract system message if present
+                let systemInstruction = '';
+                let messageList = [...messages];
+                
+                if (messages.length > 0 && messages[0].role === 'system') {
+                    systemInstruction = messages[0].content;
+                    messageList = messages.slice(1);
+                }
+                
+                const completion = provider.prompt(messageList, {
+                    systemInstruction,
+                    ...generationParams
+                });
+                
+                let fullContent = '';
+                for await (const token of completion) {
+                    fullContent += token;
+                }
+                
+                return res.json({
+                    choices: [{
+                        message: {
+                            role: 'assistant',
+                            content: fullContent
+                        }
+                    }]
+                });
+            }
+            
+            // For streaming response (not implemented for plugins yet)
+            res.status(501).json({ message: 'Streaming not implemented for completions endpoint' });
+            
+        } catch (error) {
+            console.error('Error in completions endpoint:', error);
+            res.status(500).json({ message: error.message });
+        }
+    });
+
     // --- NEW: Chat Export Endpoint ---
     app.get('/api/chats/:id/export', async (req, res) => {
         const initialChatId = req.params.id;
@@ -1579,6 +1820,12 @@ async function loadSingleCharacter(id) {
         if (avatarFiles.length > 0) {
             charData.avatarUrl = `/${path.relative(process.cwd(), avatarFiles[0]).replace(/\\/g, '/')}?t=${Date.now()}`;
         }
+        if (charData.expressions && Array.isArray(charData.expressions)) {
+            charData.expressions = charData.expressions.map(item => ({
+                ...item,
+                url: `/data/characters/${id}/expressions/${item.src}?t=${Date.now()}`
+            }));
+        }
         if (charData.gallery && Array.isArray(charData.gallery)) {
             charData.gallery = charData.gallery.map(item => ({
                 ...item,
@@ -1648,6 +1895,7 @@ class Character {
     name = '';
     description = '';
     avatarUrl = null;
+    expressions = [];
     gallery = [];
     _rev = CURRENT_REV;
 
@@ -1657,6 +1905,7 @@ class Character {
             name: 'New Character',
             description: '',
             avatarUrl: null,
+            expressions: [],
             gallery: [],
             _rev: CURRENT_REV
         }, data);
@@ -1673,7 +1922,8 @@ class Character {
             _rev: this._rev,
             name: this.name,
             description: this.description,
-            // Strip the full URLs from gallery items before saving to JSON
+            // Strip the full URLs from items before saving to JSON
+            expressions: this.expressions.map(({ url, ...rest }) => rest),
             gallery: this.gallery.map(({ url, ...rest }) => rest),
         };
     }

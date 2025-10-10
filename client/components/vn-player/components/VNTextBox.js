@@ -1,1 +1,0 @@
-// this is a floating textbox that can be used to display text in the vn player
