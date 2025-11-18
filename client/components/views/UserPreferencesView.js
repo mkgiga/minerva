@@ -30,6 +30,13 @@ class UserPreferencesView extends BaseComponent {
                         { value: 'visual-novel', label: 'Visual Novel' },
                     ],
                     description: 'Determines how chat messages are displayed. Markdown supports rich text formatting and code blocks.'
+                },
+                {
+                    name: 'curateResponse',
+                    label: 'Curate/Enhance AI Responses',
+                    type: 'checkbox',
+                    defaultValue: false,
+                    description: 'Passes the AI\'s response through a second prompt to enhance writing quality. May increase response time and cost.'
                 }
             ]
         };

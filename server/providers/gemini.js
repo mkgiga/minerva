@@ -1,7 +1,12 @@
 import { BaseProvider } from './base.js';
+import { FAST_MODEL_EQUIVALENTS } from '../model.js';
 
 const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // for now, we use a fixed model ID
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:streamGenerateContent`;
+
+const getGeminiApiUrl = (modelId) => {
+    return `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent`;
+};
 
 export class GoogleGeminiProvider extends BaseProvider {
     constructor(config) {
@@ -27,7 +32,7 @@ export class GoogleGeminiProvider extends BaseProvider {
     }
 
     // TODO: Use the gemini SDK instead of their REST API directly
-    async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }) {
+    async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }, useFastModel = false) {
         const { apiKey } = this.config;
         const { systemInstruction, signal, ...generationConfig } = options;
 
@@ -63,10 +68,12 @@ export class GoogleGeminiProvider extends BaseProvider {
         
         try {
             // Use the streaming endpoint with SSE enabled
-            const streamingUrl = `${GEMINI_API_URL}?key=${apiKey}&alt=sse`;
+            const streamingUrl = `${getGeminiApiUrl(useFastModel ? FAST_MODEL_EQUIVALENTS[GEMINI_MODEL_ID] : GEMINI_MODEL_ID)}?key=${apiKey}&alt=sse`;
             
-            console.log('Gemini request body:', JSON.stringify(body, null, 2));
-            console.log('Gemini URL:', streamingUrl);
+            const messageCount = body.contents?.length || 0;
+            const sysInstructionSize = body.system_instruction?.parts?.[0]?.text?.length || 0;
+            const modelId = useFastModel ? FAST_MODEL_EQUIVALENTS[GEMINI_MODEL_ID] : GEMINI_MODEL_ID;
+            console.log(`[Gemini] Sending prompt - Messages: ${messageCount}, SysInstruction: ${sysInstructionSize} chars, Model: ${modelId}, Temp: ${body.generationConfig.temperature}, MaxTokens: ${body.generationConfig.maxOutputTokens}`);
             
             const response = await fetch(streamingUrl, {
                 method: 'POST',
@@ -90,35 +97,29 @@ export class GoogleGeminiProvider extends BaseProvider {
             let chunkCount = 0;
             let tokenCount = 0;
 
-            console.log('Starting to read from Gemini stream...');
+            console.log('[Gemini] Starting stream...');
             while(true) {
                 const { value, done } = await reader.read();
                 if (done) {
-                    console.log('Gemini stream finished. Total chunks:', chunkCount, 'Total tokens:', tokenCount);
+                    console.log(`[Gemini] Stream complete - Chunks: ${chunkCount}, Tokens: ${tokenCount}`);
                     break;
                 }
 
                 chunkCount++;
                 const chunk = decoder.decode(value, { stream: true });
-                console.log(`Gemini chunk ${chunkCount}:`, JSON.stringify(chunk));
-                
+
                 buffer += chunk;
                 const lines = buffer.split('\n');
                 buffer = lines.pop(); // Keep any partial line in the buffer
 
                 for (const line of lines) {
-                    console.log('Processing line:', JSON.stringify(line));
                     if (line.startsWith('data: ')) {
                         try {
                             const jsonData = JSON.parse(line.substring(6));
-                            console.log('Parsed JSON data:', JSON.stringify(jsonData, null, 2));
                             const token = jsonData.candidates?.[0]?.content?.parts?.[0]?.text;
                             if (token) {
                                 tokenCount++;
-                                console.log(`Yielding token ${tokenCount}:`, JSON.stringify(token));
                                 yield token;
-                            } else {
-                                console.log('No token found in JSON data');
                             }
                         } catch (e) {
                             console.error('Error parsing Gemini SSE chunk:', e, line);

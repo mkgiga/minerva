@@ -1,0 +1,1598 @@
+🔍 Scanning for corrupted branched chats...
+
+🔬 DRY RUN MODE - No files will be modified
+
+Found 944 chat files
+
+✅ Cleaned 003a28d4-2874-4550-a52a-1dc567a82c68:
+   234 → 44 messages (removed 190)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+⚠️  Branch point efd230c4-8325-4383-b236-5c170be1780b not found in chat 59ec61d7-1f91-4243-b3ab-d02803af19cb
+✅ Cleaned 00448489-aa7b-4fa7-9282-58cdbd76dac3:
+   50 → 0 messages (removed 50)
+✅ Cleaned 005b81c5-8c01-4677-b264-44c73f09cd60:
+   60 → 2 messages (removed 58)
+✅ Cleaned 0189bb91-be93-470b-a807-f7662795bb61:
+   40 → 0 messages (removed 40)
+✅ Cleaned 01aacbd7-128d-42f3-99e8-160c2b9e02e1:
+   80 → 7 messages (removed 73)
+✅ Cleaned 01c8c5ec-6f8f-4912-a5a9-0beba1da3c4e:
+   153 → 0 messages (removed 153)
+✅ Cleaned 0297a1dd-eabd-4c7a-9980-90761787f2f3:
+   146 → 7 messages (removed 139)
+✅ Cleaned 02b23548-e450-4c34-bed7-ace4a80dc44d:
+   196 → 14 messages (removed 182)
+✅ Cleaned 03218988-875c-442e-bba8-37481fd181a1:
+   156 → 12 messages (removed 144)
+✅ Cleaned 03957775-6c44-4454-ae51-bf27b0be7f8a:
+   224 → 48 messages (removed 176)
+✅ Cleaned 03e1c4c6-d8cd-40db-9d24-4c510f41e0c1:
+   124 → 13 messages (removed 111)
+✅ Cleaned 03f5497d-cd8b-4423-958d-cf18112f0c59:
+   71 → 0 messages (removed 71)
+✅ Cleaned 03f96f60-0178-4699-9c1e-ccac83eb2b4f:
+   58 → 12 messages (removed 46)
+✅ Cleaned 04068d31-d51e-4aac-8360-ee03baac3f16:
+   40 → 10 messages (removed 30)
+✅ Cleaned 041add87-4126-4420-b274-2d109c7c96f5:
+   72 → 7 messages (removed 65)
+✅ Cleaned 04e0dd54-98a6-489d-85e5-f66cc38ae31e:
+   180 → 7 messages (removed 173)
+✅ Cleaned 04ece890-5042-46df-8079-37bb8ea14570:
+   54 → 24 messages (removed 30)
+✅ Cleaned 0542c1ad-40d5-4ab7-8cb4-2e1980498ad7:
+   130 → 4 messages (removed 126)
+⚠️  Branch point a4cafaa6-8f98-46c4-a5b8-57fec7a6f3c6 not found in chat 2813086f-9732-46b6-a798-d114cbdfbdae
+✅ Cleaned 058933eb-94ad-4b24-ad56-dbee051a21f4:
+   158 → 9 messages (removed 149)
+✅ Cleaned 05d7a2e7-e601-41de-a9be-d4a11239f907:
+   298 → 2 messages (removed 296)
+✅ Cleaned 0697ded5-014b-44bd-8764-54b8e340fb81:
+   60 → 9 messages (removed 51)
+✅ Cleaned 06bef343-9c23-4222-bdd1-0fcce6d0d115:
+   108 → 13 messages (removed 95)
+✅ Cleaned 074a935a-20fe-42a4-bcac-fcd9e16702f5:
+   76 → 9 messages (removed 67)
+✅ Cleaned 0793ddd2-1176-4cb0-bc04-c9aa9bebb8ec:
+   50 → 4 messages (removed 46)
+✅ Cleaned 07ee4538-d608-4885-a744-2a9f29fa6870:
+   110 → 67 messages (removed 43)
+✅ Cleaned 0855f564-832e-44ab-8dc8-f908f5480d6a:
+   574 → 4 messages (removed 570)
+✅ Cleaned 08c01114-564c-45d1-aa91-e0f4bc964596:
+   68 → 4 messages (removed 64)
+✅ Cleaned 09b0eaba-febf-4997-8946-876beb61afe5:
+   152 → 5 messages (removed 147)
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat 07138ca4-85d0-4ec8-ac14-a8517a0e9e7e
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat 53654b91-606b-446b-bbb5-5649be74f702
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat f7e46686-3287-4d14-b4ba-3c969401ed9e
+✅ Cleaned 0a0e4c1a-0de9-418a-9f91-bb572f9b3512:
+   110 → 18 messages (removed 92)
+✅ Cleaned 0adee416-01d1-49a9-a214-91a0ffc44be9:
+   2 → 1 messages (removed 1)
+✅ Cleaned 0c003a2a-7432-4c6e-8991-528fad25f37d:
+   168 → 27 messages (removed 141)
+✅ Cleaned 0c25136b-61aa-414a-acfb-d5755d0cc1b1:
+   46 → 15 messages (removed 31)
+✅ Cleaned 0cdbc193-f2eb-4ca7-8d01-3f59c30ccdd1:
+   162 → 9 messages (removed 153)
+✅ Cleaned 0ddb7f56-38ac-4d2f-8f24-2859826b78bc:
+   54 → 6 messages (removed 48)
+✅ Cleaned 0dfc1dfe-1b9b-4d56-96c5-13f9c8efb502:
+   70 → 23 messages (removed 47)
+✅ Cleaned 0e0b5588-49a3-4524-935a-6da342533a37:
+   118 → 22 messages (removed 96)
+✅ Cleaned 0e7b0204-6d30-4c04-8a07-ce9c81f41d7c:
+   53 → 3 messages (removed 50)
+✅ Cleaned 0e935a7d-5b74-4509-aee4-a738b3f4a137:
+   142 → 1 messages (removed 141)
+✅ Cleaned 0e94bafa-e541-4ff3-950f-94208670e14d:
+   432 → 3 messages (removed 429)
+✅ Cleaned 0ea65edb-644a-4591-bda3-b047214ad0b0:
+   54 → 3 messages (removed 51)
+✅ Cleaned 0f110647-04ce-4c59-aeb6-c868e8d56fc1:
+   78 → 4 messages (removed 74)
+✅ Cleaned 0f14b144-403e-4820-80a7-8eb6a922696b:
+   128 → 4 messages (removed 124)
+✅ Cleaned 0ff1c816-4e83-470f-9eaf-a15ca3985897:
+   266 → 12 messages (removed 254)
+✅ Cleaned 10194d00-2d83-499a-ad98-0f2e62bc962c:
+   32 → 19 messages (removed 13)
+✅ Cleaned 101e85cf-4adb-4508-9772-81c5ed09a6e0:
+   140 → 14 messages (removed 126)
+✅ Cleaned 103748e8-9024-451a-b27a-c30a63f14a10:
+   392 → 102 messages (removed 290)
+✅ Cleaned 1089d920-dd4d-4eea-833c-570d9f446945:
+   120 → 1 messages (removed 119)
+✅ Cleaned 10adc5a5-57e3-4bc4-96d2-ba9d6acde321:
+   414 → 10 messages (removed 404)
+✅ Cleaned 118c96bf-7a0a-4777-a75a-3981ec923a32:
+   576 → 4 messages (removed 572)
+✅ Cleaned 11e0e478-84c2-4042-9959-afbb19ef84ee:
+   20 → 8 messages (removed 12)
+✅ Cleaned 11ecbdc1-e1c0-43f9-b807-844a1466ced8:
+   102 → 17 messages (removed 85)
+✅ Cleaned 12098008-f022-4c70-a74d-98831760016d:
+   66 → 0 messages (removed 66)
+✅ Cleaned 1274c1e2-773c-45ef-8d08-27a971391b28:
+   21 → 11 messages (removed 10)
+✅ Cleaned 130c44b4-5eba-4d77-a154-aa6955e8fdf2:
+   146 → 3 messages (removed 143)
+✅ Cleaned 131c9e83-f450-4b05-b1f4-5f352ea0af4d:
+   48 → 31 messages (removed 17)
+✅ Cleaned 136e6c49-b655-4315-b372-b59769273ee1:
+   42 → 35 messages (removed 7)
+✅ Cleaned 1452080b-4c75-4750-bc88-73f99897e660:
+   114 → 1 messages (removed 113)
+✅ Cleaned 14c18280-e53b-4302-807b-ca47d75f5c9d:
+   11 → 0 messages (removed 11)
+✅ Cleaned 15b3a51b-1a02-4ee4-86d5-fda30a13e76a:
+   156 → 0 messages (removed 156)
+✅ Cleaned 15f427a1-fd26-4444-be30-6e77a5bbbc9c:
+   128 → 4 messages (removed 124)
+⚠️  Branch point 5dd6b2fd-0a21-4339-8645-359b8bbf08fc not found in chat aa535e7a-12b5-4ddb-983e-92e5bb7e2354
+⚠️  Branch point 5dd6b2fd-0a21-4339-8645-359b8bbf08fc not found in chat e4e5e10b-17c8-4f95-9fbd-815f4d42d9d2
+✅ Cleaned 163135ba-f507-48f9-b393-c403d5113fd1:
+   28 → 27 messages (removed 1)
+✅ Cleaned 166efba9-ab6d-4f66-9ded-3f4e432fb6f6:
+   132 → 2 messages (removed 130)
+✅ Cleaned 174d1a3d-2a2a-4bb7-9851-bc2c654ed680:
+   199 → 0 messages (removed 199)
+✅ Cleaned 179ff6af-f20d-44de-a44b-3859f52292eb:
+   476 → 7 messages (removed 469)
+✅ Cleaned 17b855fe-241a-4079-b329-1fb08d0ef08d:
+   102 → 14 messages (removed 88)
+✅ Cleaned 17bd795d-bedc-4ed3-b08b-6029ce1258fa:
+   26 → 1 messages (removed 25)
+✅ Cleaned 17ccf2f8-5ccc-40dd-b243-046835d9974e:
+   98 → 10 messages (removed 88)
+✅ Cleaned 1855e822-6eaa-4c2c-8eaf-98c27948d197:
+   4 → 0 messages (removed 4)
+✅ Cleaned 1867337e-6503-4f3f-823b-4a99ecf14b6d:
+   448 → 4 messages (removed 444)
+✅ Cleaned 1867ed9e-c69e-490a-b6be-49f9deacfee5:
+   188 → 22 messages (removed 166)
+✅ Cleaned 19066377-c02b-4ec6-aae4-2cb610af484a:
+   51 → 13 messages (removed 38)
+✅ Cleaned 1959a899-9400-458e-ba21-9134521287c8:
+   46 → 23 messages (removed 23)
+✅ Cleaned 19891d40-4ab0-4693-86d3-c87f1e3d1a7f:
+   76 → 10 messages (removed 66)
+✅ Cleaned 198f571d-8a84-4a0d-8076-03b27c3f1978:
+   136 → 5 messages (removed 131)
+✅ Cleaned 19b84408-3717-4303-b129-4b2cc72c5b7b:
+   729 → 55 messages (removed 674)
+✅ Cleaned 19e0d651-09c9-4d28-832f-7f7e53d2e1cd:
+   70 → 4 messages (removed 66)
+✅ Cleaned 19f8746b-2a1c-4463-8d21-4310fc3ed4e9:
+   216 → 27 messages (removed 189)
+✅ Cleaned 1a15567a-da12-424f-ab5f-d6503f3b4863:
+   126 → 13 messages (removed 113)
+✅ Cleaned 1a9a5fe3-2aac-49d4-8528-4a9590ef4c94:
+   48 → 4 messages (removed 44)
+✅ Cleaned 1af5bdaa-c302-4225-8e66-b36e76b90f0d:
+   105 → 0 messages (removed 105)
+✅ Cleaned 1b526884-30f2-460f-a71c-bb4587d134a6:
+   88 → 72 messages (removed 16)
+✅ Cleaned 1ba1c9ce-6d5b-43d4-844f-195ca488ffd5:
+   582 → 6 messages (removed 576)
+✅ Cleaned 1c7e98f7-feb7-4859-9bb1-dcf91e6e4647:
+   68 → 8 messages (removed 60)
+✅ Cleaned 1cbda483-3a94-464d-9135-4a63734bdf6b:
+   570 → 3 messages (removed 567)
+✅ Cleaned 1ce97e41-b300-402e-97ee-c2a7b55ed41c:
+   56 → 4 messages (removed 52)
+✅ Cleaned 1cf8c06c-20f7-4600-bc56-f8f1e45d6bbf:
+   609 → 51 messages (removed 558)
+✅ Cleaned 1d033a5a-382b-40e7-8ae6-ba2214deb57e:
+   30 → 29 messages (removed 1)
+✅ Cleaned 1d32a7af-200f-499e-8e96-75b8e79875f5:
+   240 → 20 messages (removed 220)
+✅ Cleaned 1d53e225-b9ed-4827-bf77-114b8633a749:
+   150 → 6 messages (removed 144)
+✅ Cleaned 1d623b44-f322-4491-b809-ab446561bb58:
+   70 → 8 messages (removed 62)
+✅ Cleaned 1ddcafcb-04e2-488e-b823-43e1fd3f9c8e:
+   100 → 32 messages (removed 68)
+✅ Cleaned 1e069c65-e7c1-4276-a2f6-2c9e9013a656:
+   74 → 29 messages (removed 45)
+✅ Cleaned 1e787e80-71dd-463c-8e2a-2771475cf4ca:
+   122 → 18 messages (removed 104)
+✅ Cleaned 1eb19c5f-8556-449b-af16-725e155fe8f0:
+   54 → 2 messages (removed 52)
+✅ Cleaned 1ed5da81-fc9b-487f-8c51-1658ac1c5d30:
+   244 → 9 messages (removed 235)
+✅ Cleaned 1f41add7-b996-41f1-891a-a8c4652d3b71:
+   65 → 0 messages (removed 65)
+✅ Cleaned 1f6bf86a-24a4-4477-84cb-429069ae07d0:
+   295 → 0 messages (removed 295)
+✅ Cleaned 2050fa06-d350-4201-bf15-2c873b6dff26:
+   216 → 56 messages (removed 160)
+✅ Cleaned 2065299c-3511-4d89-a3a2-cb393ff25009:
+   224 → 64 messages (removed 160)
+✅ Cleaned 2084b0af-932d-4118-bad7-cd92dbb9bcca:
+   162 → 2 messages (removed 160)
+✅ Cleaned 20e22e3e-6745-4f6a-87f0-c2382eb75c52:
+   174 → 2 messages (removed 172)
+✅ Cleaned 2104c3de-eb8b-4634-b8d9-d2227604d1c7:
+   54 → 2 messages (removed 52)
+✅ Cleaned 21356743-c564-4e26-825a-207f9f89d0c6:
+   84 → 1 messages (removed 83)
+✅ Cleaned 2140dc1f-1082-4d9e-9c05-bb6fd44b979d:
+   241 → 0 messages (removed 241)
+✅ Cleaned 218b4755-cb8d-49cf-98b3-ce16624a00c3:
+   54 → 8 messages (removed 46)
+✅ Cleaned 22016833-862b-4d3e-bc04-ceb8e484f0e3:
+   154 → 12 messages (removed 142)
+✅ Cleaned 22a3ea4f-8630-458f-a651-912a4c0ff8c7:
+   154 → 6 messages (removed 148)
+✅ Cleaned 22afc9cf-2b9c-4481-b65f-28745a84668b:
+   108 → 9 messages (removed 99)
+✅ Cleaned 22d8e691-0373-47f6-a0d8-a2993f50d00f:
+   48 → 8 messages (removed 40)
+✅ Cleaned 2314d1b7-3b8e-4eeb-a638-8c882ea22979:
+   418 → 13 messages (removed 405)
+✅ Cleaned 233e76e7-b212-43b5-8a8a-a5599d708c23:
+   92 → 7 messages (removed 85)
+✅ Cleaned 242195c2-766e-40cd-900d-7a234b5c1114:
+   52 → 12 messages (removed 40)
+✅ Cleaned 24557d17-a537-4a49-9aac-7a0f810c29c8:
+   82 → 38 messages (removed 44)
+✅ Cleaned 25d4d57e-85ac-46e0-982f-ec3ae4d6d3e9:
+   52 → 35 messages (removed 17)
+✅ Cleaned 2723cb02-3e74-4fea-8316-7e179b243d01:
+   64 → 10 messages (removed 54)
+✅ Cleaned 27cf708a-070f-4a17-a36a-69fb1ab52723:
+   54 → 7 messages (removed 47)
+✅ Cleaned 2883217a-ba57-4369-a668-f752e3f46b07:
+   146 → 7 messages (removed 139)
+✅ Cleaned 291591f9-d209-46e2-a9ad-35ccbad62a0b:
+   244 → 4 messages (removed 240)
+✅ Cleaned 29519cc4-b628-436c-9033-3014ecc0a695:
+   46 → 0 messages (removed 46)
+✅ Cleaned 29884e88-5b35-4c58-8491-01b78e13feba:
+   178 → 31 messages (removed 147)
+✅ Cleaned 29a4472c-3493-4736-80eb-c72719294958:
+   114 → 17 messages (removed 97)
+✅ Cleaned 29eb3469-a0a0-45bf-a740-db3241396a24:
+   70 → 6 messages (removed 64)
+✅ Cleaned 2a18fd2f-ee51-4dcf-97be-c46bc337412a:
+   114 → 6 messages (removed 108)
+✅ Cleaned 2a28b113-0ef5-43cd-8a68-1ef49f0ffbd9:
+   34 → 29 messages (removed 5)
+✅ Cleaned 2a2b7758-d61f-45a0-837c-5c5d2fa87b8e:
+   190 → 4 messages (removed 186)
+✅ Cleaned 2ab5b340-9886-425f-8c3c-a8fa668423aa:
+   30 → 3 messages (removed 27)
+✅ Cleaned 2ad76644-04ae-4557-89e8-c37eebe949cf:
+   140 → 8 messages (removed 132)
+✅ Cleaned 2b3a21f1-5103-4037-b069-1618a1221893:
+   260 → 33 messages (removed 227)
+✅ Cleaned 2bf5aca0-9a81-4baf-b304-71f23f9bddb2:
+   28 → 4 messages (removed 24)
+✅ Cleaned 2bf89fa3-db41-41b0-bf19-ab1c89c839bf:
+   52 → 10 messages (removed 42)
+✅ Cleaned 2bfce05e-fcb8-478b-a478-6323470d6d7c:
+   536 → 28 messages (removed 508)
+✅ Cleaned 2c4c3891-4242-4834-ac65-c5b8b3dbcdde:
+   86 → 19 messages (removed 67)
+✅ Cleaned 2c72f692-4766-49b0-864a-d41825409d15:
+   410 → 6 messages (removed 404)
+✅ Cleaned 2c8a5406-a243-402f-aed4-78d35ff69e90:
+   110 → 10 messages (removed 100)
+✅ Cleaned 2cc8f48e-8dcf-47f1-95a9-2aef5a08fa6a:
+   146 → 54 messages (removed 92)
+✅ Cleaned 2d1de5de-c3a7-41de-83ea-2e6793788b2a:
+   178 → 2 messages (removed 176)
+✅ Cleaned 2d4e2107-c0ac-4640-aa34-055bb51d53a3:
+   28 → 12 messages (removed 16)
+✅ Cleaned 2d527f1f-1ad5-4025-b70b-772edc48b73e:
+   422 → 11 messages (removed 411)
+✅ Cleaned 2d99b61b-f43e-4ead-8f6f-4be87c381f44:
+   338 → 14 messages (removed 324)
+✅ Cleaned 2da2f47e-31e8-4e63-817d-4d5b31ff699b:
+   416 → 7 messages (removed 409)
+✅ Cleaned 2e49f315-48c8-48f4-873d-e9f76e25581b:
+   192 → 8 messages (removed 184)
+✅ Cleaned 2e5fa29c-9913-4da2-a79c-5437ab4623c4:
+   344 → 20 messages (removed 324)
+✅ Cleaned 2ebd24f2-53d9-446f-96d7-c97f531d4f62:
+   328 → 6 messages (removed 322)
+✅ Cleaned 2ec2c672-a886-45c2-81cd-b6337eb19bf1:
+   84 → 37 messages (removed 47)
+✅ Cleaned 2ed91c4c-251f-4853-9909-11db3a79a9df:
+   300 → 4 messages (removed 296)
+✅ Cleaned 2f3c77ab-cb8d-4ee1-a652-614cd6944db2:
+   186 → 5 messages (removed 181)
+✅ Cleaned 2fa6d2d5-d3a3-450f-b159-497631b536a5:
+   462 → 18 messages (removed 444)
+✅ Cleaned 305b6e0f-1edc-4f76-aedd-c72fa734c8db:
+   414 → 3 messages (removed 411)
+✅ Cleaned 307f6a23-d97c-46e0-b35e-54c4dfe9a21f:
+   12 → 2 messages (removed 10)
+✅ Cleaned 315e4e0a-90aa-4d51-bbf9-8029d38e0303:
+   54 → 46 messages (removed 8)
+✅ Cleaned 31aeb000-1bdf-4a04-923b-a752013b7c40:
+   60 → 16 messages (removed 44)
+✅ Cleaned 31bb1764-6e3b-48c6-a7e1-5816bbc9aa74:
+   78 → 3 messages (removed 75)
+✅ Cleaned 31daaa67-85c8-4ba4-a198-3f7100793243:
+   13 → 0 messages (removed 13)
+✅ Cleaned 3206bcb7-8854-456b-b263-2dfc49dd9237:
+   54 → 15 messages (removed 39)
+✅ Cleaned 325eca15-346e-4bcc-a6f3-518cdb51f64c:
+   120 → 13 messages (removed 107)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned 329d3a91-3faf-4fcf-b4b5-0310f835b6d7:
+   50 → 0 messages (removed 50)
+✅ Cleaned 32ef1f22-8753-49e8-a9e2-a83c2b11d6df:
+   42 → 33 messages (removed 9)
+✅ Cleaned 33511bf9-d6f4-42b0-b6b2-2ba6c83d3a3e:
+   16 → 0 messages (removed 16)
+✅ Cleaned 34141ec2-1343-40be-bbe1-35f21be7880b:
+   6 → 5 messages (removed 1)
+✅ Cleaned 34580076-30b2-44d5-9902-628ba1fa26af:
+   126 → 3 messages (removed 123)
+✅ Cleaned 34590329-64db-4d10-8f4f-97ed58752a06:
+   394 → 8 messages (removed 386)
+✅ Cleaned 35ef4f7e-9b85-4792-9e31-9535a63b2c98:
+   80 → 12 messages (removed 68)
+✅ Cleaned 35f0ff7e-bf06-45cc-a6c1-e7b373ae57db:
+   420 → 7 messages (removed 413)
+✅ Cleaned 363771da-7b3b-440e-a073-6e55c8b51018:
+   32 → 6 messages (removed 26)
+✅ Cleaned 36569a97-52c8-4eba-a13f-047fca669208:
+   52 → 33 messages (removed 19)
+✅ Cleaned 367dcfe3-a4d2-4326-881a-31a74f3cc8af:
+   714 → 57 messages (removed 657)
+✅ Cleaned 36df6f4e-0f8b-439f-b8ab-184b367e845d:
+   354 → 88 messages (removed 266)
+✅ Cleaned 37e9a105-7a18-426e-a578-901b48987cc7:
+   58 → 0 messages (removed 58)
+✅ Cleaned 383b732f-1f64-43e9-91a6-8589b1513e11:
+   32 → 14 messages (removed 18)
+✅ Cleaned 384ebf93-6676-4179-86d4-6fa3f1970d0d:
+   88 → 2 messages (removed 86)
+✅ Cleaned 386c2824-5be6-4201-a795-ce3ed8217dd5:
+   116 → 8 messages (removed 108)
+✅ Cleaned 388346ef-9362-4a98-bd8e-4c5f39ef0ca9:
+   178 → 6 messages (removed 172)
+✅ Cleaned 389f4134-63b6-45fe-bc39-e9c953dba83a:
+   298 → 69 messages (removed 229)
+✅ Cleaned 38d8b629-bc9e-4042-aa1c-4ef80ecbd5e8:
+   20 → 11 messages (removed 9)
+✅ Cleaned 3918fb05-bd10-4d1c-abfb-85d801bc21a4:
+   126 → 3 messages (removed 123)
+✅ Cleaned 39328521-9c0a-44e3-9fb1-7e28af79ba46:
+   580 → 13 messages (removed 567)
+✅ Cleaned 3942f195-5adc-494b-af7b-da6193d25c2d:
+   184 → 7 messages (removed 177)
+✅ Cleaned 395980c1-a308-44d3-bfdd-cdd1b8176b25:
+   76 → 8 messages (removed 68)
+✅ Cleaned 39680591-bc50-41b8-add1-bfbbc65c553a:
+   134 → 14 messages (removed 120)
+✅ Cleaned 39aab897-578e-4357-ba2e-ab903c79b1d6:
+   547 → 0 messages (removed 547)
+✅ Cleaned 39c16c23-8fdb-4fb4-a815-5d88640254b9:
+   140 → 6 messages (removed 134)
+✅ Cleaned 3a55be11-527f-4eca-8846-eafee7db314a:
+   172 → 3 messages (removed 169)
+✅ Cleaned 3a989f4c-535a-4dd8-b3c9-d780c08151bc:
+   60 → 4 messages (removed 56)
+✅ Cleaned 3aa20fa0-22e7-4cf4-893b-181c5ba7b9e9:
+   146 → 3 messages (removed 143)
+✅ Cleaned 3ac7bdf3-2d28-486c-90c9-ef481538a9d7:
+   70 → 27 messages (removed 43)
+✅ Cleaned 3af52ccf-1ad9-42cc-bff4-ec8452c05cfb:
+   136 → 4 messages (removed 132)
+✅ Cleaned 3b654c73-3d7a-43c8-988d-1cc7f2258d3e:
+   178 → 35 messages (removed 143)
+✅ Cleaned 3b91dfa6-472c-460e-9af2-ac8e8eb7d906:
+   306 → 30 messages (removed 276)
+✅ Cleaned 3b941769-cea7-434a-bfae-86633a2423e2:
+   106 → 25 messages (removed 81)
+✅ Cleaned 3c55d2a7-96fc-4ed9-af68-c64ef1f75b83:
+   52 → 1 messages (removed 51)
+✅ Cleaned 3cc7ba06-ca94-4575-b064-670fbd1595e5:
+   242 → 66 messages (removed 176)
+✅ Cleaned 3cfb9919-af55-4e77-9c50-e44455a14b16:
+   456 → 50 messages (removed 406)
+✅ Cleaned 3cfc360c-1fa4-4ee7-a9ea-cfad02f8d517:
+   314 → 25 messages (removed 289)
+✅ Cleaned 3d4d271b-4c7e-43b3-991a-d8116957827e:
+   688 → 10 messages (removed 678)
+✅ Cleaned 3d8f2848-3539-4893-8c6d-08c4f7c221b1:
+   280 → 54 messages (removed 226)
+✅ Cleaned 3dd1aabd-ee18-4058-a673-e56435abd075:
+   717 → 1 messages (removed 716)
+✅ Cleaned 3e4972a2-c667-40df-a42d-7e80372ab9f4:
+   18 → 17 messages (removed 1)
+✅ Cleaned 3ec00cce-7683-4e91-b251-df0620c8b7c9:
+   248 → 26 messages (removed 222)
+✅ Cleaned 3f0f2f9f-df2b-4724-8f4b-3664be9176c7:
+   408 → 4 messages (removed 404)
+✅ Cleaned 3f40adb4-5b8c-4baf-93b8-518c8cb81dc7:
+   40 → 0 messages (removed 40)
+✅ Cleaned 3fb7871c-b0d8-4373-aacb-b77fff3ace37:
+   118 → 22 messages (removed 96)
+✅ Cleaned 3fc19996-48d6-4db2-a0c5-e049107cd500:
+   310 → 6 messages (removed 304)
+✅ Cleaned 4059c1c1-3a06-449f-9390-93df9004eeb7:
+   122 → 1 messages (removed 121)
+✅ Cleaned 41679997-8327-4208-a748-69899a1a7f4b:
+   42 → 6 messages (removed 36)
+✅ Cleaned 41c71952-88dc-442a-b77b-6de2a10ad62b:
+   128 → 38 messages (removed 90)
+✅ Cleaned 427be992-f12b-4161-b38b-687fc6fe659f:
+   474 → 11 messages (removed 463)
+✅ Cleaned 42c924f1-a622-4ec3-ac20-b8fb9c10cd4c:
+   408 → 5 messages (removed 403)
+✅ Cleaned 43062faf-d743-457b-9f77-ea90b3bdd9fe:
+   50 → 49 messages (removed 1)
+✅ Cleaned 434a95ff-e14a-43ef-86b2-02aea7fe6862:
+   300 → 0 messages (removed 300)
+✅ Cleaned 435786be-3eae-4158-b41a-55fc7235c647:
+   416 → 2 messages (removed 414)
+✅ Cleaned 439c5490-e5f6-412d-9576-14415e5234c8:
+   117 → 0 messages (removed 117)
+✅ Cleaned 43c9bf39-8d2a-4c36-8162-2d9ce815bbc7:
+   154 → 21 messages (removed 133)
+✅ Cleaned 446e33e1-bbbf-4cf0-bd37-e5b837aeca49:
+   106 → 16 messages (removed 90)
+✅ Cleaned 44d467bc-96c0-4c34-be69-2ebeb5c7086d:
+   326 → 0 messages (removed 326)
+✅ Cleaned 44dc750a-2324-41e0-bc7b-b9fe32ac4563:
+   26 → 23 messages (removed 3)
+✅ Cleaned 451cd36c-8c03-48ff-b196-d087d6bfaecb:
+   654 → 89 messages (removed 565)
+✅ Cleaned 451ce835-8fae-4cbb-9b77-09632dbbb173:
+   155 → 5 messages (removed 150)
+✅ Cleaned 459e45cf-466e-4b71-9063-8e38d1b1b678:
+   464 → 13 messages (removed 451)
+✅ Cleaned 45c90bf7-477a-4ed5-97de-109b49ff1eec:
+   62 → 1 messages (removed 61)
+✅ Cleaned 45d8c9de-d607-407d-bf57-6d5f761abeae:
+   46 → 29 messages (removed 17)
+✅ Cleaned 45ee9409-4ceb-47c3-8a69-57288c42cbce:
+   294 → 2 messages (removed 292)
+✅ Cleaned 4670b144-ef11-43b7-af63-ebf76a4c2239:
+   60 → 2 messages (removed 58)
+⚠️  Branch point 0a196c58-88a0-4c3f-9393-e6ad4cdc92eb not found in chat 449ce5da-ba8a-4e7c-b9d6-23df8b6344ac
+✅ Cleaned 47cbbd2e-dd70-440b-bf48-62dc3faa257e:
+   56 → 0 messages (removed 56)
+✅ Cleaned 47cd0f00-ebde-4966-b191-e77b02da2860:
+   124 → 14 messages (removed 110)
+✅ Cleaned 47d16aab-6261-48b5-8bb0-4b0b8b0ad453:
+   132 → 3 messages (removed 129)
+✅ Cleaned 4801a7bb-e221-4860-a8d9-aa262d4d2241:
+   54 → 7 messages (removed 47)
+✅ Cleaned 480d4f1b-733d-4578-905e-89a55e6e5718:
+   55 → 0 messages (removed 55)
+✅ Cleaned 48425d5a-ac65-4f0e-9bcc-446d2da0003b:
+   66 → 18 messages (removed 48)
+✅ Cleaned 48d40398-1909-4f2f-bb36-665a4f6b5d99:
+   418 → 4 messages (removed 414)
+✅ Cleaned 4908145e-3b74-4d15-bc3e-962583f4d2dc:
+   269 → 0 messages (removed 269)
+✅ Cleaned 49900576-a0a1-493d-bf2a-25d03a7a8fbc:
+   234 → 48 messages (removed 186)
+✅ Cleaned 49d4b6ac-e277-4418-a4df-5c87f5687506:
+   126 → 3 messages (removed 123)
+✅ Cleaned 49dc1a76-1598-49b1-bd6f-62e6219252e1:
+   84 → 1 messages (removed 83)
+✅ Cleaned 4a82d157-f81b-44ca-a392-ba422e3ed27f:
+   56 → 4 messages (removed 52)
+✅ Cleaned 4a8fad22-98b4-4fa1-97d6-5ad8a9f51171:
+   141 → 0 messages (removed 141)
+✅ Cleaned 4aa4932a-0c66-4570-9f3c-bf2546655a84:
+   92 → 39 messages (removed 53)
+✅ Cleaned 4ab2c537-b88b-4337-b8d0-f38863b06691:
+   430 → 4 messages (removed 426)
+✅ Cleaned 4ad88473-b9f1-4a3e-8aab-6f392818eefb:
+   82 → 33 messages (removed 49)
+✅ Cleaned 4aebe192-cc2f-49dd-b42b-2674971355a6:
+   298 → 101 messages (removed 197)
+✅ Cleaned 4b429e06-31b6-4dfe-8661-b450c19de98e:
+   164 → 8 messages (removed 156)
+✅ Cleaned 4bb6c977-451a-4bc6-bc42-774d5abe6f67:
+   127 → 0 messages (removed 127)
+✅ Cleaned 4bd2e194-f0f3-4115-95e4-17b6c1822604:
+   282 → 12 messages (removed 270)
+✅ Cleaned 4ce77951-f7d3-4d3d-b515-36a21a837fdf:
+   301 → 8 messages (removed 293)
+✅ Cleaned 4cefb48a-f553-4535-9e23-56d990f86d03:
+   64 → 19 messages (removed 45)
+✅ Cleaned 4d3bd630-ffc4-4cf2-994b-db5db21d6f2a:
+   36 → 7 messages (removed 29)
+✅ Cleaned 4e4567c7-663d-4ff2-a134-234a35a8035a:
+   60 → 2 messages (removed 58)
+✅ Cleaned 50e23d07-7ada-44cd-a493-dd2314a86a12:
+   358 → 60 messages (removed 298)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned 510d00fd-80f6-4a2c-b4e0-a0da54001a3a:
+   182 → 14 messages (removed 168)
+✅ Cleaned 51759ed3-add1-477e-8b24-3b354dd997fd:
+   92 → 29 messages (removed 63)
+✅ Cleaned 517c0594-6ef0-4e9c-943f-bff61bd18c97:
+   74 → 5 messages (removed 69)
+✅ Cleaned 5207e435-9156-44bd-b8bf-3d3bf6ba9e63:
+   98 → 16 messages (removed 82)
+✅ Cleaned 525238af-71a9-45df-8c70-2c3bbb345b50:
+   32 → 14 messages (removed 18)
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat 07138ca4-85d0-4ec8-ac14-a8517a0e9e7e
+✅ Cleaned 5417a476-8c19-429b-9820-20d47567d438:
+   410 → 6 messages (removed 404)
+✅ Cleaned 546d4719-c3bd-4467-b49e-73b2cad7f992:
+   574 → 9 messages (removed 565)
+✅ Cleaned 54d3ccab-544d-4e73-83e1-355cea69e339:
+   292 → 20 messages (removed 272)
+✅ Cleaned 54f7145e-eddb-4fd0-a2a1-72b28c071d89:
+   74 → 2 messages (removed 72)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned 570cbd4e-7a51-4276-a329-270b6489ae84:
+   20 → 1 messages (removed 19)
+✅ Cleaned 578d95e2-205b-47fb-99ce-4aa2fce32721:
+   2084 → 8 messages (removed 2076)
+✅ Cleaned 57d3f94c-62da-4777-a336-226977e31bd2:
+   128 → 5 messages (removed 123)
+✅ Cleaned 58297c93-6dc8-424f-a6f4-2d2c557172f4:
+   98 → 12 messages (removed 86)
+✅ Cleaned 5829a674-7f59-4a04-8f47-ab6f4512c9eb:
+   464 → 7 messages (removed 457)
+✅ Cleaned 589543f9-4518-475b-89f3-3bf5a73900c6:
+   52 → 15 messages (removed 37)
+✅ Cleaned 589b68fd-a092-4ccb-b06c-b0bf57cd6e50:
+   128 → 2 messages (removed 126)
+✅ Cleaned 58a18893-286f-4a2b-b16f-2c059d06d870:
+   103 → 1 messages (removed 102)
+✅ Cleaned 58c9612b-1813-417f-97ce-224b33c144eb:
+   48 → 1 messages (removed 47)
+✅ Cleaned 5913b411-6f46-491b-8d78-2be1e86f66f2:
+   44 → 6 messages (removed 38)
+✅ Cleaned 59a6c79f-322c-4d48-a03a-a2452d4c234d:
+   94 → 29 messages (removed 65)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned 59fa364b-1f0a-4057-80b4-56a95cc2ec0f:
+   32 → 6 messages (removed 26)
+✅ Cleaned 5a0bcb4d-f25d-44d2-89ad-39c6d09a2940:
+   316 → 36 messages (removed 280)
+✅ Cleaned 5a29bc20-3f3c-4c70-a48e-022636e6d3ec:
+   94 → 23 messages (removed 71)
+✅ Cleaned 5a51b564-d7d2-45dc-9304-aca9fa5b061f:
+   128 → 17 messages (removed 111)
+✅ Cleaned 5a779c8f-b6e2-454f-910e-704656b3afd6:
+   240 → 8 messages (removed 232)
+✅ Cleaned 5aa8021e-9dda-4759-a46e-29f57b9d75d4:
+   38 → 4 messages (removed 34)
+✅ Cleaned 5aab3bdd-2167-4a05-8838-2fb0e4fa9c4e:
+   46 → 29 messages (removed 17)
+✅ Cleaned 5ad1cf96-c81a-48d0-bd8b-57e29ead247e:
+   132 → 1 messages (removed 131)
+✅ Cleaned 5b3d6cbd-beae-4dc6-b906-2d6f4372fbec:
+   52 → 3 messages (removed 49)
+✅ Cleaned 5b5d2104-d1c1-49be-ba63-0f3d1bdab205:
+   164 → 11 messages (removed 153)
+✅ Cleaned 5b61c453-7c3c-4408-a155-721842d1c38a:
+   510 → 2 messages (removed 508)
+✅ Cleaned 5b79067c-0409-4ddd-9a40-f3cd3515e96f:
+   176 → 5 messages (removed 171)
+✅ Cleaned 5b8729d7-1d34-4bcc-b348-082aae86c869:
+   76 → 12 messages (removed 64)
+✅ Cleaned 5c6fa427-5540-41a6-a505-5ca5848cedb5:
+   400 → 9 messages (removed 391)
+✅ Cleaned 5ccdb773-ef59-4605-bddf-447227b4492a:
+   48 → 29 messages (removed 19)
+✅ Cleaned 5d1344a2-d1d4-4047-b3e2-90e727c9ec71:
+   100 → 17 messages (removed 83)
+✅ Cleaned 5d580501-c5aa-4b38-bc92-529cafea4b36:
+   300 → 51 messages (removed 249)
+✅ Cleaned 5ddbfcda-3534-4d0b-be65-5327e131cb15:
+   274 → 76 messages (removed 198)
+✅ Cleaned 5dec6360-ccf7-4aa6-b437-abd2d3330e0e:
+   205 → 0 messages (removed 205)
+✅ Cleaned 5df1ff2c-e924-40d9-bf5b-c9091e17773a:
+   36 → 1 messages (removed 35)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+✅ Cleaned 5e38751d-0084-40f9-bb52-686d4ff56813:
+   53 → 3 messages (removed 50)
+✅ Cleaned 5ee1693b-3a17-4544-b00b-e4f57179d85c:
+   88 → 0 messages (removed 88)
+✅ Cleaned 5f4c9eb1-95da-4fa4-a5c6-34ad34c4cd34:
+   58 → 7 messages (removed 51)
+✅ Cleaned 5f96790f-64e5-44eb-8e6d-23274f37f5dc:
+   730 → 37 messages (removed 693)
+✅ Cleaned 5fbf330e-3622-446a-abc8-9cef8236462d:
+   164 → 29 messages (removed 135)
+✅ Cleaned 5fc17ba9-aaff-490f-be31-2fa09a0643ca:
+   1 → 0 messages (removed 1)
+✅ Cleaned 60216203-bed2-4e2f-9444-712bbbdd0c8c:
+   54 → 13 messages (removed 41)
+✅ Cleaned 605220f7-8bd8-4e1f-a8b5-b7e68c529d61:
+   660 → 8 messages (removed 652)
+✅ Cleaned 6067427b-b7c7-4f3b-a9b1-bc5f8c32f4f2:
+   48 → 3 messages (removed 45)
+✅ Cleaned 60db3e6c-0c2d-4678-bda4-8164a2acdca0:
+   74 → 16 messages (removed 58)
+✅ Cleaned 61748b8c-b692-407b-8cae-9a06761cd750:
+   200 → 93 messages (removed 107)
+✅ Cleaned 61814958-87c5-4136-af91-7dcb35f8c596:
+   326 → 0 messages (removed 326)
+✅ Cleaned 61b9c8d1-ac96-4958-bc33-0ed562524f27:
+   266 → 2 messages (removed 264)
+✅ Cleaned 61c5bda3-cc23-4cf2-8584-c23f2382778b:
+   22 → 21 messages (removed 1)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned 61f37021-5e21-470d-8a0b-fbd9e20f3f71:
+   51 → 1 messages (removed 50)
+✅ Cleaned 6228cf20-8ae4-4f4d-841b-df7f1e59df91:
+   675 → 69 messages (removed 606)
+✅ Cleaned 622b1147-d682-4f21-bdcf-ba827c970684:
+   68 → 67 messages (removed 1)
+✅ Cleaned 622ca4d2-9a40-480d-af2d-4a6bfd0d41b5:
+   62 → 5 messages (removed 57)
+✅ Cleaned 62efafb9-fa58-41a1-b933-a5b5c5cd89e4:
+   79 → 21 messages (removed 58)
+✅ Cleaned 630ba98c-05bf-495f-b7c3-87a90a274a62:
+   316 → 11 messages (removed 305)
+✅ Cleaned 6332e27b-6238-4716-b7cb-40d549b8e77b:
+   266 → 34 messages (removed 232)
+✅ Cleaned 636b3053-bd41-4956-902b-8248cec851e2:
+   74 → 20 messages (removed 54)
+✅ Cleaned 647a074d-c3e2-4229-ac79-1ea22afedfb5:
+   90 → 28 messages (removed 62)
+✅ Cleaned 649be839-e311-437b-b975-bfe7ed45654b:
+   50 → 14 messages (removed 36)
+✅ Cleaned 64ab27b9-cff4-480b-94bf-f38514372a26:
+   76 → 10 messages (removed 66)
+⚠️  Branch point 5dd6b2fd-0a21-4339-8645-359b8bbf08fc not found in chat aa535e7a-12b5-4ddb-983e-92e5bb7e2354
+✅ Cleaned 65015825-aee4-4e28-96c3-b13f9e994ea6:
+   56 → 17 messages (removed 39)
+✅ Cleaned 6517ef94-fc01-482f-b665-7c14f7c0aa2d:
+   64 → 15 messages (removed 49)
+✅ Cleaned 65a8f55a-984e-48df-8896-f29dd7378781:
+   34 → 32 messages (removed 2)
+✅ Cleaned 65dc6228-7c2a-4e89-b404-e000d72e1f86:
+   146 → 5 messages (removed 141)
+✅ Cleaned 65fe7274-df0c-474e-9e98-5dd40af9e2bb:
+   90 → 16 messages (removed 74)
+✅ Cleaned 663e18b0-b0e4-430d-b16a-4c0750b0b7e6:
+   58 → 51 messages (removed 7)
+✅ Cleaned 66bcebb6-adb5-4afb-b112-2e9289e24383:
+   78 → 43 messages (removed 35)
+✅ Cleaned 6798d689-11b2-4c0d-8a83-9fbd1e329afb:
+   414 → 10 messages (removed 404)
+✅ Cleaned 67998fb9-a1de-4803-9a2f-b3b29e2e401f:
+   466 → 4 messages (removed 462)
+✅ Cleaned 689d9d88-0c29-4009-bbb9-106660534a58:
+   238 → 50 messages (removed 188)
+✅ Cleaned 68a79246-a682-4b38-8bad-dbd2b8202899:
+   98 → 3 messages (removed 95)
+✅ Cleaned 68cceda5-ccaa-462b-9497-d232e9178c32:
+   10 → 1 messages (removed 9)
+✅ Cleaned 68d97e70-f40b-4c83-b79f-743528249abd:
+   88 → 3 messages (removed 85)
+✅ Cleaned 68e4e9b2-ece1-42c3-865a-f3ec01ac06d2:
+   134 → 13 messages (removed 121)
+✅ Cleaned 693d09e2-8336-442e-87e7-b5656e379004:
+   323 → 37 messages (removed 286)
+✅ Cleaned 6963d516-e4e2-4124-91e2-dba3ca12ecba:
+   108 → 25 messages (removed 83)
+✅ Cleaned 699bb915-516c-4809-bd51-0774360d050b:
+   186 → 15 messages (removed 171)
+✅ Cleaned 6a6136f5-a5bd-41e0-b46e-6be30f5e204e:
+   326 → 2 messages (removed 324)
+✅ Cleaned 6a90af69-be70-43b3-ae47-fe9c3102306a:
+   66 → 24 messages (removed 42)
+✅ Cleaned 6ad8e7a0-4d89-4f25-a8b5-e615233b1502:
+   202 → 54 messages (removed 148)
+✅ Cleaned 6ad914d2-345c-4a5d-abb1-80d1c905bedb:
+   196 → 9 messages (removed 187)
+✅ Cleaned 6b02e901-e7eb-4c4f-b998-63f828fee187:
+   158 → 1 messages (removed 157)
+✅ Cleaned 6b0bc269-80fd-4f4d-aa9c-8b766bc70013:
+   88 → 6 messages (removed 82)
+✅ Cleaned 6b0c4bf2-bdc8-4b96-b60f-031b129ff004:
+   66 → 19 messages (removed 47)
+✅ Cleaned 6b4b9bdf-6f76-4f9f-873d-aa6eff2343d5:
+   66 → 7 messages (removed 59)
+✅ Cleaned 6b626677-a7a9-4c70-9b67-3a4c3e89c75f:
+   412 → 9 messages (removed 403)
+✅ Cleaned 6bd8565f-5926-4f91-ad95-75b2659fa45d:
+   72 → 1 messages (removed 71)
+✅ Cleaned 6c32893f-ae66-4252-bc1b-a0462e35cfb4:
+   36 → 1 messages (removed 35)
+✅ Cleaned 6d00805e-4f21-43b7-9772-7e1b38d1a440:
+   20 → 17 messages (removed 3)
+✅ Cleaned 6dc23412-74a5-4165-86cb-b9e72746bf53:
+   48 → 1 messages (removed 47)
+✅ Cleaned 6ddc9a1d-8cb0-404a-ba3f-409e98b2ecc7:
+   44 → 2 messages (removed 42)
+✅ Cleaned 6de6853c-bb8d-41e8-a3c8-1f98655693c6:
+   578 → 134 messages (removed 444)
+✅ Cleaned 6e217511-4c73-4067-a8dd-ac1c4a62965d:
+   50 → 21 messages (removed 29)
+✅ Cleaned 6e43ceee-fb3c-452d-bcc6-85901da0209d:
+   314 → 1 messages (removed 313)
+✅ Cleaned 6eb26cc2-d877-4984-84ed-8d0ee1f9f76b:
+   176 → 4 messages (removed 172)
+✅ Cleaned 6f612b6c-3ea2-4c64-a303-59074cab9870:
+   270 → 23 messages (removed 247)
+✅ Cleaned 701a4167-6e51-4210-88ac-75465411d7a1:
+   44 → 11 messages (removed 33)
+✅ Cleaned 70270815-d013-403c-be2e-e25d545ec167:
+   30 → 13 messages (removed 17)
+✅ Cleaned 704cea3f-2083-4cdd-9e2b-af78ee973ba6:
+   47 → 0 messages (removed 47)
+✅ Cleaned 707b3ab6-76fd-4025-bc94-68432f6b269b:
+   224 → 11 messages (removed 213)
+✅ Cleaned 70cdbf52-8b36-43a7-8e7a-eab0b9d8a302:
+   99 → 0 messages (removed 99)
+✅ Cleaned 710ca557-7340-4a57-b9e6-9a9dcf636894:
+   268 → 30 messages (removed 238)
+✅ Cleaned 714c63e7-bcdf-4094-992e-f65d2a38ef1c:
+   72 → 1 messages (removed 71)
+✅ Cleaned 7195393e-30f0-4771-b36a-57116c6117c2:
+   180 → 7 messages (removed 173)
+✅ Cleaned 71ab46d3-9dc3-41b8-92d9-180048b312ea:
+   6 → 0 messages (removed 6)
+✅ Cleaned 7281b030-46d0-4828-8214-32479d5bb421:
+   76 → 9 messages (removed 67)
+✅ Cleaned 72a9419c-17eb-45db-9540-deee3e28ca41:
+   142 → 5 messages (removed 137)
+✅ Cleaned 72c0222d-e267-4ed2-8c26-5f5bb7d84858:
+   78 → 3 messages (removed 75)
+✅ Cleaned 736e32a8-ca9e-4993-9596-55c6037a47d4:
+   45 → 0 messages (removed 45)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+✅ Cleaned 7438a875-1815-45f1-a804-62e2cfad2073:
+   241 → 1 messages (removed 240)
+✅ Cleaned 7453e1e1-5831-4949-bf53-1086d0ae9e61:
+   15 → 0 messages (removed 15)
+✅ Cleaned 7492a26d-619e-46f7-8f8c-26f626a5cb9b:
+   398 → 1 messages (removed 397)
+✅ Cleaned 74b831cd-2a6e-463a-bcff-a7aafd6e05f5:
+   310 → 42 messages (removed 268)
+✅ Cleaned 74cde283-08a3-4272-b21a-12feb19c8444:
+   4 → 0 messages (removed 4)
+✅ Cleaned 75a334d7-efb4-4f7b-84e3-6ef0d52cf1c8:
+   76 → 10 messages (removed 66)
+✅ Cleaned 760ee472-731e-445e-b8b1-6187491732ea:
+   50 → 21 messages (removed 29)
+✅ Cleaned 76591fe4-13b9-4f9f-91ba-ae4ad328876a:
+   160 → 62 messages (removed 98)
+✅ Cleaned 765a3c2b-2bb8-456c-9c19-a5831243d120:
+   30 → 21 messages (removed 9)
+✅ Cleaned 76bb8858-d3e9-4f26-9922-f6fc5cd540dc:
+   550 → 23 messages (removed 527)
+✅ Cleaned 76dd7655-966a-4d3e-ac36-3a5c4de465df:
+   176 → 1 messages (removed 175)
+✅ Cleaned 77979bd0-f838-4a52-ba71-cae57c582e28:
+   10 → 9 messages (removed 1)
+✅ Cleaned 77fadab7-da7f-4c5a-91c5-b12c9ff1f624:
+   200 → 6 messages (removed 194)
+✅ Cleaned 781453c1-7f77-4570-a319-a84f28d4195f:
+   90 → 14 messages (removed 76)
+✅ Cleaned 7843cb89-8798-4f2a-9d72-f19f8b6fde2a:
+   72 → 18 messages (removed 54)
+✅ Cleaned 7863d489-1c0d-4a25-8b92-a45c1948a162:
+   539 → 2 messages (removed 537)
+✅ Cleaned 7873e247-0266-4eda-8fdd-818843bfeadb:
+   410 → 19 messages (removed 391)
+✅ Cleaned 788b47d4-2526-4319-b779-6f6a8924905b:
+   50 → 6 messages (removed 44)
+✅ Cleaned 78e52c2c-6e54-4076-a5fa-d68783edaf3a:
+   344 → 51 messages (removed 293)
+✅ Cleaned 78e95d25-14df-4750-b7ac-fd1d6972dc34:
+   60 → 23 messages (removed 37)
+✅ Cleaned 79843a80-c14d-4306-ae8b-d00b6605efb5:
+   446 → 17 messages (removed 429)
+✅ Cleaned 798ca17b-b58a-4844-bbc2-a92a354618e5:
+   160 → 1 messages (removed 159)
+✅ Cleaned 7ad106b6-29cc-48cf-90ac-9674a1cc686b:
+   51 → 1 messages (removed 50)
+✅ Cleaned 7adb115a-7a43-43de-a686-e5e655b0a15b:
+   156 → 37 messages (removed 119)
+✅ Cleaned 7b641d7d-b56b-4457-9a12-bd0bcf811dc3:
+   338 → 30 messages (removed 308)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+✅ Cleaned 7b72b51f-b72e-44d7-9485-943b9790f4a4:
+   51 → 1 messages (removed 50)
+✅ Cleaned 7b9ab953-0512-4e28-9157-7c85d5c3671e:
+   510 → 58 messages (removed 452)
+✅ Cleaned 7c27f688-f926-48a7-b8b1-bfde6df611e8:
+   16 → 4 messages (removed 12)
+✅ Cleaned 7c28fe19-6f92-493c-94aa-bb70286614f8:
+   156 → 3 messages (removed 153)
+✅ Cleaned 7ce8a4d9-a670-44e1-8aa7-2ab9821497ac:
+   340 → 11 messages (removed 329)
+✅ Cleaned 7d1ccfa1-8d13-4c7e-bf57-94b8834ec130:
+   310 → 21 messages (removed 289)
+✅ Cleaned 7d1d204c-15d8-4afc-9aaa-b8ff392a8bac:
+   100 → 3 messages (removed 97)
+✅ Cleaned 7d286b50-5e4f-4ef2-8a23-fa5f583b80e2:
+   44 → 10 messages (removed 34)
+✅ Cleaned 7d81244a-e274-4e26-b07a-81228d52e536:
+   282 → 41 messages (removed 241)
+✅ Cleaned 7dac427c-44ac-49da-b53c-aac0897ccac5:
+   20 → 8 messages (removed 12)
+✅ Cleaned 7dda9418-56cb-4a80-a066-72b8b9e45b59:
+   52 → 29 messages (removed 23)
+✅ Cleaned 7df2cf72-9532-447c-9530-aa2a7520582b:
+   54 → 6 messages (removed 48)
+✅ Cleaned 7e6a27da-6004-41d4-bcff-5bf2f6811cb5:
+   50 → 1 messages (removed 49)
+✅ Cleaned 7eb225a1-18b7-400d-9f22-8311131ad2a7:
+   71 → 0 messages (removed 71)
+✅ Cleaned 7ee45d23-d981-41a1-8646-0f6a685bf1db:
+   166 → 13 messages (removed 153)
+✅ Cleaned 7f19c0d7-8576-4e48-b09e-2121d852d7a3:
+   174 → 21 messages (removed 153)
+✅ Cleaned 80a8c959-796a-42fb-bbf5-cb35ec0d0726:
+   70 → 5 messages (removed 65)
+✅ Cleaned 813d6b7a-4d23-4bd5-bbcc-9a5fc8d44400:
+   46 → 15 messages (removed 31)
+✅ Cleaned 813eb7bc-f542-4878-837e-4f8e150e8e64:
+   164 → 9 messages (removed 155)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+✅ Cleaned 818efa2b-8c07-4e7a-b58f-940abcb741c3:
+   50 → 24 messages (removed 26)
+✅ Cleaned 8250cdb8-2bfb-4572-b62e-d98c21e765cf:
+   66 → 3 messages (removed 63)
+✅ Cleaned 8265c13c-087b-4ed0-af1c-610da443f0fb:
+   58 → 7 messages (removed 51)
+✅ Cleaned 8305bd7e-70e1-47f3-85ca-33ddcea1277f:
+   338 → 22 messages (removed 316)
+✅ Cleaned 8427894f-57a0-42e6-bd1f-f60302ca155b:
+   70 → 6 messages (removed 64)
+✅ Cleaned 84877304-3dc1-49ea-b2eb-602ccd31bdcd:
+   21 → 1 messages (removed 20)
+✅ Cleaned 8514525c-3602-422a-b0ab-efbf49804ca6:
+   52 → 7 messages (removed 45)
+✅ Cleaned 8559fcad-2522-4274-9d20-3b238b39bd71:
+   212 → 58 messages (removed 154)
+✅ Cleaned 85b63e2a-ed3e-4eff-be67-224794d57d35:
+   4 → 3 messages (removed 1)
+✅ Cleaned 8659d00f-eeae-45f3-9c6b-9e9e1121412c:
+   118 → 1 messages (removed 117)
+✅ Cleaned 86ecb5c3-d2c7-42cf-a076-49ce0501add0:
+   48 → 15 messages (removed 33)
+✅ Cleaned 8747856f-be27-4dde-b898-1dace6ac41ba:
+   256 → 37 messages (removed 219)
+✅ Cleaned 87d61a1c-cd6c-4098-89e2-aa2c1ba133bc:
+   66 → 18 messages (removed 48)
+✅ Cleaned 886a713b-4004-4dc0-a5ac-5bb6a162a3c5:
+   684 → 0 messages (removed 684)
+✅ Cleaned 88dc048b-0300-4cf2-aac7-871461d12a29:
+   42 → 3 messages (removed 39)
+✅ Cleaned 89159866-1b9c-45e2-9901-440f2a0fca78:
+   510 → 4 messages (removed 506)
+✅ Cleaned 8a19928e-737c-4ee6-ae19-f1521cd40a43:
+   130 → 6 messages (removed 124)
+✅ Cleaned 8a1b95d7-e59e-4c03-854e-a3b5378d255d:
+   20 → 19 messages (removed 1)
+✅ Cleaned 8b244a31-0ec9-46e6-825f-12680d9ac88c:
+   142 → 1 messages (removed 141)
+✅ Cleaned 8bbef2bb-a6d3-421f-aa3d-f3f072b69134:
+   298 → 1 messages (removed 297)
+✅ Cleaned 8cc74b6e-3331-46ec-9378-472108bf0c1c:
+   458 → 41 messages (removed 417)
+✅ Cleaned 8d228f85-8980-496a-8463-1807655a82e6:
+   146 → 54 messages (removed 92)
+✅ Cleaned 8d9db62a-faa6-4134-92bc-74da7bbdbc98:
+   82 → 10 messages (removed 72)
+✅ Cleaned 8dc178d8-84d2-4b1e-a93c-c2ec68ad0558:
+   104 → 19 messages (removed 85)
+✅ Cleaned 8de0c603-cf29-4b73-bfe7-8c11f4a26cc4:
+   94 → 93 messages (removed 1)
+✅ Cleaned 8dee73f7-bade-4767-abd5-c4652f09d342:
+   62 → 18 messages (removed 44)
+⚠️  Branch point 0a196c58-88a0-4c3f-9393-e6ad4cdc92eb not found in chat 449ce5da-ba8a-4e7c-b9d6-23df8b6344ac
+⚠️  Branch point 0a196c58-88a0-4c3f-9393-e6ad4cdc92eb not found in chat 468edb66-3518-4e2c-932d-73968544162a
+✅ Cleaned 8e9affff-1957-4fd6-b3dd-1fbc087bd8e9:
+   143 → 5 messages (removed 138)
+✅ Cleaned 8f5f9b7f-d8c6-4eb6-b0e3-7e8f67d8897f:
+   662 → 5 messages (removed 657)
+✅ Cleaned 9001229e-4c72-4eff-87d5-02ae49d5ae07:
+   536 → 4 messages (removed 532)
+✅ Cleaned 9082d99b-6c78-4303-8fd5-48e2f164e1b6:
+   12 → 4 messages (removed 8)
+✅ Cleaned 909e0b17-d49d-421c-96ad-93f90f69ab59:
+   11 → 0 messages (removed 11)
+✅ Cleaned 90fad94f-1f3b-4f4f-b8c2-edc9381c566c:
+   176 → 10 messages (removed 166)
+✅ Cleaned 9115b22d-02fa-4bf7-a08d-f4a37787b39a:
+   48 → 22 messages (removed 26)
+✅ Cleaned 911cabbb-4c2b-40ad-b281-f58a6a453154:
+   88 → 2 messages (removed 86)
+✅ Cleaned 917479c8-fef4-4132-a42f-57b8c3860a81:
+   170 → 1 messages (removed 169)
+✅ Cleaned 91e1ea0d-f610-4b22-a7c6-ae42d31e2628:
+   538 → 0 messages (removed 538)
+✅ Cleaned 9262dcec-00d7-4718-9186-07daba1615e1:
+   206 → 58 messages (removed 148)
+✅ Cleaned 92661a97-22ec-47fd-b10f-595872c982d4:
+   186 → 27 messages (removed 159)
+✅ Cleaned 92ae776c-afa4-400c-8ba4-15835634fb9d:
+   228 → 18 messages (removed 210)
+✅ Cleaned 92ced3d5-86bb-4ee3-bfa6-755a7bfb9515:
+   292 → 3 messages (removed 289)
+✅ Cleaned 9358facb-ca13-4c77-94b1-d575411cfd6d:
+   181 → 28 messages (removed 153)
+✅ Cleaned 9379cd31-5927-4d34-874f-a6ad10b3d4b8:
+   100 → 35 messages (removed 65)
+✅ Cleaned 939ed3ef-4d33-45ca-a77f-eac578b3fc44:
+   50 → 41 messages (removed 9)
+✅ Cleaned 93a9345a-3ca6-465e-bae9-4f27d1d559ee:
+   75 → 0 messages (removed 75)
+✅ Cleaned 94141075-acaa-4098-bab0-cf4d58b1b17c:
+   106 → 29 messages (removed 77)
+✅ Cleaned 94bf2c13-f14a-47ed-8063-df0524418310:
+   726 → 43 messages (removed 683)
+✅ Cleaned 95bd5f6f-ea45-4dd0-aaa9-b54436ca8c73:
+   394 → 58 messages (removed 336)
+✅ Cleaned 95ee78d2-a4ac-40b2-bc4f-c8e5b80284ef:
+   420 → 82 messages (removed 338)
+✅ Cleaned 961bba13-2323-4e1e-b1c3-6eac54f86a34:
+   37 → 0 messages (removed 37)
+✅ Cleaned 962926b0-bf98-42df-8515-96cf21f87d16:
+   142 → 3 messages (removed 139)
+✅ Cleaned 965481af-3fcc-4d72-b861-ab2dece8e7d5:
+   50 → 3 messages (removed 47)
+✅ Cleaned 965b9d48-1bd1-4248-b691-c930ea4a5b84:
+   464 → 38 messages (removed 426)
+✅ Cleaned 9729dd61-becd-4849-959b-d26ed930d707:
+   318 → 8 messages (removed 310)
+✅ Cleaned 972fb35c-1b68-4266-adef-ed9a79336a69:
+   65 → 0 messages (removed 65)
+✅ Cleaned 976b26ac-7de7-4ca6-85e5-0767f808900f:
+   84 → 51 messages (removed 33)
+✅ Cleaned 979024be-0ee7-415b-a92d-da737a50a355:
+   62 → 19 messages (removed 43)
+✅ Cleaned 97912007-6daa-4013-a039-2449d769fbec:
+   88 → 15 messages (removed 73)
+✅ Cleaned 97fd9f9c-6b9d-48d1-a939-2a18d4be5c9d:
+   148 → 44 messages (removed 104)
+✅ Cleaned 97ff6918-0122-4621-83b3-cdfd838e939f:
+   448 → 5 messages (removed 443)
+✅ Cleaned 98441fe2-fd6c-4dc2-a892-1d9913351aa5:
+   86 → 4 messages (removed 82)
+✅ Cleaned 985b9853-8365-4380-aaad-889f5693a29f:
+   660 → 4 messages (removed 656)
+✅ Cleaned 98ed04ed-2d6e-4d5b-a2fb-8ca2726d5f5f:
+   50 → 35 messages (removed 15)
+✅ Cleaned 98f211b5-03f7-40c9-8df5-e19544d5fbfd:
+   102 → 6 messages (removed 96)
+✅ Cleaned 993fc9a6-591c-49be-a1c9-77a435ea6311:
+   141 → 0 messages (removed 141)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+⚠️  Branch point 13f2bf31-17b1-4ce8-aaf4-d1e8ac6d0636 not found in chat 59ec61d7-1f91-4243-b3ab-d02803af19cb
+✅ Cleaned 9a43baf9-7251-405c-89e1-b27c6f8941a0:
+   84 → 38 messages (removed 46)
+✅ Cleaned 9a48d530-0147-4cb0-9e00-4e808b282a38:
+   60 → 1 messages (removed 59)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned 9a5da56b-4df5-4c8b-8fc6-11770ecbd70d:
+   58 → 28 messages (removed 30)
+✅ Cleaned 9a79c78d-fae7-42d2-916e-6ec5e6028472:
+   50 → 4 messages (removed 46)
+✅ Cleaned 9b154f90-c634-4556-9bcb-355c5a70a227:
+   80 → 29 messages (removed 51)
+✅ Cleaned 9b4e275a-2497-4971-a8b4-608f2450b04d:
+   142 → 3 messages (removed 139)
+✅ Cleaned 9b5f6ecc-c92a-4c6b-97b7-33d42a371106:
+   128 → 20 messages (removed 108)
+✅ Cleaned 9b6ab3db-d843-4bf6-8827-b1636ac35afe:
+   114 → 59 messages (removed 55)
+✅ Cleaned 9baf1614-24b3-4c30-8be7-320d5a2d589d:
+   326 → 0 messages (removed 326)
+✅ Cleaned 9d31eade-8aa0-457b-8c24-89e0b94febad:
+   18 → 2 messages (removed 16)
+✅ Cleaned 9dc849e0-2a2d-475c-a331-50b62cc2826f:
+   68 → 67 messages (removed 1)
+✅ Cleaned 9dec6ed9-9518-4c98-aff8-b68801786ab0:
+   30 → 5 messages (removed 25)
+✅ Cleaned 9e1be149-2786-4772-9b36-8ce6bfdd265f:
+   184 → 64 messages (removed 120)
+✅ Cleaned 9f800307-c1b0-496c-bb09-30b0d42a862d:
+   60 → 20 messages (removed 40)
+✅ Cleaned a03a285a-fec1-4b76-80b0-03ac76dcab47:
+   26 → 5 messages (removed 21)
+✅ Cleaned a14e2160-5468-413b-90b8-9bf5df913948:
+   30 → 8 messages (removed 22)
+✅ Cleaned a1612276-f6e3-435a-9fe0-6b01899c4546:
+   74 → 12 messages (removed 62)
+✅ Cleaned a1b002b6-d2b6-4eb2-b460-535aaaa890bf:
+   578 → 39 messages (removed 539)
+✅ Cleaned a1cc6d10-d159-4c79-81a2-5b4a3d1f386c:
+   573 → 1 messages (removed 572)
+✅ Cleaned a22ba02a-c497-4074-a281-0abba3fe4333:
+   184 → 14 messages (removed 170)
+✅ Cleaned a267dc13-1f05-4766-a93b-70b38367f14c:
+   54 → 12 messages (removed 42)
+✅ Cleaned a287a852-1517-46d2-84dc-6af345c267e8:
+   40 → 13 messages (removed 27)
+✅ Cleaned a38a103a-97a8-4d45-ac08-be742b288882:
+   124 → 41 messages (removed 83)
+✅ Cleaned a3b7bead-60c0-4146-ac73-1632da938f42:
+   100 → 15 messages (removed 85)
+✅ Cleaned a3c5f5b1-535c-41ec-9446-453fb91aba12:
+   154 → 7 messages (removed 147)
+✅ Cleaned a40b17c9-85f1-4c1d-a6fa-e82d93977e28:
+   152 → 14 messages (removed 138)
+✅ Cleaned a413814b-5082-47b5-9866-5f15492b4816:
+   781 → 3 messages (removed 778)
+✅ Cleaned a46028cc-21c5-483c-8ad1-25652dcba451:
+   1 → 0 messages (removed 1)
+✅ Cleaned a4613270-ac45-486f-add4-ae2525931214:
+   561 → 24 messages (removed 537)
+✅ Cleaned a48469f4-3eda-4a8e-afbc-296ad951767e:
+   136 → 16 messages (removed 120)
+✅ Cleaned a4acd20b-ed27-4d03-bca2-d1cbb6fedfb4:
+   148 → 24 messages (removed 124)
+✅ Cleaned a4dec12a-a29f-4159-8013-431156a545e9:
+   346 → 13 messages (removed 333)
+✅ Cleaned a5281092-ca10-434f-81d1-44f63dfb512e:
+   82 → 7 messages (removed 75)
+✅ Cleaned a53a24b1-2740-407f-9367-6d7a50c22f52:
+   151 → 0 messages (removed 151)
+✅ Cleaned a594f2f9-e3a3-4206-8868-0f735bf3b9eb:
+   95 → 14 messages (removed 81)
+✅ Cleaned a74b665e-a02b-4401-8add-fa1106e10b9c:
+   52 → 8 messages (removed 44)
+✅ Cleaned a795ab5f-c4ea-4496-9b74-4741cd8f73f6:
+   134 → 29 messages (removed 105)
+✅ Cleaned a797d9b7-7e4c-4ec7-8217-7936aaf1664d:
+   56 → 23 messages (removed 33)
+✅ Cleaned a7ee4575-c418-4bdc-8b15-403a66bd4b37:
+   254 → 18 messages (removed 236)
+✅ Cleaned a7efbe27-3575-47e8-aaa8-5e4953cbf297:
+   78 → 4 messages (removed 74)
+✅ Cleaned a85ed466-916f-419c-b8d4-df8f07b9a2b6:
+   268 → 50 messages (removed 218)
+✅ Cleaned a95efbc9-fc17-4fab-8c80-3467b6f7d8bf:
+   158 → 14 messages (removed 144)
+✅ Cleaned a97eff56-dd4f-4192-ae74-c261522eeaaf:
+   174 → 98 messages (removed 76)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned a9e36d0f-092d-4e47-a5b3-e16525be9071:
+   126 → 2 messages (removed 124)
+✅ Cleaned a9e5e1ad-af58-4187-b07c-0f3e464e1752:
+   100 → 17 messages (removed 83)
+✅ Cleaned aa7c8b5b-9d47-4654-a9be-5357b92ea950:
+   88 → 2 messages (removed 86)
+✅ Cleaned aa98b5dd-919a-41a3-86a0-b0aea815b1cf:
+   49 → 5 messages (removed 44)
+✅ Cleaned aa99b20f-1328-4269-ada8-5fc4023977cd:
+   54 → 38 messages (removed 16)
+✅ Cleaned ab354a57-e1b4-44f8-aa78-9b0d48c0e2cc:
+   538 → 0 messages (removed 538)
+✅ Cleaned ab49aab7-ccb8-4de3-9c26-c3de55f80fc6:
+   258 → 11 messages (removed 247)
+✅ Cleaned ab6d2dd7-17fd-4021-a42b-4e244ab0ac74:
+   142 → 18 messages (removed 124)
+✅ Cleaned ac30de74-2560-49b0-99df-811d052973f7:
+   34 → 3 messages (removed 31)
+✅ Cleaned aca8f740-b26e-4024-af33-3c3e85c2ff84:
+   68 → 4 messages (removed 64)
+✅ Cleaned acd3920f-fdea-4539-a1d4-a41933201640:
+   136 → 110 messages (removed 26)
+✅ Cleaned ad9c2263-5d24-4274-8c79-4ce1bd6effe0:
+   534 → 2 messages (removed 532)
+✅ Cleaned add09c92-c489-41ab-b4aa-422790fc844e:
+   416 → 15 messages (removed 401)
+✅ Cleaned ade77092-db98-4f43-be1d-a7f1d75dc083:
+   49 → 0 messages (removed 49)
+✅ Cleaned ae24bf66-8548-4ce8-acf7-835a5db469e6:
+   138 → 71 messages (removed 67)
+✅ Cleaned ae3700ac-1f95-49f9-b59a-91d1eeb1a5e4:
+   34 → 13 messages (removed 21)
+✅ Cleaned ae499a5c-ed0f-4924-981b-119f6d58df10:
+   122 → 5 messages (removed 117)
+✅ Cleaned aede3eca-9ad4-4ee5-8fb6-603c3284d9b7:
+   142 → 40 messages (removed 102)
+✅ Cleaned af195d7e-be77-459c-ac1b-7e6e4153cc05:
+   340 → 47 messages (removed 293)
+✅ Cleaned af72ffb7-45cf-436e-a080-65128b57c4f4:
+   184 → 27 messages (removed 157)
+✅ Cleaned af8f75ae-c960-44f3-b0ee-e4a5faed1354:
+   98 → 42 messages (removed 56)
+✅ Cleaned afe82fbc-cda6-4a84-97e7-fc5670d63158:
+   114 → 14 messages (removed 100)
+✅ Cleaned b01be938-eb4c-4478-b3e5-df98cd71465b:
+   12 → 3 messages (removed 9)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+⚠️  Branch point 4051f38d-d749-45d2-ac5d-edf292d92545 not found in chat 59ec61d7-1f91-4243-b3ab-d02803af19cb
+✅ Cleaned b0e8e7dd-c38a-46ee-ab60-7920c03e3278:
+   408 → 3 messages (removed 405)
+✅ Cleaned b0ecd437-99bd-4c97-abd1-4fd435d70876:
+   52 → 2 messages (removed 50)
+✅ Cleaned b1870567-bf87-4517-a2a4-2e55825b15b8:
+   36 → 10 messages (removed 26)
+✅ Cleaned b1a77871-f524-448a-b848-5703309075f0:
+   404 → 6 messages (removed 398)
+✅ Cleaned b1efc6b4-7efa-460b-ad72-2f5b0e4c1da4:
+   174 → 14 messages (removed 160)
+✅ Cleaned b21d068d-01f5-4f40-8a82-f399ec32cdfb:
+   156 → 13 messages (removed 143)
+✅ Cleaned b2448454-9a51-4924-8cdd-43195212169c:
+   56 → 37 messages (removed 19)
+✅ Cleaned b385a2a3-b2db-46f1-937f-5c8341167f29:
+   85 → 0 messages (removed 85)
+✅ Cleaned b3f3ec5d-abee-47ab-906b-50a63c79aa6d:
+   399 → 0 messages (removed 399)
+✅ Cleaned b41cdcb9-ec92-4416-8e3e-020d23339e98:
+   24 → 7 messages (removed 17)
+✅ Cleaned b4474ad1-6d3c-4670-93b0-751b09c4db00:
+   54 → 9 messages (removed 45)
+✅ Cleaned b468459a-c3dd-470e-9892-0774aad3d171:
+   144 → 5 messages (removed 139)
+✅ Cleaned b4e0d82c-4ac6-46cb-9749-6d6e9fce0e67:
+   178 → 59 messages (removed 119)
+✅ Cleaned b55ea874-ed93-46da-a637-81b112e6986d:
+   64 → 1 messages (removed 63)
+✅ Cleaned b5e82b01-a3b9-461e-96e8-2cd1f22b3b27:
+   112 → 8 messages (removed 104)
+✅ Cleaned b5f29a43-38b3-475b-a0ca-dab94eb9a66d:
+   90 → 48 messages (removed 42)
+✅ Cleaned b662017a-5621-4b2a-9bec-d67e358e8b4a:
+   70 → 24 messages (removed 46)
+✅ Cleaned b68d86db-bcef-4126-b3db-1e76fbbe6420:
+   100 → 35 messages (removed 65)
+✅ Cleaned b6eca88b-7e46-413f-b00a-c079f7d96db8:
+   230 → 0 messages (removed 230)
+✅ Cleaned b71e1bbe-8886-4f42-9680-9b721216cb66:
+   50 → 13 messages (removed 37)
+✅ Cleaned b7da7f87-c9f2-4faf-9aaa-2f14f3e0be9a:
+   110 → 30 messages (removed 80)
+✅ Cleaned b8634920-cbea-476f-9e87-4649405243d7:
+   37 → 0 messages (removed 37)
+✅ Cleaned b8dc5ca4-2a33-4754-8a95-9d9247b64510:
+   10 → 2 messages (removed 8)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned b92a5405-c6f0-4148-af56-7806b33ed03f:
+   2122 → 17 messages (removed 2105)
+✅ Cleaned b9611b80-0994-4cfc-8551-88908384bf32:
+   184 → 7 messages (removed 177)
+✅ Cleaned b98f009f-b76e-4131-ae6b-640a7a0d3306:
+   62 → 54 messages (removed 8)
+✅ Cleaned b99c9dfc-fdf9-4891-9505-8f07e00f0196:
+   188 → 44 messages (removed 144)
+✅ Cleaned ba8ee5ec-4ea5-47f4-bc8a-8f7c0c09b131:
+   550 → 13 messages (removed 537)
+✅ Cleaned bac7d000-6245-4c09-ae34-afd3e864f713:
+   126 → 2 messages (removed 124)
+✅ Cleaned bbd5d70a-d0a4-4048-b603-e79c9b89894c:
+   296 → 46 messages (removed 250)
+✅ Cleaned bbe80d94-cc30-449d-b4cc-c573dc13a715:
+   84 → 10 messages (removed 74)
+✅ Cleaned bc1d684e-9b43-46f6-a876-a066060fbfb4:
+   96 → 36 messages (removed 60)
+✅ Cleaned bc258dcd-a277-4e55-be21-4bac975581c5:
+   140 → 54 messages (removed 86)
+✅ Cleaned bc3a6858-0908-4526-b585-21b53c1863af:
+   430 → 25 messages (removed 405)
+✅ Cleaned bc556978-baf1-4f74-a58f-b0da605c93cc:
+   32 → 0 messages (removed 32)
+✅ Cleaned bc66948b-6090-4d21-9969-ee78e123c9e7:
+   156 → 5 messages (removed 151)
+✅ Cleaned bc99a09d-e163-45a2-b812-562e073a86be:
+   266 → 31 messages (removed 235)
+✅ Cleaned bd4d7c6f-acec-4755-ad57-7377138d1db2:
+   30 → 22 messages (removed 8)
+⚠️  Branch point 5dd6b2fd-0a21-4339-8645-359b8bbf08fc not found in chat aa535e7a-12b5-4ddb-983e-92e5bb7e2354
+✅ Cleaned bd5c16e1-a51b-4f2a-bd4d-56c420656492:
+   54 → 32 messages (removed 22)
+✅ Cleaned bd798a05-d73f-435d-960e-12fcb55ec2ef:
+   154 → 11 messages (removed 143)
+✅ Cleaned bd818304-a948-4403-bd65-f23d9d271939:
+   326 → 5 messages (removed 321)
+✅ Cleaned bdd6540b-6e5b-4718-9a82-3f3d9ebbbe25:
+   230 → 24 messages (removed 206)
+✅ Cleaned bea7db81-4846-4e79-822c-ba2e19567746:
+   20 → 3 messages (removed 17)
+✅ Cleaned beb47b15-54d9-40c8-b63a-cccfb1d8768f:
+   570 → 31 messages (removed 539)
+✅ Cleaned bec0d24f-5edb-4cb6-a603-0cdbd30e5d63:
+   144 → 0 messages (removed 144)
+✅ Cleaned bf427087-ef2b-4489-9e90-7ef7b67c882f:
+   186 → 105 messages (removed 81)
+✅ Cleaned bf783aae-3cde-41c8-bf70-f6acb25f7567:
+   122 → 47 messages (removed 75)
+✅ Cleaned bfbb8e54-04c5-4200-b203-3f6fc3ae0850:
+   334 → 20 messages (removed 314)
+✅ Cleaned bfd62e6b-39a8-488e-ae5e-caa28dec466e:
+   570 → 3 messages (removed 567)
+✅ Cleaned c0dd70ec-5f75-4fe5-9eda-5f01bf033742:
+   272 → 2 messages (removed 270)
+✅ Cleaned c110813e-8864-4c2e-98b4-288c79ca64d3:
+   56 → 45 messages (removed 11)
+✅ Cleaned c16a8eca-e075-461b-a6c3-6f0e19f7652f:
+   292 → 27 messages (removed 265)
+✅ Cleaned c251eacf-596d-48c1-b4c4-f43d4be8f029:
+   76 → 5 messages (removed 71)
+✅ Cleaned c2791177-5880-45f7-8237-5f746cd2deab:
+   28 → 17 messages (removed 11)
+✅ Cleaned c284ccc4-b6d0-4fae-b22d-32b73b53bea4:
+   48 → 1 messages (removed 47)
+✅ Cleaned c29b99f4-0dd3-4500-a3fd-df0d9ce1f5d1:
+   330 → 77 messages (removed 253)
+✅ Cleaned c2e03f5f-1073-4f2b-b1e5-fe9fe4dbf936:
+   116 → 6 messages (removed 110)
+✅ Cleaned c335126f-aa16-4463-9184-d7206ba85b41:
+   132 → 14 messages (removed 118)
+✅ Cleaned c35680e0-69e5-4931-9256-ef5260558588:
+   256 → 18 messages (removed 238)
+✅ Cleaned c371ae44-fa4b-434e-8fa9-f7850977fb2f:
+   74 → 5 messages (removed 69)
+✅ Cleaned c534b780-aa20-468f-a9b8-82082a8991f8:
+   30 → 4 messages (removed 26)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned c56c0e7c-49d5-4be5-8707-618330520373:
+   55 → 29 messages (removed 26)
+✅ Cleaned c5f8275d-3deb-4af9-81be-19767a268214:
+   22 → 21 messages (removed 1)
+✅ Cleaned c63ad3f0-8907-4d35-b108-70a6917431f5:
+   86 → 63 messages (removed 23)
+✅ Cleaned c66b9c3f-6dea-4e6b-939f-594527773b12:
+   94 → 31 messages (removed 63)
+✅ Cleaned c6e1cdf5-e0e6-4934-8e3b-628e427cfcd7:
+   94 → 3 messages (removed 91)
+✅ Cleaned c79f1f9f-e034-43d9-8d29-1aadafbda73a:
+   716 → 17 messages (removed 699)
+✅ Cleaned c7d08f2e-07b7-4db3-8c71-5652c6d3ad04:
+   34 → 32 messages (removed 2)
+✅ Cleaned c7f82d56-d034-4357-973f-2c14f344389d:
+   297 → 0 messages (removed 297)
+✅ Cleaned c814050a-50fd-41a6-bfb7-a45e58c48a1f:
+   26 → 15 messages (removed 11)
+✅ Cleaned c8402f69-45f8-464a-8afc-cb3fa2e36b8d:
+   482 → 8 messages (removed 474)
+✅ Cleaned c8c2bf16-40a9-43b8-bf4f-7375fc82a12e:
+   142 → 1 messages (removed 141)
+✅ Cleaned c92f3f32-5877-45a7-a073-9d623b3f808f:
+   88 → 5 messages (removed 83)
+✅ Cleaned c9371e22-c4ea-40ef-ab03-645476462afe:
+   240 → 23 messages (removed 217)
+✅ Cleaned c95b576c-8aa9-45a8-9289-3ba01170b789:
+   234 → 31 messages (removed 203)
+✅ Cleaned c9d531a4-f614-4764-b98b-2d8ecca58fa6:
+   342 → 15 messages (removed 327)
+✅ Cleaned c9dd0bfc-ed16-4d38-813b-4d93b6ee7574:
+   126 → 39 messages (removed 87)
+✅ Cleaned c9f7032b-908c-4f28-9266-a7fea6bfa53a:
+   70 → 5 messages (removed 65)
+✅ Cleaned ca1bcf4a-543b-4ada-8fec-cd440c4e7a64:
+   50 → 28 messages (removed 22)
+✅ Cleaned ca42ba85-e382-49af-97eb-9697866cac79:
+   98 → 8 messages (removed 90)
+✅ Cleaned ca58f654-ff8f-4493-8854-f0deabb93729:
+   136 → 3 messages (removed 133)
+✅ Cleaned ca786960-4ede-4403-ba50-58b9072907b2:
+   158 → 7 messages (removed 151)
+✅ Cleaned ca7f2a17-0570-4cb1-af50-c9031734fac4:
+   97 → 36 messages (removed 61)
+✅ Cleaned cac3aebf-02d1-4353-b07f-b0887f09c513:
+   52 → 13 messages (removed 39)
+✅ Cleaned cb4dc5b9-b386-4e82-af29-daf75b8ea533:
+   115 → 2 messages (removed 113)
+✅ Cleaned cbc74b25-2979-4755-81e1-43c248ad7aaf:
+   398 → 11 messages (removed 387)
+✅ Cleaned ccb96d76-3f67-475b-8141-1ba73415df46:
+   146 → 3 messages (removed 143)
+✅ Cleaned ccd927c0-2013-4e7f-9179-a7342843c1b2:
+   78 → 60 messages (removed 18)
+✅ Cleaned cd0c4e86-ca37-4e92-8048-e5944d0d1f92:
+   59 → 0 messages (removed 59)
+✅ Cleaned cd8c58a9-d915-4b20-b452-fb5fd916b1bd:
+   2092 → 11 messages (removed 2081)
+✅ Cleaned cf1a7a46-bb86-4fa6-b081-ebcd07d54fbe:
+   630 → 61 messages (removed 569)
+✅ Cleaned cf2daefa-571d-41e0-80de-4f373ff9d307:
+   74 → 1 messages (removed 73)
+✅ Cleaned cf4a99bf-58ff-4b28-98d7-0dd63feb670b:
+   56 → 2 messages (removed 54)
+✅ Cleaned cf4e3f0b-88a9-4138-a566-58b217b9c4e9:
+   58 → 22 messages (removed 36)
+✅ Cleaned cfd59e9b-cf30-411a-8a94-396d7593774c:
+   156 → 5 messages (removed 151)
+✅ Cleaned cfe315a6-1777-446c-8fb4-beaf1f4d2c8d:
+   160 → 33 messages (removed 127)
+✅ Cleaned d04bec24-cbf5-49ad-b210-9ef02ecbe761:
+   356 → 36 messages (removed 320)
+✅ Cleaned d06a044f-7329-4b30-88fd-6c93daed7d89:
+   143 → 1 messages (removed 142)
+✅ Cleaned d10f458e-1923-461c-868e-f8cd9c3cd4d2:
+   74 → 1 messages (removed 73)
+✅ Cleaned d14358ee-d6fa-47be-9b26-1ca1f5d234ac:
+   51 → 1 messages (removed 50)
+✅ Cleaned d15af5c5-2d48-4d14-a33f-2d1c35d00d06:
+   680 → 5 messages (removed 675)
+✅ Cleaned d169eb10-f6dc-4f97-93af-ce880ed79b90:
+   682 → 56 messages (removed 626)
+✅ Cleaned d1791c93-b09b-4d08-a256-ec57021b67b5:
+   64 → 36 messages (removed 28)
+✅ Cleaned d1ce3c2b-1fbb-4781-8219-b7919786426d:
+   66 → 33 messages (removed 33)
+✅ Cleaned d231b32e-6ea9-4f98-a83e-5f4b9d2e4ba2:
+   98 → 48 messages (removed 50)
+✅ Cleaned d237c14a-af0c-4792-bf06-9e2116b01f9b:
+   10 → 5 messages (removed 5)
+✅ Cleaned d2f4fd2b-ec97-4704-ab11-cf4eceb82583:
+   90 → 34 messages (removed 56)
+✅ Cleaned d36d538c-0c0b-43b2-9072-7bf3ceb73cad:
+   68 → 21 messages (removed 47)
+✅ Cleaned d40a677a-c5ce-42a8-83e1-4cc99df3f96c:
+   472 → 19 messages (removed 453)
+✅ Cleaned d52011f5-78c3-4f3c-a675-503cd0d9ea7d:
+   274 → 11 messages (removed 263)
+✅ Cleaned d53ada93-1e67-43b8-8a03-e1416e8274e5:
+   34 → 13 messages (removed 21)
+✅ Cleaned d53f3bd6-121f-4aa6-aa4d-d8f37458fadd:
+   86 → 31 messages (removed 55)
+✅ Cleaned d5a8dae7-a417-4a3e-8791-9cb87a6a6b1a:
+   84 → 18 messages (removed 66)
+✅ Cleaned d5f2f6fb-4853-45da-b1d0-5a6e8e526999:
+   64 → 3 messages (removed 61)
+✅ Cleaned d5f5d468-3dc9-4f6f-9e09-ee796212e418:
+   102 → 17 messages (removed 85)
+✅ Cleaned d65bd1ef-48d9-4756-abe0-8d77462123e2:
+   74 → 1 messages (removed 73)
+✅ Cleaned d6837757-1093-4b5b-8ada-6cafabe2bd76:
+   158 → 14 messages (removed 144)
+✅ Cleaned d693ac7f-1c19-4034-8e1a-742361c12d1d:
+   162 → 7 messages (removed 155)
+✅ Cleaned d6e3164b-98fe-4df2-b254-d79e45d77793:
+   256 → 100 messages (removed 156)
+✅ Cleaned d7168a68-09fb-4911-a00e-8a50f89e225c:
+   176 → 19 messages (removed 157)
+✅ Cleaned d737b971-7bac-4846-b22c-ce67596e9bba:
+   84 → 38 messages (removed 46)
+✅ Cleaned d777fb6f-10cf-4215-9a09-633b26859fe8:
+   52 → 43 messages (removed 9)
+✅ Cleaned d8ccff09-61e3-4e11-b258-7af6cfcc3a27:
+   146 → 2 messages (removed 144)
+✅ Cleaned d9194516-ab16-41fd-a50e-9b3fcdd76c7d:
+   162 → 2 messages (removed 160)
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat 07138ca4-85d0-4ec8-ac14-a8517a0e9e7e
+✅ Cleaned d970d338-3d11-4085-ac92-49e46638704b:
+   192 → 66 messages (removed 126)
+✅ Cleaned d988d72a-69e7-4bde-983c-d9ff00310a90:
+   134 → 19 messages (removed 115)
+✅ Cleaned d9be8805-5c86-4726-a03c-0b681e704ea7:
+   64 → 1 messages (removed 63)
+✅ Cleaned da2bd9b4-6eb0-4691-add7-39e5e42ad581:
+   156 → 7 messages (removed 149)
+✅ Cleaned daec557a-f8b5-49f3-b650-51b8e9506c2a:
+   10 → 9 messages (removed 1)
+✅ Cleaned dc854546-0531-4396-8213-ffa42cb6a3a2:
+   86 → 26 messages (removed 60)
+✅ Cleaned dccf538f-780e-4136-a354-d6025456572b:
+   58 → 25 messages (removed 33)
+✅ Cleaned dd142d0d-0603-403c-af89-4e67becf7c13:
+   134 → 7 messages (removed 127)
+✅ Cleaned ddbfcbab-a433-438b-b974-afbdf4bae8e9:
+   114 → 18 messages (removed 96)
+✅ Cleaned ddd998fa-ea8d-4ce4-85ed-cb11270bf1ac:
+   26 → 4 messages (removed 22)
+✅ Cleaned de67dc13-326f-4aa7-a041-c7f37b9d25de:
+   24 → 17 messages (removed 7)
+✅ Cleaned df547cbf-a574-46c7-9f0b-f38257232a99:
+   12 → 10 messages (removed 2)
+✅ Cleaned df7c9bcf-3a43-4298-aec4-fed14f89924f:
+   538 → 0 messages (removed 538)
+✅ Cleaned df84ac82-d2c0-4c90-b88d-25b0b80253b4:
+   80 → 4 messages (removed 76)
+✅ Cleaned df89ab75-ab6e-4d45-b7ba-1bac35a46b12:
+   324 → 35 messages (removed 289)
+✅ Cleaned e00ef8f2-a8ea-445b-a179-837ec5866310:
+   72 → 14 messages (removed 58)
+✅ Cleaned e0300ee2-3eba-442d-b99e-86b78e10de02:
+   74 → 44 messages (removed 30)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned e14a0199-0395-4366-8860-a787b385cd2b:
+   134 → 11 messages (removed 123)
+✅ Cleaned e265a8c0-49c6-4fce-b996-0d92818fe113:
+   320 → 1 messages (removed 319)
+✅ Cleaned e2d28c9d-1974-49ab-a12f-534a5d9217ae:
+   70 → 9 messages (removed 61)
+✅ Cleaned e30839b9-9982-4738-b7a4-5e1594380e53:
+   2090 → 1 messages (removed 2089)
+✅ Cleaned e433ea87-3cbd-422f-acc9-08d41e83fa89:
+   10054 → 405 messages (removed 9649)
+✅ Cleaned e468833b-a60f-404a-948e-93874374c829:
+   44 → 21 messages (removed 23)
+✅ Cleaned e4b072ea-e32a-40fe-a6ba-ae24bf139d20:
+   937 → 54 messages (removed 883)
+⚠️  Branch point 5dd6b2fd-0a21-4339-8645-359b8bbf08fc not found in chat aa535e7a-12b5-4ddb-983e-92e5bb7e2354
+✅ Cleaned e4ff5338-c175-4c98-8df7-a5585d910e02:
+   86 → 59 messages (removed 27)
+✅ Cleaned e5ae3456-7bf4-444e-a00f-567238319e06:
+   66 → 28 messages (removed 38)
+✅ Cleaned e5fbb32b-4b29-41e5-a33d-e7839b808c0c:
+   126 → 8 messages (removed 118)
+✅ Cleaned e63d8c9b-b009-43fb-a9a2-75f0d59aabed:
+   130 → 9 messages (removed 121)
+✅ Cleaned e6537e45-371d-4bae-bd68-e02bf404aa88:
+   22 → 11 messages (removed 11)
+✅ Cleaned e6a43fdc-8726-4982-a2d7-fe8fb20f5dc6:
+   152 → 45 messages (removed 107)
+✅ Cleaned e6afa091-3e89-4c3d-b3f3-f7b5a4be9c83:
+   262 → 1 messages (removed 261)
+✅ Cleaned e6c287f7-3160-472e-80ce-7586ab358fe7:
+   700 → 8 messages (removed 692)
+✅ Cleaned e7002556-d409-4da5-8287-a9039c4d2823:
+   20 → 5 messages (removed 15)
+✅ Cleaned e84a87ce-7803-4307-93a2-94a011b3b84c:
+   146 → 3 messages (removed 143)
+✅ Cleaned e899894d-6865-4829-9810-6b532355858a:
+   344 → 8 messages (removed 336)
+✅ Cleaned e8db6783-e8cb-4286-8d6e-5e7a430489d9:
+   310 → 4 messages (removed 306)
+✅ Cleaned e92b0240-9e4a-49f9-a2d6-7ea1a3740b44:
+   68 → 20 messages (removed 48)
+✅ Cleaned e9bc75bc-8f03-462e-88e4-0e1933a6e0a9:
+   68 → 5 messages (removed 63)
+✅ Cleaned e9eff1e5-5072-4203-b808-58fbdf1e65c0:
+   57 → 7 messages (removed 50)
+✅ Cleaned eab8feec-f5e9-438a-a5f6-3937aab87f4a:
+   320 → 42 messages (removed 278)
+✅ Cleaned eaf793c1-1f5f-4698-9c33-5a565c49b6f3:
+   78 → 47 messages (removed 31)
+✅ Cleaned eb04ead1-d935-40c5-9d26-dd7186240794:
+   64 → 36 messages (removed 28)
+✅ Cleaned eb4c9807-e0c5-4a78-85ae-67dbbad59ec5:
+   100 → 9 messages (removed 91)
+✅ Cleaned ebd64792-809d-4bfb-a395-42db9297accf:
+   340 → 9 messages (removed 331)
+✅ Cleaned ed7cd891-37e1-488d-896c-034b26c88991:
+   540 → 7 messages (removed 533)
+✅ Cleaned ee551772-dbde-41e9-8dd4-14d4e722dcf6:
+   2080 → 147 messages (removed 1933)
+✅ Cleaned ee967964-d6a3-48f9-bfc4-86569dc7afa7:
+   604 → 37 messages (removed 567)
+✅ Cleaned eeaa05d8-4588-4271-bb34-e54077e18950:
+   22 → 11 messages (removed 11)
+✅ Cleaned ef2919de-c91c-42f5-9927-4dd6b19dc8f4:
+   58 → 5 messages (removed 53)
+✅ Cleaned ef99ac4d-b158-45d0-b445-6a236478f341:
+   52 → 1 messages (removed 51)
+✅ Cleaned f059c892-e461-4d14-bddf-9c47b4bfb4f5:
+   98 → 16 messages (removed 82)
+✅ Cleaned f06e4d41-6d22-4ffa-9a78-009bc240ecdb:
+   174 → 1 messages (removed 173)
+✅ Cleaned f08c07ec-2362-44c3-b8b3-14cb0497dd9b:
+   54 → 0 messages (removed 54)
+✅ Cleaned f096edc3-9b2d-470d-95c1-67a512181ba0:
+   124 → 21 messages (removed 103)
+✅ Cleaned f0c7c530-318e-437d-8abd-4f2a70a73f7d:
+   431 → 0 messages (removed 431)
+✅ Cleaned f0e0d7c5-9543-4071-8ff6-b788529f0076:
+   60 → 4 messages (removed 56)
+✅ Cleaned f1030d4a-e49f-4f40-9119-494723684d66:
+   144 → 28 messages (removed 116)
+✅ Cleaned f119c101-2a04-4b26-a473-bcd1d37ced4c:
+   196 → 67 messages (removed 129)
+⚠️  Branch point d67c0635-9816-4cb3-b022-4ab1ab5922a8 not found in chat d105bcdd-8c2a-4b6c-8efd-b39e3e2870bf
+⚠️  Branch point 6fe9c1b4-b288-4156-898c-fd5f830a8b2b not found in chat 73733505-408a-4736-8b85-ab3c050482a3
+✅ Cleaned f1bf9466-722f-47b0-8e83-32a4ea0f9009:
+   68 → 67 messages (removed 1)
+✅ Cleaned f1c22b00-d734-4cdf-bfb2-38df1af98cbc:
+   28 → 1 messages (removed 27)
+✅ Cleaned f1e10fc9-52f6-4f35-a2d3-f0ac20301e61:
+   308 → 10 messages (removed 298)
+✅ Cleaned f244a812-241f-4579-9517-14645552c82b:
+   22 → 5 messages (removed 17)
+✅ Cleaned f2afce53-614a-40e8-992e-e8706d56a4dd:
+   128 → 8 messages (removed 120)
+✅ Cleaned f31e00ed-1318-4e09-9020-5a514e64a59e:
+   126 → 16 messages (removed 110)
+✅ Cleaned f333066b-c041-4817-a456-b3633563c108:
+   306 → 3 messages (removed 303)
+✅ Cleaned f41d080c-60ba-4f25-a1ab-622ed479a072:
+   58 → 8 messages (removed 50)
+✅ Cleaned f4440274-3171-4d55-b4f4-b22f0c8500fc:
+   298 → 2 messages (removed 296)
+✅ Cleaned f4afb3d1-be9f-4739-91c8-e7a27564bd16:
+   240 → 3 messages (removed 237)
+✅ Cleaned f4b71f5f-8b2b-4548-92e0-558db193db8e:
+   83 → 33 messages (removed 50)
+✅ Cleaned f54ae3fe-6e40-428e-a000-26edab382fff:
+   56 → 14 messages (removed 42)
+✅ Cleaned f61d5d71-2b90-4353-a3bc-55457c187be9:
+   46 → 15 messages (removed 31)
+✅ Cleaned f68ee93f-d750-4df5-a639-11d779b546c4:
+   50 → 16 messages (removed 34)
+✅ Cleaned f72b3bb9-ab76-4871-b47c-e89d30bf7619:
+   108 → 20 messages (removed 88)
+✅ Cleaned f7509995-ca79-495f-bfae-b3957d8fb404:
+   32 → 4 messages (removed 28)
+✅ Cleaned f78ed42c-2d14-4bf9-83f6-4b2c9f04c6a5:
+   49 → 5 messages (removed 44)
+✅ Cleaned f7d8a704-ff2f-4f5b-bb2d-b6c622fa2301:
+   146 → 78 messages (removed 68)
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat 07138ca4-85d0-4ec8-ac14-a8517a0e9e7e
+⚠️  Branch point b9d281a1-b83b-4a04-b8f6-07381933af66 not found in chat 53654b91-606b-446b-bbb5-5649be74f702
+✅ Cleaned f8126173-d040-4df0-9fff-4b077da1fd35:
+   64 → 36 messages (removed 28)
+✅ Cleaned f817e368-889d-4870-9eff-eabbbbb2c4ad:
+   94 → 0 messages (removed 94)
+✅ Cleaned f83dfa72-3a58-47c9-a20f-f1057fa8e9f5:
+   126 → 3 messages (removed 123)
+✅ Cleaned f8a3fd10-481c-4bee-9432-2d1efc34eb2a:
+   300 → 119 messages (removed 181)
+✅ Cleaned f8bb5ac7-405a-4786-a7a9-7b43fbbb5230:
+   418 → 25 messages (removed 393)
+✅ Cleaned f96f2071-b016-4420-8b69-3f37af3afe1e:
+   124 → 22 messages (removed 102)
+✅ Cleaned f97103f2-666f-41f5-a694-cf40988f1b9a:
+   50 → 3 messages (removed 47)
+✅ Cleaned f99f6da5-d4ae-42e0-8680-f068913c84b2:
+   11 → 0 messages (removed 11)
+✅ Cleaned f9d8f293-c311-4c79-a087-671b08f86286:
+   170 → 114 messages (removed 56)
+✅ Cleaned f9e00d71-f327-4bb4-b673-145f07417fb4:
+   30 → 8 messages (removed 22)
+✅ Cleaned fa20dc47-4a8f-4d9b-9306-d870ecdbe7de:
+   228 → 57 messages (removed 171)
+✅ Cleaned fa34afa3-d4d8-4cd7-aa1e-163ce8094526:
+   36 → 1 messages (removed 35)
+✅ Cleaned fae1eed6-f08c-49cb-af2c-754bed48f83b:
+   46 → 21 messages (removed 25)
+✅ Cleaned fb07548b-956c-4d54-b2f0-00951e1ae507:
+   178 → 7 messages (removed 171)
+✅ Cleaned fbf9607f-3034-4859-ac45-0fdadceefaf5:
+   114 → 8 messages (removed 106)
+✅ Cleaned fc1495be-d3bf-4474-a8bd-02a1508c6b40:
+   66 → 31 messages (removed 35)
+✅ Cleaned fc8b0c1f-94d1-497f-b8cd-7b5a6d235662:
+   148 → 1 messages (removed 147)
+✅ Cleaned fc92e45d-e43c-400c-9781-5718ab69f5c3:
+   146 → 8 messages (removed 138)
+✅ Cleaned fcee0245-177d-4703-b99a-607348c7ee4a:
+   10 → 7 messages (removed 3)
+✅ Cleaned fd8b501e-8a76-49c2-b0ea-bf0041fa7378:
+   154 → 3 messages (removed 151)
+✅ Cleaned fdce8b74-0f6d-445c-9af1-cf0108cb2b49:
+   406 → 11 messages (removed 395)
+✅ Cleaned fe1f11bb-f5f6-4840-9159-e4effcb25221:
+   50 → 3 messages (removed 47)
+✅ Cleaned fe212af9-8859-4f5e-9cd2-9b6ab3c1fee2:
+   58 → 0 messages (removed 58)
+✅ Cleaned fe9252ca-b286-4287-a540-2c24b9378dd5:
+   224 → 29 messages (removed 195)
+✅ Cleaned fef83418-5bd4-471c-8dd2-8548fc8e75aa:
+   208 → 0 messages (removed 208)
+✅ Cleaned ff13ebde-d9c3-4f26-9988-26a85f9c9fac:
+   43 → 0 messages (removed 43)
+✅ Cleaned ff71c40c-91d3-4c19-918c-dd222c981451:
+   198 → 87 messages (removed 111)
+✅ Cleaned ff9444c2-94af-46e3-b27c-255442df6181:
+   144 → 0 messages (removed 144)
+✅ Cleaned ffac0c98-6a94-4833-be7e-690e57e50350:
+   155 → 0 messages (removed 155)
+✅ Cleaned ffdd0b46-a979-4a44-8b1a-9c67221cad31:
+   160 → 5 messages (removed 155)
+
+============================================================
+MIGRATION SUMMARY
+============================================================
+Total chats processed: 944
+✅ Cleaned: 765
+⏭️  Skipped: 179
+❌ Errors: 0
+📦 Total messages removed: 135033
+
+🔬 This was a dry run. Run without --dry-run to apply changes.

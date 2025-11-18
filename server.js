@@ -157,6 +157,15 @@ async function initializeData() {
         console.log(`- Active Gen. Config ID: ${state.settings.activeGenerationConfigId || 'None'}`);
         console.log(`- User Persona ID: ${state.settings.userPersonaCharacterId || 'None'}`);
 
+        // Check for legacy branches
+        const legacyBranches = state.chats.filter(c => c.parentId && !c.branchPointMessageId);
+        if (legacyBranches.length > 0) {
+            console.log('');
+            console.log('⚠️  WARNING: Found legacy branches without branchPointMessageId');
+            console.log(`⚠️  ${legacyBranches.length} chat(s) will use dynamic inference (may cause performance issues)`);
+            console.log('⚠️  To permanently fix this, run: node server/utils/migrate-legacy-branches.js');
+        }
+
     } catch (error) {
         console.error('Failed to initialize data:', error);
         process.exit(1);
@@ -172,7 +181,8 @@ async function loadSettings() {
             userPersonaCharacterId: null,
             activeGenerationConfigId: null,
             chat: {
-                renderer: 'raw' // Default renderer
+                renderer: 'raw', // Default renderer
+                curateResponse: false,
             },
             chatModes: {}
         };
@@ -195,7 +205,8 @@ async function loadSettings() {
                 userPersonaCharacterId: null,
                 activeGenerationConfigId: null,
                 chat: {
-                    renderer: 'raw'
+                    renderer: 'raw',
+                    curateResponse: false
                 },
                 chatModes: {}
             };
@@ -435,6 +446,50 @@ function resolveMacros(text, context) {
         console.warn(`Macro {{${macroName}}} not found.`);
         return match;
     });
+}
+
+/**
+ * If curation is enabled, collects the initial stream and passes it through a second
+ * curation prompt. Otherwise, returns the initial stream.
+ * @param {AsyncGenerator<string>} initialStream The first response stream from the provider.
+ * @param {BaseProvider} provider The provider instance to use for curation.
+ * @param {object} generationParameters The generation parameters for the curation prompt.
+ * @param {AbortSignal} signal The AbortSignal to cancel the process.
+ * @returns {AsyncGenerator<string>} The final stream to be sent to the client.
+ */
+async function getFinalStream(initialStream, provider, generationParameters, signal) {
+    if (!state.settings.chat?.curateResponse) {
+        return initialStream;
+    }
+
+    console.log('Curating response...');
+    let initialResponseContent = '';
+    for await (const token of initialStream) {
+        initialResponseContent += token;
+    }
+    console.log('Initial response collected, length:', initialResponseContent.length);
+
+    if (signal.aborted) {
+        throw new Error('AbortError');
+    }
+
+    if (!initialResponseContent.trim()) {
+        console.log('Initial response was empty, skipping curation.');
+        async function* emptyStream() { /* Yields nothing */ }
+        return emptyStream();
+    }
+
+    const curationSystemPrompt = await fs.readFile(path.join(__dirname, 'server/utils/prompts/curate.md'), 'utf-8');
+    const curationMessages = [{ role: 'user', content: initialResponseContent }];
+    
+    // Re-use the same provider and generation parameters for the curation step
+    const finalStream = provider.prompt(curationMessages, {
+        systemInstruction: curationSystemPrompt,
+        signal,
+        ...generationParameters,
+    }, true);
+    console.log('Curation prompt sent. Awaiting curated stream.');
+    return finalStream;
 }
 
 
@@ -841,12 +896,198 @@ function initHttp() {
 
                 if (chat.notes.length < initialLength) {
                     await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
-                    broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+
+                    // Build full chat with parent messages for client
+                    const fullChat = await buildFullChatForClient(chat);
+                    broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
                 }
             }
             res.status(204).send();
         } catch (e) { res.status(500).json({ message: 'Failed to delete note.' }); }
     });
+
+    /**
+     * Recursively collects messages from the parent chain up to the branch point.
+     * This allows branch chats to access their full history without duplicating messages on disk.
+     *
+     * @param {string} chatId - The ID of the chat to collect parent messages for
+     * @param {string|null} branchPointMessageId - Stop collecting when we reach this message ID
+     * @returns {Promise<Array>} Array of messages from parent chain, ordered chronologically
+     */
+    async function collectParentMessages(chatId, branchPointMessageId = null, depth = 0, visitedChatIds = new Set(), overridesChain = []) {
+        const MAX_RECURSION_DEPTH = 50; // Prevent excessive recursion
+        const MAX_TOTAL_MESSAGES = 10000; // Prevent collecting too many messages
+
+        // Safeguard: Check recursion depth
+        if (depth > MAX_RECURSION_DEPTH) {
+            const msg = `Branch hierarchy too deep (${MAX_RECURSION_DEPTH} levels). This chat may have a corrupted parent chain.`;
+            console.warn(msg);
+            broadcastEvent('notification', {
+                type: 'warn',
+                header: 'Branch Chain Warning',
+                message: msg
+            });
+            return [];
+        }
+
+        // Safeguard: Check for circular references
+        if (visitedChatIds.has(chatId)) {
+            const msg = `Circular parent reference detected in chat branches. Parent chain is corrupted.`;
+            console.error(msg);
+            broadcastEvent('notification', {
+                type: 'bad',
+                header: 'Data Corruption',
+                message: msg
+            });
+            return [];
+        }
+        visitedChatIds.add(chatId);
+
+        const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
+
+        try {
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            const chat = new Chat(chatData);
+
+            let messages = [];
+
+            // Collect message overrides from this chat
+            if (chat.messageOverrides && Object.keys(chat.messageOverrides).length > 0) {
+                overridesChain.push({ depth, overrides: chat.messageOverrides });
+            }
+
+            // If this chat has a parent, recursively collect its messages first
+            if (chat.parentId) {
+                let inferredBranchPoint = chat.branchPointMessageId;
+
+                // LEGACY BRANCH DETECTION: If branchPointMessageId is missing, try to infer it
+                if (!inferredBranchPoint && chat.messages.length > 0) {
+                    try {
+                        const parentPath = path.join(CHATS_DIR, `${chat.parentId}.json`);
+                        const parentData = JSON.parse(await fs.readFile(parentPath, 'utf-8'));
+                        const parentChat = new Chat(parentData);
+
+                        // Find the last message in current chat that exists in parent (by content)
+                        // This is where the branch diverged
+                        for (let i = chat.messages.length - 1; i >= 0; i--) {
+                            const currentMsg = chat.messages[i];
+                            const foundInParent = parentChat.messages.find(
+                                pm => pm.content === currentMsg.content && pm.role === currentMsg.role
+                            );
+                            if (foundInParent) {
+                                inferredBranchPoint = foundInParent.id;
+                                console.warn(`[LEGACY BRANCH] Inferred branch point for chat ${chatId}: message "${foundInParent.content.substring(0, 50)}..."`);
+                                break;
+                            }
+                        }
+
+                        if (!inferredBranchPoint) {
+                            console.warn(`[LEGACY BRANCH] Could not infer branch point for chat ${chatId}, will collect all parent messages`);
+                        }
+                    } catch (err) {
+                        console.error(`[LEGACY BRANCH] Error inferring branch point for chat ${chatId}:`, err);
+                    }
+                }
+
+                const parentMessages = await collectParentMessages(chat.parentId, inferredBranchPoint, depth + 1, visitedChatIds, overridesChain);
+                // Mark all parent messages as inherited (runtime-only flag, not saved to disk)
+                messages.push(...parentMessages.map(msg => ({ ...msg, _isInherited: true })));
+
+                // Safeguard: Check total message count
+                if (messages.length > MAX_TOTAL_MESSAGES) {
+                    const msg = `Branch contains over ${MAX_TOTAL_MESSAGES} messages. History truncated to prevent memory issues.`;
+                    console.warn(msg);
+                    broadcastEvent('notification', {
+                        type: 'warn',
+                        header: 'Large Branch Detected',
+                        message: msg
+                    });
+                    return messages.slice(-MAX_TOTAL_MESSAGES);
+                }
+            }
+
+            // Then add this chat's own messages
+            if (branchPointMessageId) {
+                // Find the index of the branch point message
+                const branchIndex = chat.messages.findIndex(m => m.id === branchPointMessageId);
+                if (branchIndex !== -1) {
+                    // Include messages up to and including the branch point
+                    // Mark them as inherited since they're being collected for a child chat
+                    messages.push(...chat.messages.slice(0, branchIndex + 1).map(msg => ({ ...msg, _isInherited: true })));
+                } else {
+                    // Branch point not found in this chat, include all messages
+                    console.warn(`Branch point message ${branchPointMessageId} not found in chat ${chatId}, including all ${chat.messages.length} messages`);
+                    messages.push(...chat.messages.map(msg => ({ ...msg, _isInherited: true })));
+                }
+            } else {
+                // No branch point specified, include all messages
+                messages.push(...chat.messages.map(msg => ({ ...msg, _isInherited: true })));
+            }
+
+            // Apply content overrides from the descendant chain
+            // Sort by depth descending (oldest/highest depth first) so younger overrides overwrite older ones
+            if (overridesChain.length > 0 && depth === 0) {
+                // Only apply overrides at the top level (depth 0) to avoid applying multiple times
+                overridesChain.sort((a, b) => b.depth - a.depth);
+
+                for (const { overrides } of overridesChain) {
+                    for (const msg of messages) {
+                        if (overrides[msg.id]) {
+                            msg.content = overrides[msg.id].content || overrides[msg.id];
+                            msg._isOverridden = true; // Mark for potential UI feedback
+                        }
+                    }
+                }
+            }
+
+            return messages;
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                console.warn(`Parent chat ${chatId} not found, stopping parent chain walk`);
+                return [];
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Builds a complete chat object for sending to clients via SSE.
+     * For branches, this includes the full message history from parent chain.
+     * This ensures clients always receive complete data, preventing UI corruption.
+     * Parent messages are marked with _isInherited flag to prevent them from being saved to disk.
+     *
+     * @param {Chat} chat - The chat object to prepare
+     * @returns {Promise<Object>} Chat object with full message history
+     */
+    async function buildFullChatForClient(chat) {
+        if (chat.parentId && chat.branchPointMessageId) {
+            // New-style branch - include parent messages
+            const parentMessages = await collectParentMessages(chat.parentId, chat.branchPointMessageId);
+            // parentMessages are already marked as _isInherited by collectParentMessages
+            const allMessages = [...parentMessages, ...chat.messages];
+
+            // Apply this chat's own overrides to the combined message list
+            // This chat is the youngest descendant (depth -1 conceptually), so its overrides have highest priority
+            if (chat.messageOverrides && Object.keys(chat.messageOverrides).length > 0) {
+                for (const msg of allMessages) {
+                    if (chat.messageOverrides[msg.id]) {
+                        msg.content = chat.messageOverrides[msg.id].content || chat.messageOverrides[msg.id];
+                        msg._isOverridden = true;
+                    }
+                }
+            }
+
+            return { ...chat, messages: allMessages };
+        }
+        // Legacy branch or root chat - return as-is - emit notification to client to warn about legacy branch
+        broadcastEvent('notification', {
+            type: 'info',
+            header: 'Legacy Branch Detected',
+            message: `Chat "${chat.title}" is a legacy branch without a defined branch point. ` +
+                     `For best results, consider creating new branches using the latest features.`
+        });
+        return chat;
+    }
 
     // Chats API
     app.get('/api/chats', async (req, res) => {
@@ -868,21 +1109,22 @@ function initHttp() {
         try {
             const chatPath = path.join(CHATS_DIR, `${req.params.id}.json`);
             const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
-            
-            const messageCount = chatData.messages?.length || 0;
-            const hasMoreMessages = messageCount > INITIAL_MESSAGE_LIMIT;
-            
-            // Slice messages to return only the last page for the initial load
-            if (chatData.messages) {
-                chatData.messages = chatData.messages.slice(-INITIAL_MESSAGE_LIMIT);
-            }
-
             const chat = new Chat(chatData);
 
-            // Add pagination info to the response object
-            res.json({ ...chat, messageCount, hasMoreMessages });
+            // Build full chat with parent messages and overrides applied
+            const fullChat = await buildFullChatForClient(chat);
+            const fullMessages = fullChat.messages;
 
-        } catch (e) { 
+            const messageCount = fullMessages.length;
+            const hasMoreMessages = messageCount > INITIAL_MESSAGE_LIMIT;
+
+            // Slice messages to return only the last page for the initial load
+            const paginatedMessages = fullMessages.slice(-INITIAL_MESSAGE_LIMIT);
+
+            // Return chat with paginated messages
+            res.json({ ...fullChat, messages: paginatedMessages, messageCount, hasMoreMessages });
+
+        } catch (e) {
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
             console.error(`Error processing chat ${req.params.id}:`, e);
             res.status(500).json({ message: 'Failed to retrieve chat' });
@@ -901,7 +1143,11 @@ function initHttp() {
         try {
             const chatPath = path.join(CHATS_DIR, `${id}.json`);
             const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
-            const allMessages = chatData.messages || [];
+            const chat = new Chat(chatData);
+
+            // Build full chat with parent messages and overrides applied
+            const fullChat = await buildFullChatForClient(chat);
+            const allMessages = fullChat.messages;
 
             const beforeIndex = allMessages.findIndex(m => m.id === beforeMessageId);
 
@@ -926,7 +1172,22 @@ function initHttp() {
         try {
             const chatPath = path.join(CHATS_DIR, `${id}.json`);
             const existingChatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
-            const updatedChat = new Chat({ ...existingChatData, ...req.body, id });
+
+            // Strip inherited messages before saving to prevent duplication
+            // Only save messages that truly belong to this chat
+            const incomingData = { ...req.body };
+            if (incomingData.messages && Array.isArray(incomingData.messages)) {
+                incomingData.messages = incomingData.messages.filter(msg => !msg._isInherited);
+            }
+
+            // Handle message overrides for inherited messages
+            // Merge incoming overrides with existing ones
+            if (incomingData.messageOverrides) {
+                const existingOverrides = existingChatData.messageOverrides || {};
+                incomingData.messageOverrides = { ...existingOverrides, ...incomingData.messageOverrides };
+            }
+
+            const updatedChat = new Chat({ ...existingChatData, ...incomingData, id });
             updatedChat.lastModifiedAt = new Date().toISOString();
             await fs.writeFile(chatPath, JSON.stringify(updatedChat, null, 2));
             const index = state.chats.findIndex(c => c.id === id);
@@ -935,10 +1196,12 @@ function initHttp() {
 
             // Broadcast changes for both the detailed chat and the summary list
             broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: updatedChat.getSummary() });
-            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: updatedChat });
-            
+            // Build full chat with parent messages for client
+            const fullChat = await buildFullChatForClient(updatedChat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
+
             res.json(updatedChat);
-        } catch (e) { 
+        } catch (e) {
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
             res.status(500).json({ message: 'Failed to update chat' });
         }
@@ -999,19 +1262,33 @@ function initHttp() {
                 return res.status(400).json({ message: 'A messageId is required to branch from.' });
             }
 
-            const branchIndex = originalChat.messages.findIndex(m => m.id === messageId);
+            // Verify the branch point message exists
+            // We need to collect the full history to find the message (it might be in a parent)
+            let fullMessages = [];
+            if (originalChat.parentId && originalChat.branchPointMessageId) {
+                // New-style branch - collect parent messages
+                const parentMessages = await collectParentMessages(originalChat.parentId, originalChat.branchPointMessageId);
+                fullMessages = [...parentMessages, ...originalChat.messages];
+            } else {
+                // Legacy branch or root chat - use own messages
+                fullMessages = originalChat.messages;
+            }
+
+            const branchIndex = fullMessages.findIndex(m => m.id === messageId);
             if (branchIndex === -1) {
                 return res.status(404).json({ message: 'Branch point message not found in chat.' });
             }
 
-            // Create the new branched chat
+            // Create the new branched chat with NO messages initially
+            // Messages will be loaded from parent chain when needed
             const newChat = new Chat({
                 name: `[Branch from "${originalChat.name}"]`, // More descriptive name
                 participants: originalChat.participants,
                 notes: originalChat.notes, // Copy notes to branch
                 parentId: originalChat.id, // Set parent ID
+                branchPointMessageId: messageId, // Store where this branch diverged
                 systemInstruction: originalChat.systemInstruction,
-                messages: originalChat.messages.slice(0, branchIndex + 1)
+                messages: [] // Empty - messages will come from parent chain!
             });
             await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
             state.chats.push(newChat);
@@ -1091,7 +1368,9 @@ function initHttp() {
 
                 // Broadcast events
                 broadcastEvent('resourceChange', { resourceType, eventType: 'create', data: newGlobalResource });
-                broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+                // Build full chat with parent messages for client
+                const fullChat = await buildFullChatForClient(chat);
+                broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
                 
                 res.json(chat);
             }
@@ -1279,8 +1558,10 @@ function initHttp() {
 
         const { characters: chatCharacters, notes: activeNotes } = await getResolvedChatContext(chat);
 
-        // Use the history override if provided, otherwise use the chat's actual messages.
-        let historyForPrompt = historyOverride ? [...historyOverride] : [...chat.messages];
+        // Build full message history including parent chain with overrides applied
+        // Always use buildFullChatForClient to ensure message overrides are applied
+        const fullChat = await buildFullChatForClient(chat);
+        let historyForPrompt = fullChat.messages;
         let userMessageToAppend = null;
         
         if (isRegen) {
@@ -1353,7 +1634,7 @@ function initHttp() {
         });
         
         console.log('Provider returned stream:', !!stream);
-        return { stream, chat, userMessageToAppend, historyForPrompt, isRegen, messageIdToRegen };
+        return { stream, chat, userMessageToAppend, historyForPrompt, isRegen, messageIdToRegen, provider, generationParameters };
     }
 
     app.post('/api/chats/:id/regenerate', async (req, res) => {
@@ -1366,19 +1647,18 @@ function initHttp() {
             const { messageId, history } = req.body;
             if (!messageId) throw new Error('messageId for regeneration is required.');
 
-            const { stream, chat } = await processPrompt(chatId, null, true, messageId, history, abortController.signal);
+            const { stream: initialStream, chat, provider, generationParameters } = await processPrompt(chatId, null, true, messageId, history, abortController.signal);
+            const finalStream = await getFinalStream(initialStream, provider, generationParameters, abortController.signal);
 
             let newContent = '';
             let tokenCount = 0;
             console.log('Starting stream for regenerate...');
-            for await (const token of stream) {
+            for await (const token of finalStream) {
                 tokenCount++;
-                console.log(`Token ${tokenCount}:`, JSON.stringify(token));
                 newContent += token;
                 sendSse(res, 'token', { token });
             }
-            console.log('Stream ended. Total tokens:', tokenCount);
-            console.log('AI Response (Regenerate):', JSON.stringify(newContent));
+            console.log(`[Regenerate] Stream complete - Tokens: ${tokenCount}, Characters: ${newContent.length}`);
 
             const regenIndex = chat.messages.findIndex(m => m.id === messageId);
             if (regenIndex === -1) {
@@ -1393,7 +1673,10 @@ function initHttp() {
 
             chat.lastModifiedAt = new Date().toISOString();
             await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
-            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+
+            // Build full chat with parent messages for client
+            const fullChat = await buildFullChatForClient(chat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
             sendSse(res, 'done', { messageId: messageToUpdate.id });
 
         } catch (error) {
@@ -1423,20 +1706,26 @@ function initHttp() {
             }
             
             // This is equivalent to a normal prompt but without a *new* user message.
-            const { stream, chat } = await processPrompt(chatId, null, false, null, history, abortController.signal);
+            const { stream: initialStream, chat, provider, generationParameters } = await processPrompt(chatId, null, false, null, history, abortController.signal);
+            const finalStream = await getFinalStream(initialStream, provider, generationParameters, abortController.signal);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
-            for await (const token of stream) {
+            let tokenCount = 0;
+            for await (const token of finalStream) {
+                tokenCount++;
                 assistantMessage.content += token;
                 sendSse(res, 'token', { token });
             }
-            
-            console.log('AI Response (Resend):', assistantMessage.content);
+
+            console.log(`[Resend] Stream complete - Tokens: ${tokenCount}, Characters: ${assistantMessage.content.length}`);
 
             chat.messages.push(assistantMessage);
             chat.lastModifiedAt = new Date().toISOString();
             await fs.writeFile(chatPath, JSON.stringify(chat, null, 2));
-            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+
+            // Build full chat with parent messages for client
+            const fullChat = await buildFullChatForClient(chat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
             sendSse(res, 'done', { messageId: assistantMessage.id });
 
         } catch (error) {
@@ -1460,19 +1749,18 @@ function initHttp() {
             const { id: chatId } = req.params;
             const { message, history } = req.body;
 
-            const { stream, chat, userMessageToAppend } = await processPrompt(chatId, message, false, null, history, abortController.signal);
+            const { stream: initialStream, chat, userMessageToAppend, provider, generationParameters } = await processPrompt(chatId, message, false, null, history, abortController.signal);
+            const finalStream = await getFinalStream(initialStream, provider, generationParameters, abortController.signal);
 
             const assistantMessage = { role: 'assistant', content: '', id: uuidv4(), timestamp: new Date().toISOString() };
             let tokenCount = 0;
             console.log('Starting stream for prompt...');
-            for await (const token of stream) {
+            for await (const token of finalStream) {
                 tokenCount++;
-                console.log(`Token ${tokenCount}:`, JSON.stringify(token));
                 assistantMessage.content += token;
                 sendSse(res, 'token', { token });
             }
-            console.log('Stream ended. Total tokens:', tokenCount);
-            console.log('AI Response (Prompt):', JSON.stringify(assistantMessage.content));
+            console.log(`[Prompt] Stream complete - Tokens: ${tokenCount}, Characters: ${assistantMessage.content.length}`);
             
             if (userMessageToAppend) chat.addMessage(userMessageToAppend);
             chat.addMessage(assistantMessage);
@@ -1484,7 +1772,10 @@ function initHttp() {
             }
 
             await fs.writeFile(path.join(CHATS_DIR, `${chat.id}.json`), JSON.stringify(chat, null, 2));
-            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: chat });
+
+            // Build full chat with parent messages for client
+            const fullChat = await buildFullChatForClient(chat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
             sendSse(res, 'done', { messageId: chat.messages.at(-1).id });
 
         } catch (error) {
@@ -1936,7 +2227,9 @@ class Chat {
     participants = []; // Array of string (ID) or object (embedded character)
     notes = []; // Array of string (ID) or object (embedded note)
     parentId = null;
+    branchPointMessageId = null; // ID of the message where this branch diverged from parent
     childChatIds = [];
+    messageOverrides = {}; // { messageId: { content: "...", depth: N } } - overrides for inherited messages
     createdAt = new Date().toISOString();
     lastModifiedAt = new Date().toISOString();
     systemInstruction = '';
@@ -1951,7 +2244,9 @@ class Chat {
             participants: [],
             notes: [],
             parentId: null,
+            branchPointMessageId: null,
             childChatIds: [],
+            messageOverrides: {},
             createdAt: now,
             lastModifiedAt: now,
             systemInstruction: '',

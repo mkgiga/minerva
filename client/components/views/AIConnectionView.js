@@ -108,11 +108,6 @@ class AIConnectionView extends BaseComponent {
             this.state.activeConnectionConfigId = settings.activeConnectionConfigId;
             this.state.providerSchemas = schemas;
 
-            if (!this._hasAutoSelectedFirst && configs.length > 0) {
-                const sortedConfigs = configs.sort((a, b) => a.name.localeCompare(b.name));
-                this.state.selectedConnectionConfig = sortedConfigs[0];
-                this._hasAutoSelectedFirst = true;
-            }
             this.updateView();
         } catch (error) {
             notifier.show({ header: 'Error', message: 'Could not load connection configurations.' });

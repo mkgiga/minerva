@@ -349,8 +349,11 @@ user-card {
         gap: 0;
     }
     .nav-section > * { flex: 1; }
-    .nav-section .nav-button { 
-        flex: 1; 
+    .nav-section .nav-group { flex: 1; display: flex; width: auto; } /* Override desktop width: 100%, ensure equal space */
+    .nav-section .nav-button,
+    .nav-section .nav-group .nav-button {
+        flex: 1;
+        width: auto; /* Override desktop width: 100% */
         display: flex;
         align-items: center;
         justify-content: center;

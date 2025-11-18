@@ -73,13 +73,6 @@ class NotesView extends BaseComponent {
                 }
                 this._pendingSelectedId = null;
             }
-            
-            // Auto-select the first item if no item is selected and we haven't auto-selected before
-            if (!this._hasAutoSelectedFirst && !this.#selectedNote && this.#state.notes.length > 0) {
-                const sortedNotes = [...this.#state.notes].sort((a, b) => a.name.localeCompare(b.name));
-                this.#selectedNote = JSON.parse(JSON.stringify(sortedNotes[0]));
-                this._hasAutoSelectedFirst = true;
-            }
 
             this.#updateView();
         } catch (error) {

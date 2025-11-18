@@ -172,7 +172,6 @@ export const imagePreview = new ImagePreviewService();
 class MinervaApp extends BaseComponent {
     #eventSource = null;
     #viewHierarchy = {
-        preferences: { label: 'Preferences', icon: 'settings', component: 'user-preferences-view', layout: 'layout-main-only' },
         'ai-config': {
             label: 'Configuration',
             icon: 'psychology',
@@ -182,10 +181,11 @@ class MinervaApp extends BaseComponent {
             }
         },
         notes: { label: 'Notes', icon: 'menu_book', component: 'notes-view', layout: 'layout-main-right' },
-        characters: { label: 'Characters', icon: 'people', component: 'characters-view', layout: 'layout-main-right' },
-        browse: { label: 'Browse', icon: 'travel_explore', component: 'browse-view', layout: 'layout-main-right' },
-        plugins: { label: 'Plugins', icon: 'extension', component: 'plugins-view', layout: 'layout-main-right' },
         chat: { label: 'Chat', icon: 'chat', component: 'main-chat-view', layout: 'layout-three-panel' },
+        characters: { label: 'Characters', icon: 'people', component: 'characters-view', layout: 'layout-main-right' },
+        preferences: { label: 'Preferences', icon: 'settings', component: 'user-preferences-view', layout: 'layout-main-only' },
+        // browse: { label: 'Browse', icon: 'travel_explore', component: 'browse-view', layout: 'layout-main-right' },
+        // plugins: { label: 'Plugins', icon: 'extension', component: 'plugins-view', layout: 'layout-main-right' },
     };
 
     constructor() {
@@ -243,6 +243,15 @@ class MinervaApp extends BaseComponent {
                 this.dispatch('minerva-resource-changed', JSON.parse(event.data));
             } catch (error) {
                 console.error('Could not parse SSE event data:', error, event.data);
+            }
+        });
+
+        this.#eventSource.addEventListener('notification', (event) => {
+            try {
+                const { type, header, message } = JSON.parse(event.data);
+                notifier.show({ type, header, message });
+            } catch (error) {
+                console.error('Could not parse notification event data:', error, event.data);
             }
         });
 

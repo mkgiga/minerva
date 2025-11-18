@@ -138,7 +138,9 @@ export class BaseChatMode extends BaseComponent {
      * @abstract
      * Called by MainChatView when a regeneration/resend is triggered.
      * The mode is responsible for updating its UI to show a loading state for the specified message.
+     * Implementations should create a new optimistic spinner element and return its ID.
      * @param {string} messageId - The ID of the message to regenerate from.
+     * @returns {string|null} The ID of the optimistic spinner message element created, or null if failed.
      */
     onRegenerateStart(messageId) {
         throw new Error('Method "onRegenerateStart()" must be implemented.');
@@ -475,6 +477,14 @@ export class BaseChatMode extends BaseComponent {
      */
     abortGeneration() {
         this.dispatch('chat-mode-abort-generation');
+    }
+
+    /**
+     * Requests the main controller to set the user persona character.
+     * @param {string|null} characterId - The ID of the character to set as user persona, or null to clear.
+     */
+    setUserPersona(characterId) {
+        this.dispatch('chat-mode-set-user-persona', { characterId });
     }
 
     /**

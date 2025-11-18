@@ -49,12 +49,22 @@ class MinervaNotification extends BaseComponent {
     _onOpen(event) {
         if (event.target.closest('.close-btn')) return; // Ignore clicks on the close button
         if (this.openHandler) this.openHandler();
-        this.startFadeOut(); // Clicking the notification also dismisses it.
+        // Close instantly when clicked
+        if (this.timeoutId) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+        }
+        this.destroy();
     }
 
     _onClose(event) {
         event.stopPropagation(); // Prevent the main click handler from firing.
-        this.startFadeOut();
+        // Close instantly when close button clicked
+        if (this.timeoutId) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+        }
+        this.destroy();
     }
 
 

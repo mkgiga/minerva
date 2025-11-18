@@ -123,13 +123,6 @@ class CharactersView extends BaseComponent {
                 }
                 this._pendingSelectedId = null;
             }
-            
-            // Auto-select the first item if no item is selected and we haven't auto-selected before
-            if (!this._hasAutoSelectedFirst && !this.state.selectedCharacter && this.state.characters.length > 0) {
-                const sortedCharacters = [...this.state.characters].sort((a, b) => a.name.localeCompare(b.name));
-                this.state.selectedCharacter = sortedCharacters[0];
-                this._hasAutoSelectedFirst = true;
-            }
 
             this.updateView();
         } catch (error) {

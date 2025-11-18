@@ -1,32 +1,207 @@
 import { BaseChatMode } from "./BaseChatMode.js";
 import { chatModeRegistry } from "../../../ChatModeRegistry.js";
-import { uuidv4, notifier } from "../../../client.js";
+import { uuidv4 } from "../../../client.js";
 import "../../common/TextBox.js";
 import "../../common/Spinner.js";
 
+// --- Command Pattern Implementation for VNML ---
+
+/**
+ * @abstract
+ * Base class for all undoable/redoable commands in the Visual Novel.
+ */
+class VNCommand {
+    /**
+     * @param {object} sceneState - The current state of the scene.
+     * @returns {Promise<void>}
+     */
+    async execute(sceneState, component) { throw new Error("Execute not implemented"); }
+    
+    /**
+     * @param {object} sceneState - The current state of the scene.
+     */
+    undo(sceneState, component) { throw new Error("Undo not implemented"); }
+
+    /**
+     * Determines if this command is a point where the story waits for user input.
+     * @returns {boolean}
+     */
+    get isWaitPoint() { return false; }
+}
+
+class BackgroundCommand extends VNCommand {
+    constructor(src, previousSrc) {
+        super();
+        this.src = src;
+        this.previousSrc = previousSrc;
+    }
+    async execute(state, component) {
+        state.background = this.src;
+        component._stage.style.opacity = 0;
+        await component._sleep(500);
+        component._renderScene(state);
+        component._stage.style.opacity = 1;
+        await component._sleep(500);
+    }
+    undo(state, component) {
+        state.background = this.previousSrc;
+        component._renderScene(state);
+    }
+}
+
+class EnterCommand extends VNCommand {
+    constructor(charState) {
+        super();
+        this.charState = charState;
+    }
+    async execute(state, component) {
+        state.charactersOnStage.set(this.charState.id, this.charState);
+        const el = component._createCharacterElement(this.charState);
+        this.charState.element = el;
+        component._stage.appendChild(el);
+        el.classList.add('enter');
+        await component._sleep(500);
+    }
+    undo(state, component) {
+        state.charactersOnStage.delete(this.charState.id);
+        component._renderScene(state);
+    }
+}
+
+class ExitCommand extends VNCommand {
+    constructor(id, previousCharState) {
+        super();
+        this.id = id;
+        this.previousCharState = previousCharState;
+    }
+    async execute(state, component) {
+        const charOnStage = state.charactersOnStage.get(this.id);
+        if (charOnStage?.element) {
+            charOnStage.element.classList.add('exit');
+            await component._sleep(500);
+        }
+        state.charactersOnStage.delete(this.id);
+        component._renderScene(state);
+    }
+    undo(state, component) {
+        if (this.previousCharState) {
+            state.charactersOnStage.set(this.id, this.previousCharState);
+        }
+        component._renderScene(state);
+    }
+}
+
+class DialogueCommand extends VNCommand {
+    constructor(from, expression, text, isUserAction = false) {
+        super();
+        this.from = from;
+        this.expression = expression;
+        this.text = text;
+        this.isUserAction = isUserAction;
+        this.previousExpression = null;
+    }
+    get isWaitPoint() { return true; }
+
+    async execute(state, component) {
+        const character = this.isUserAction ? component.userPersona : component.getCharacterById(this.from);
+        const speakerName = character?.name || this.from || 'Narration';
+
+        if (this.expression && character) {
+            const charOnStage = state.charactersOnStage.get(character.id);
+            if (charOnStage) {
+                this.previousExpression = charOnStage.expression; // Store for undo
+                charOnStage.expression = this.expression;
+                component._renderScene(state);
+            }
+        }
+        
+        component._speakerName.textContent = speakerName;
+        await component._typewriter(this.text);
+        await component._waitForUserInput();
+    }
+    undo(state, component) {
+        if (this.previousExpression && this.from) {
+            const charOnStage = state.charactersOnStage.get(this.from);
+            if (charOnStage) {
+                charOnStage.expression = this.previousExpression;
+                component._renderScene(state);
+            }
+        }
+    }
+}
+
+class NarrateCommand extends VNCommand {
+    constructor(text) {
+        super();
+        this.text = text;
+    }
+    get isWaitPoint() { return true; }
+
+    async execute(state, component) {
+        component._speakerName.textContent = 'Narration';
+        await component._typewriter(this.text);
+        await component._waitForUserInput();
+    }
+    undo() { /* No visual state to undo */ }
+}
+
+class PromptCommand extends VNCommand {
+    constructor(info, choices) {
+        super();
+        this.info = info;
+        this.choices = choices;
+    }
+    get isWaitPoint() { return true; }
+    
+    async execute(state, component) {
+        component._renderChoices(this.info, this.choices);
+        await new Promise(resolve => component._animationPromiseResolver = resolve);
+    }
+    undo() { /* No visual state to undo */ }
+}
+
+class PauseCommand extends VNCommand {
+    constructor(duration) {
+        super();
+        this.duration = duration;
+    }
+    async execute(state, component) {
+        await component._sleep(this.duration * 1000);
+    }
+    undo() { /* No-op */ }
+}
+
+// --- Visual Novel Mode Refactor ---
+
 export class VisualNovelMode extends BaseChatMode {
-    // DOM Elements
-    #stage = null;
-    #dialogueBox = null;
-    #speakerName = null;
-    #dialogueText = null;
-    #choicesContainer = null;
-    #continueIndicator = null;
+    // DOM Elements accessed by commands
+    _stage = null;
+    _dialogueBox = null;
+    _speakerName = null;
+    _dialogueText = null;
+    _choicesContainer = null;
+    _continueIndicator = null;
+    _animationPromiseResolver = null;
+    _sceneAdvanceResolver = null;
+
+    // DOM Elements for internal use only
     #form = null;
     #textbox = null;
     #sendButton = null;
     #fab = null;
     #inputToggle = null;
+    #prevButton = null;
+    #nextButton = null;
 
     // State
-    #sceneState = null;
+    _sceneState = null;
+    #commandQueue = [];
+    #currentCommandIndex = -1;
     #isAnimating = false;
-    #skipAnimation = false;
+    #skipTypewriter = false;
     #currentDialogueAnimator = null;
     #streamingContent = null;
-    #animationPromiseResolver = null;
-    #sceneAdvanceResolver = null;
-
+    
     static getSettingsSchema() {
         return [
             {
@@ -48,166 +223,308 @@ export class VisualNovelMode extends BaseChatMode {
 
     onInitialize() {
         this.render();
-        // DOM Elements
-        this.#stage = this.shadowRoot.querySelector('#vn-stage');
-        this.#dialogueBox = this.shadowRoot.querySelector('#vn-dialogue-box');
-        this.#speakerName = this.shadowRoot.querySelector('#vn-speaker-name');
-        this.#dialogueText = this.shadowRoot.querySelector('#vn-dialogue-text');
-        this.#choicesContainer = this.shadowRoot.querySelector('#vn-choices');
-        this.#continueIndicator = this.shadowRoot.querySelector('#vn-continue-indicator');
+        // --- DOM Element References ---
+        this._stage = this.shadowRoot.querySelector('#vn-stage');
+        this._dialogueBox = this.shadowRoot.querySelector('#vn-dialogue-box');
+        this._speakerName = this.shadowRoot.querySelector('#vn-speaker-name');
+        this._dialogueText = this.shadowRoot.querySelector('#vn-dialogue-text');
+        this._choicesContainer = this.shadowRoot.querySelector('#vn-choices');
+        this._continueIndicator = this.shadowRoot.querySelector('#vn-continue-indicator');
         this.#form = this.shadowRoot.querySelector('#chat-form');
         this.#textbox = this.#form.querySelector('text-box');
         this.#sendButton = this.#form.querySelector('.send-button');
         this.#fab = this.shadowRoot.querySelector('#vn-fab');
         this.#inputToggle = this.shadowRoot.querySelector('#vn-input-toggle');
+        this.#prevButton = this.shadowRoot.querySelector('#vn-prev-btn');
+        this.#nextButton = this.shadowRoot.querySelector('#vn-next-btn');
 
-        // Event Listeners
+        // --- Event Listeners ---
         this.#form.addEventListener('submit', this.#handleSend.bind(this));
         this.#textbox.addEventListener('input', () => this.updateInputState(this.isSending));
         this.#textbox.addEventListener('keydown', this.#handleTextboxKeydown.bind(this));
-        this.#choicesContainer.addEventListener('click', this.#handleChoiceClick.bind(this));
+        this._choicesContainer.addEventListener('click', this.#handleChoiceClick.bind(this));
         this.#fab.addEventListener('click', this.#toggleDialogueBox.bind(this));
         this.#inputToggle.addEventListener('click', this.#toggleInputForm.bind(this));
-        this.#dialogueBox.addEventListener('click', this.#handleDialogueBoxClick.bind(this));
-        this.#stage.addEventListener('click', this.#handleDialogueBoxClick.bind(this));
+        this._dialogueBox.addEventListener('click', this.#handleDialogueBoxClick.bind(this));
+        this._stage.addEventListener('click', this.#handleDialogueBoxClick.bind(this));
+        this.#prevButton.addEventListener('click', this.#handlePrevious.bind(this));
+        this.#nextButton.addEventListener('click', this.#handleNext.bind(this));
         
-        // Initial setup
-        this.#rebuildAndRenderScene();
+        this.#buildAndDisplayCommandQueue();
     }
     
-    // --- Lifecycle & State Management ---
+    // --- Lifecycle Hooks ---
+    onChatSwitched() { this.#buildAndDisplayCommandQueue(); }
+    onMessagesAdded() { this.#buildAndDisplayCommandQueue(); }
+    onMessageUpdated() { this.#buildAndDisplayCommandQueue(); }
+    onMessagesDeleted() { this.#buildAndDisplayCommandQueue(); }
+    onChatBranched() { this.#buildAndDisplayCommandQueue(); }
+    
+    // --- Command Queue & State Management ---
 
-    onChatSwitched() { this.#rebuildAndRenderScene(); }
-    onMessagesAdded() { this.#rebuildAndRenderScene(); }
-    onMessageUpdated() { this.#rebuildAndRenderScene(); }
-    onMessagesDeleted() { this.#rebuildAndRenderScene(); }
-    onChatBranched() { this.#rebuildAndRenderScene(); }
-
-    async #rebuildAndRenderScene() {
-        this.#sceneState = { background: 'var(--bg-0)', charactersOnStage: new Map() };
+    async #buildAndDisplayCommandQueue() {
+        if (this.#isAnimating) return;
+        
+        this._sceneState = { background: 'var(--bg-0)', charactersOnStage: new Map() };
+        this.#commandQueue = [];
+        this.#currentCommandIndex = -1;
 
         if (!this.chat || this.chat.messages.length === 0) {
-            this.#renderScene(this.#sceneState); // Render empty stage
-            this.#dialogueBox.classList.add('active');
+            this._renderScene(this._sceneState);
+            this._dialogueBox.classList.add('active');
             this.#form.classList.remove('hidden');
-            this.#speakerName.textContent = 'The story begins...';
-            this.#dialogueText.innerHTML = '<em>Type your first action to start the scene.</em>';
+            this._speakerName.textContent = 'The story begins...';
+            this._dialogueText.innerHTML = '<em>Type your first action to start the scene.</em>';
             this.updateInputState(false);
             return;
         }
 
+        const tempBuildState = { background: 'var(--bg-0)', charactersOnStage: new Map() };
         for (const msg of this.chat.messages) {
             if (msg.role === 'assistant') {
-                this.#applySceneML(msg.content, this.#sceneState);
+                this.#parseAndQueueAssistantMessage(msg.content, tempBuildState);
+            } else if (msg.role === 'user') {
+                this.#parseAndQueueUserMessage(msg.content);
             }
         }
         
-        this.#renderScene(this.#sceneState);
-        this.#renderFinalDialogueState();
-        this.updateInputState(this.isSending);
+        // Jump to the end of the newly built queue without animation
+        await this.#jumpToCommand(this.#commandQueue.length - 1, true);
     }
-    
-    #renderFinalDialogueState() {
-        const lastMessage = this.chat.messages.at(-1);
-        if (!lastMessage || lastMessage.role !== 'assistant') {
-            this.#clearDialogue();
-            this.#form.classList.remove('hidden'); // Show input if story is waiting for user
-            this.updateInputState(false);
-            return;
-        }
 
+    #parseAndQueueAssistantMessage(xmlContent, state) {
         try {
-            const doc = this.#parseXML(lastMessage.content);
-            const sceneNode = doc?.querySelector("scene");
-            if (!sceneNode) { this.#clearDialogue(); return; }
-
-            const lastActionNode = Array.from(sceneNode.children).filter(n => ['dialogue', 'narrate', 'prompt'].includes(n.nodeName.toLowerCase())).pop();
-
-            if (!lastActionNode) {
-                this.#clearDialogue();
-                this.#form.classList.remove('hidden');
+            const doc = this._tryRepairVNML(xmlContent);
+            if (!doc || doc.querySelector("parsererror")) {
+                // If repair fails or content is empty, queue a simple narration command with the raw content as a fallback.
+                console.error("Failed to parse VNML, showing as raw text.");
+                this.#commandQueue.push(new NarrateCommand(`[Parse Error]\n${xmlContent}`));
                 return;
             }
 
-            this.#dialogueBox.classList.add('active');
-            switch (lastActionNode.nodeName.toLowerCase()) {
-                case 'dialogue':
-                    const from = lastActionNode.getAttribute('from');
-                    const character = this.getCharacterById(from);
-                    this.#speakerName.textContent = character?.name || from || 'Narration';
-                    this.#dialogueText.innerHTML = lastActionNode.textContent;
-                    this.#form.classList.remove('hidden');
-                    break;
-                case 'narrate':
-                    this.#speakerName.textContent = 'Narration';
-                    this.#dialogueText.innerHTML = lastActionNode.textContent;
-                    this.#form.classList.remove('hidden');
-                    break;
-                case 'prompt':
-                    this.#renderChoices(lastActionNode);
-                    break;
-            }
-        } catch (e) {
-            console.error("Error rendering final dialogue state:", e);
-            this.#clearDialogue();
-        }
-    }
+            const rootNode = doc.documentElement;
+            if (!rootNode) return;
 
-    #applySceneML(xmlContent, state) {
-        try {
-            const doc = this.#parseXML(xmlContent);
-            const sceneNode = doc?.querySelector("scene");
-            if (!sceneNode) return;
-
-            for (const node of sceneNode.children) {
+            for (const node of rootNode.children) {
+                let command = null;
                 switch (node.nodeName.toLowerCase()) {
                     case 'background':
-                        state.background = node.getAttribute('src') || 'var(--bg-0)';
+                        command = new BackgroundCommand(node.getAttribute('src'), state.background);
+                        state.background = node.getAttribute('src');
                         break;
                     case 'enter': {
-                        const id = node.getAttribute('id');
-                        if (id) state.charactersOnStage.set(id, {
-                            id,
-                            expression: node.getAttribute('expression'),
-                            position: node.getAttribute('position') || 'center',
-                        });
+                        const charState = { id: node.getAttribute('id'), expression: node.getAttribute('expression'), position: node.getAttribute('position') || 'center' };
+                        command = new EnterCommand(charState);
+                        state.charactersOnStage.set(charState.id, charState);
                         break;
                     }
                     case 'exit': {
                         const id = node.getAttribute('id');
-                        if (id) state.charactersOnStage.delete(id);
+                        command = new ExitCommand(id, state.charactersOnStage.get(id));
+                        state.charactersOnStage.delete(id);
                         break;
                     }
-                    case 'dialogue': {
-                        const id = node.getAttribute('from');
-                        const expression = node.getAttribute('expression');
-                        if (id && expression && state.charactersOnStage.has(id)) {
-                            state.charactersOnStage.get(id).expression = expression;
-                        }
+                    case 'dialogue':
+                        command = new DialogueCommand(node.getAttribute('from'), node.getAttribute('expression'), node.textContent);
+                        const charOnStage = state.charactersOnStage.get(node.getAttribute('from'));
+                        if (charOnStage) charOnStage.expression = node.getAttribute('expression');
+                        break;
+                    case 'narrate':
+                        command = new NarrateCommand(node.textContent);
+                        break;
+                    case 'prompt': {
+                        const info = node.querySelector('info')?.textContent || '';
+                        const choices = Array.from(node.querySelectorAll('choice')).map(c => c.textContent);
+                        command = new PromptCommand(info, choices);
                         break;
                     }
+                    case 'pause':
+                        command = new PauseCommand(parseFloat(node.getAttribute('for') || 0));
+                        break;
                 }
+                if (command) this.#commandQueue.push(command);
             }
         } catch (e) {
-            console.error("Error parsing VNML:", e, xmlContent);
+            console.error("Error parsing and queueing VNML:", e, xmlContent);
         }
     }
 
-    #renderScene(state) {
-        this.#stage.style.backgroundImage = state.background.startsWith('#') || state.background.startsWith('var') 
+    #parseAndQueueUserMessage(content) {
+        let command;
+        if (content.startsWith('<choice>') && content.endsWith('</choice>')) {
+            content = content.slice(8, -9); // Strip choice tags for display
+        }
+        // User input with quotes is treated as dialogue from the player persona
+        if (content.includes('"')) {
+            command = new DialogueCommand(this.userPersona?.id, null, content, true);
+        } else {
+            command = new NarrateCommand(content);
+        }
+        this.#commandQueue.push(command);
+    }
+    
+    // --- Navigation & Execution Engine ---
+
+    async #jumpToCommand(targetIndex, instant = false) {
+        if (this.#isAnimating || targetIndex === this.#currentCommandIndex) return;
+
+        this.#isAnimating = true;
+
+        if (instant) {
+            // For an instant jump, calculate the final state without animations
+            const finalState = { background: 'var(--bg-0)', charactersOnStage: new Map() };
+            
+            // Create a dummy component that inherits methods but has no-op animations
+            const dummyComponent = Object.create(Object.getPrototypeOf(this));
+            Object.assign(dummyComponent, this); // copy instance properties
+            dummyComponent._sleep = async ()=>{};
+            dummyComponent._renderScene = ()=>{};
+            dummyComponent._typewriter = async ()=>{};
+            dummyComponent._waitForUserInput = async ()=>{};
+
+            if (targetIndex > -1) {
+                for (let i = 0; i <= targetIndex; i++) {
+                    await this.#commandQueue[i].execute(finalState, dummyComponent);
+                }
+            }
+
+            // Apply final state and render scene once
+            this._sceneState = finalState;
+            this._renderScene(this._sceneState);
+            
+            // Now, manually display the UI for the final command without waiting
+            const finalCmd = this.#commandQueue[targetIndex];
+            if (finalCmd) {
+                if (finalCmd instanceof DialogueCommand || finalCmd instanceof NarrateCommand) {
+                    this._clearDialogue(false);
+                    const character = (finalCmd.isUserAction) ? this.userPersona : this.getCharacterById(finalCmd.from);
+                    this._speakerName.textContent = (finalCmd instanceof NarrateCommand) ? 'Narration' : (character?.name || finalCmd.from || 'Narration');
+                    this._dialogueText.innerHTML = finalCmd.text;
+                    this._dialogueBox.classList.add('active');
+                } else if (finalCmd instanceof PromptCommand) {
+                    this._clearDialogue(false);
+                    this._renderChoices(finalCmd.info, finalCmd.choices);
+                } else {
+                    this._clearDialogue(true);
+                }
+            } else {
+                this._clearDialogue(true);
+            }
+            
+        } else { // Animated jump
+            const isForward = targetIndex > this.#currentCommandIndex;
+            if (isForward) {
+                for (let i = this.#currentCommandIndex + 1; i <= targetIndex; i++) {
+                    const command = this.#commandQueue[i];
+                    if (command.isWaitPoint) this._clearDialogue(false);
+                    await command.execute(this._sceneState, this);
+                }
+            } else { // Backward (undo)
+                for (let i = this.#currentCommandIndex; i > targetIndex; i--) {
+                    const command = this.#commandQueue[i];
+                    command.undo(this._sceneState, this);
+                }
+                // After undoing, render the final state and re-execute the target command's UI part
+                this._renderScene(this._sceneState);
+                const targetCmd = this.#commandQueue[targetIndex];
+                if (targetCmd && targetCmd.isWaitPoint) {
+                    this._clearDialogue(false);
+                    await targetCmd.execute(this._sceneState, this);
+                }
+            }
+        }
+
+        this.#currentCommandIndex = targetIndex;
+        this.#isAnimating = false;
+        this.updateInputState(false);
+    }
+
+    #findNextWaitPoint(startIndex) {
+        for (let i = startIndex + 1; i < this.#commandQueue.length; i++) {
+            if (this.#commandQueue[i].isWaitPoint) return i;
+        }
+        return -1; // Not found
+    }
+
+    #findPreviousWaitPoint(startIndex) {
+        for (let i = startIndex - 1; i >= 0; i--) {
+            if (this.#commandQueue[i].isWaitPoint) return i;
+        }
+        return -1; // Not found
+    }
+
+    async #handleNext() {
+        if (this.#isAnimating || this.isSending) return;
+        const nextIndex = this.#findNextWaitPoint(this.#currentCommandIndex);
+        if (nextIndex > -1) {
+            await this.#jumpToCommand(nextIndex);
+        }
+    }
+
+    async #handlePrevious() {
+        if (this.#isAnimating || this.isSending) return;
+        const prevIndex = this.#findPreviousWaitPoint(this.#currentCommandIndex);
+        if (prevIndex > -1) {
+            await this.#jumpToCommand(prevIndex);
+        }
+    }
+
+    // --- Live Stream Handling ---
+
+    onStreamStart() { this.#streamingContent = ''; }
+    onToken(token) { this.#streamingContent += token; }
+
+    async onStreamFinish() {
+        if (this.isSending && this.#streamingContent) {
+            const startIndex = this.#commandQueue.length;
+            this.#parseAndQueueAssistantMessage(this.#streamingContent, this._sceneState);
+            const endIndex = this.#commandQueue.length - 1;
+            
+            if (endIndex >= startIndex) {
+                await this.#jumpToCommand(endIndex);
+            }
+        }
+        this.#streamingContent = null;
+        this.#isAnimating = false;
+        this.updateInputState(false);
+    }
+
+    onStreamError(error) {
+        this.#isAnimating = false;
+        this.updateInputState(false);
+        this._dialogueBox.classList.add('active');
+        this._speakerName.textContent = 'Error';
+        this._dialogueText.innerHTML = `<em>Could not get a valid response. ${error.message}</em>`;
+        this.#streamingContent = null;
+    }
+
+    onPromptStart() {
+        this.updateInputState(true);
+        this.clearUserInput();
+        this._clearDialogue();
+        this._dialogueBox.classList.add('active');
+        this._speakerName.textContent = 'Thinking...';
+        this._dialogueText.innerHTML = '<div class="spinner-container"><minerva-spinner></minerva-spinner></div>';
+        return `vn-response-${uuidv4()}`;
+    }
+
+    // --- UI Rendering & Helpers ---
+
+    _renderScene(state) {
+        this._stage.style.backgroundImage = state.background.startsWith('#') || state.background.startsWith('var') 
             ? 'none' : `url(${state.background})`;
-        this.#stage.style.backgroundColor = state.background.startsWith('#') || state.background.startsWith('var')
+        this._stage.style.backgroundColor = state.background.startsWith('#') || state.background.startsWith('var')
             ? state.background : 'var(--bg-0)';
 
-        this.#stage.querySelectorAll('.vn-character').forEach(el => el.remove());
+        this._stage.innerHTML = '';
         for (const [id, charState] of state.charactersOnStage.entries()) {
-            const charElement = this.#createCharacterElement(charState);
-            this.#stage.appendChild(charElement);
+            const charElement = this._createCharacterElement(charState);
+            this._stage.appendChild(charElement);
             charState.element = charElement;
         }
     }
-    
-    #createCharacterElement({ id, expression, position }) {
+
+    _createCharacterElement({ id, expression, position }) {
         const character = this.getCharacterById(id);
         const el = document.createElement('div');
         el.className = `vn-character vn-pos-${position}`;
@@ -218,252 +535,149 @@ export class VisualNovelMode extends BaseChatMode {
             const expr = character.expressions.find(e => e.name?.toLowerCase() === expression.toLowerCase());
             if (expr) imageUrl = expr.url;
         }
-
         el.innerHTML = `<img src="${imageUrl}" alt="${character?.name || id}" />`;
         return el;
     }
-
-    #parseXML(xmlContent) {
-        let processedContent = xmlContent.trim();
-        
-        // Remove markdown fences.
-        processedContent = processedContent.replace(/^`{3,}(xml)?\s*\n?/, '').replace(/\n?`{3,}$/, '').trim();
-
-        // Strip any conversational text before the first XML tag.
-        const firstTagIndex = processedContent.indexOf('<');
-        if (firstTagIndex > 0) {
-            processedContent = processedContent.substring(firstTagIndex);
-        }
-        
-        // Strip any conversational text after the last XML tag.
-        const lastTagIndex = processedContent.lastIndexOf('>');
-        if (lastTagIndex !== -1 && lastTagIndex < processedContent.length - 1) {
-            processedContent = processedContent.substring(0, lastTagIndex + 1);
-        }
-
-        if (!processedContent) {
-            throw new Error("XML content is empty after sanitization.");
-        }
-
-        const wrappedContent = `<scene>${processedContent}</scene>`;
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(wrappedContent, "application/xml");
-        const parseError = doc.querySelector("parsererror");
-        if (parseError) {
-            console.error("Failed to parse the following content:", processedContent);
-            throw new Error("XML Parse Error: " + parseError.textContent);
-        }
-        return doc;
-    }
     
-    // --- Animations & Live Updates ---
-    
-    onStreamStart() { this.#streamingContent = ''; }
-    onToken(token) { this.#streamingContent += token; }
-    
-    async onStreamFinish() {
-        if (this.#streamingContent) {
-            await this.#animateSceneUpdate(this.#streamingContent);
-        } else {
-            this.#isAnimating = false;
-            this.updateInputState(false);
-        }
-        this.#streamingContent = null;
-    }
-
-    onStreamError(error) {
-        this.#isAnimating = false;
-        this.updateInputState(false);
-        this.#dialogueBox.classList.add('active');
-        this.#speakerName.textContent = 'Error';
-        this.#dialogueText.innerHTML = `<em>Could not get a valid response. ${error.message}</em>`;
-        this.#streamingContent = null;
-    }
-
-    async #animateSceneUpdate(xmlContent) {
-        this.#isAnimating = true;
-        this.updateInputState(true);
-        this.#clearDialogue();
-        
-        try {
-            const doc = this.#parseXML(xmlContent);
-            const sceneNode = doc.querySelector("scene");
-            if (!sceneNode) throw new Error("No valid SceneML tags found.");
-
-            for (const node of sceneNode.children) {
-                const isPrompt = node.nodeName.toLowerCase() === 'prompt';
-                await this.#animateNode(node);
-                if (isPrompt) {
-                    // Animation is over and is now waiting for user input. Exit the loop.
-                    return;
-                }
-            }
-        } catch (e) {
-            console.error("Error animating VNML:", e, xmlContent);
-            this.#dialogueBox.classList.add('active');
-            this.#speakerName.textContent = 'Error';
-            this.#dialogueText.innerHTML = `<em>Could not render scene. Check prompt instructions.</em>`;
-        }
-        
-        // This is reached if the scene did not end with a <prompt>
-        this.#isAnimating = false;
-        this.updateInputState(false);
-        this.#form.classList.remove('hidden');
-        this.#clearDialogue(false); // Clear text but keep box open
-    }
-    
-    async #animateNode(node) {
-        switch (node.nodeName.toLowerCase()) {
-            case 'background': {
-                const src = node.getAttribute('src');
-                this.#stage.style.opacity = 0;
-                await this.#sleep(500);
-                this.#sceneState.background = src;
-                this.#renderScene(this.#sceneState);
-                this.#stage.style.opacity = 1;
-                await this.#sleep(500);
-                break;
-            }
-            case 'enter': {
-                const id = node.getAttribute('id');
-                const charState = { id, expression: node.getAttribute('expression'), position: node.getAttribute('position') || 'center' };
-                const charEl = this.#createCharacterElement(charState);
-                charState.element = charEl;
-                this.#sceneState.charactersOnStage.set(id, charState);
-                this.#stage.appendChild(charEl);
-                charEl.classList.add('enter');
-                await this.#sleep(500);
-                break;
-            }
-            case 'exit': {
-                const id = node.getAttribute('id');
-                const charState = this.#sceneState.charactersOnStage.get(id);
-                if (charState?.element) {
-                    charState.element.classList.add('exit');
-                    await this.#sleep(500);
-                    charState.element.remove();
-                }
-                this.#sceneState.charactersOnStage.delete(id);
-                break;
-            }
-            case 'dialogue': {
-                const from = node.getAttribute('from');
-                const expression = node.getAttribute('expression');
-                const character = this.getCharacterById(from);
-                
-                if (character && expression) {
-                    const charOnStage = this.#sceneState.charactersOnStage.get(character.id);
-                    if (charOnStage) {
-                        charOnStage.expression = expression;
-                        const newEl = this.#createCharacterElement(charOnStage);
-                        charOnStage.element.replaceWith(newEl);
-                        charOnStage.element = newEl;
-                    }
-                }
-                this.#speakerName.textContent = character?.name || from || 'Narration';
-                await this.#typewriter(node.textContent);
-                await this.#waitForUserInput();
-                break;
-            }
-            case 'narrate':
-                this.#speakerName.textContent = 'Narration';
-                await this.#typewriter(node.textContent);
-                await this.#waitForUserInput();
-                break;
-            case 'prompt':
-                this.#renderChoices(node);
-                this.#isAnimating = false;
-                this.updateInputState(false);
-                break;
-            case 'pause':
-                await this.#sleep(parseFloat(node.getAttribute('for') || 0) * 1000);
-                break;
-            case 'sound':
-                console.warn(`[VN Mode] <sound> tag is not yet implemented. src: ${node.getAttribute('src')}`);
-                break;
-            case 'effect':
-                console.warn(`[VN Mode] <effect> tag is not yet implemented. type: ${node.getAttribute('type')}`);
-                break;
-        }
-    }
-    
-    #renderChoices(promptNode) {
-        this.#dialogueBox.classList.add('active');
-        this.#speakerName.textContent = 'Choice';
-
-        const infoNode = promptNode.querySelector('info');
-        this.#dialogueText.innerHTML = infoNode ? `<em>${infoNode.textContent}</em>` : '';
-        
-        this.#choicesContainer.innerHTML = '';
-        for (const choiceNode of promptNode.querySelectorAll('choice')) {
+    _renderChoices(info, choices) {
+        this._dialogueBox.classList.add('active');
+        this._speakerName.textContent = 'Choice';
+        this._dialogueText.innerHTML = info ? `<em>${info}</em>` : '';
+        this._choicesContainer.innerHTML = '';
+        for (const choiceText of choices) {
             const button = document.createElement('button');
             button.className = 'vn-choice-button';
-            button.textContent = choiceNode.textContent;
-            this.#choicesContainer.appendChild(button);
+            button.textContent = choiceText;
+            this._choicesContainer.appendChild(button);
         }
     }
 
-    #sleep = (ms) => new Promise(resolve => {
-        const timeoutId = setTimeout(resolve, ms);
-        if (this.#skipAnimation) {
-            clearTimeout(timeoutId);
-            resolve();
-        }
-    });
+    _sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    #typewriter(text) {
+    _typewriter(text) {
         return new Promise(async (resolve) => {
-            this.#dialogueText.innerHTML = '';
-            this.#dialogueBox.classList.add('active');
+            this._dialogueText.innerHTML = '';
+            this._dialogueBox.classList.add('active');
             if (this.#currentDialogueAnimator) this.#currentDialogueAnimator.stop();
-            
             this.#currentDialogueAnimator = { stopped: false, stop: function() { this.stopped = true; } };
             const localAnimator = this.#currentDialogueAnimator;
 
-            if (this.#skipAnimation || this.settings.typewriterSpeed === 0) {
-                this.#dialogueText.innerHTML = text;
+            if (this.#skipTypewriter || this.settings.typewriterSpeed === 0) {
+                this._dialogueText.innerHTML = text;
             } else {
                 for (const char of text) {
-                    if (localAnimator.stopped) {
-                        this.#dialogueText.innerHTML = text; // Finish immediately if stopped
-                        break;
-                    }
-                    this.#dialogueText.innerHTML += char;
-                    await this.#sleep(this.settings.typewriterSpeed);
+                    if (localAnimator.stopped) { this._dialogueText.innerHTML = text; break; }
+                    this._dialogueText.innerHTML += char;
+                    await this._sleep(this.settings.typewriterSpeed);
                 }
             }
-            
-            if (!localAnimator.stopped) this.#currentDialogueAnimator = null;
-            this.#skipAnimation = false; // Reset skip flag after animation
+            this.#currentDialogueAnimator = null;
+            this.#skipTypewriter = false;
             resolve();
         });
     }
 
-    async #waitForUserInput() {
-        if (this.#skipAnimation) return;
-        this.#continueIndicator.classList.remove('hidden');
-        await new Promise(resolve => this.#sceneAdvanceResolver = resolve);
-        this.#sceneAdvanceResolver = null;
-        this.#continueIndicator.classList.add('hidden');
+    async _waitForUserInput() {
+        this._continueIndicator.classList.remove('hidden');
+        await new Promise(resolve => this._sceneAdvanceResolver = resolve);
+        this._sceneAdvanceResolver = null;
+        this._continueIndicator.classList.add('hidden');
     }
 
-    // --- Event Handlers & UI ---
+    _clearDialogue(hideBox = true) {
+        this._speakerName.textContent = '';
+        this._dialogueText.innerHTML = '';
+        this._choicesContainer.innerHTML = '';
+        if (hideBox) this._dialogueBox.classList.remove('active');
+        this.#form.classList.add('hidden');
+        this._continueIndicator.classList.add('hidden');
+    }
     
+    #levenshteinDistance(s1, s2) {
+        s1 = s1.toLowerCase();
+        s2 = s2.toLowerCase();
+        const costs = [];
+        for (let i = 0; i <= s1.length; i++) {
+            let lastValue = i;
+            for (let j = 0; j <= s2.length; j++) {
+                if (i === 0) costs[j] = j;
+                else if (j > 0) {
+                    let newValue = costs[j - 1];
+                    if (s1.charAt(i - 1) !== s2.charAt(j - 1)) newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                    costs[j - 1] = lastValue;
+                    lastValue = newValue;
+                }
+            }
+            if (i > 0) costs[s2.length] = lastValue;
+        }
+        return costs[s2.length];
+    }
+
+    _tryRepairVNML(xmlContent) {
+        let processed = (xmlContent || '').trim().replace(/^`{3,}(xml)?\s*\n?/, '').replace(/\n?`{3,}$/, '').trim();
+        if (!processed) return null;
+    
+        // Sanitize by trimming anything before the first tag and after the last.
+        const firstTag = processed.indexOf('<');
+        if (firstTag > 0) processed = processed.substring(firstTag);
+        const lastTag = processed.lastIndexOf('>');
+        if (lastTag !== -1 && lastTag < processed.length - 1) processed = processed.substring(0, lastTag + 1);
+        if (!processed) return null;
+        
+        const wrapped = `<root>${processed}</root>`;
+        const parser = new DOMParser();
+        let doc = parser.parseFromString(wrapped, "application/xml");
+        let parserError = doc.querySelector("parsererror");
+        if (!parserError) return doc; // It's valid, no repair needed.
+    
+        console.warn("VNML parsing failed, attempting repair. Error:", parserError.textContent);
+    
+        const tagNames = ["background", "enter", "exit", "narrate", "dialogue", "prompt", "info", "choice", "pause"];
+    
+        const findBestMatch = (badTag) => {
+            let bestMatch = null;
+            let minDistance = Infinity;
+            for (const goodTag of tagNames) {
+                const distance = this.#levenshteinDistance(badTag, goodTag);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = goodTag;
+                }
+            }
+            // Only repair if it's a close match (e.g., typo)
+            return minDistance <= 2 ? bestMatch : null;
+        };
+    
+        const repairedContent = processed.replace(/(<\/?)([\w-]+)(.*?>)/g, (match, opening, tagName, rest) => {
+            if (tagNames.includes(tagName.toLowerCase())) return match;
+            const bestMatch = findBestMatch(tagName);
+            if (bestMatch) {
+                console.log(`Repairing VNML tag: '${tagName}' -> '${bestMatch}'`);
+                return `${opening}${bestMatch}${rest}`;
+            }
+            return match; // Return original if no good match
+        });
+    
+        const repairedWrapped = `<root>${repairedContent}</root>`;
+        doc = parser.parseFromString(repairedWrapped, "application/xml");
+        parserError = doc.querySelector("parsererror");
+        if (parserError) console.error("VNML repair failed. Final error:", parserError.textContent);
+        else console.log("VNML repair successful.");
+        return doc;
+    }
+
+    // --- UI Event Handlers ---
+
     #handleSend(event) {
         event.preventDefault();
         const promptText = this.getUserInput();
-        if (promptText && !this.#sendButton.disabled) {
-            this.sendPrompt(promptText);
-        }
+        if (promptText && !this.#sendButton.disabled) this.sendPrompt(promptText);
     }
     
     #handleTextboxKeydown(event) {
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            if (!this.#sendButton.disabled) {
-                this.#handleSend(event);
-            }
+            if (!this.#sendButton.disabled) this.#handleSend(event);
         }
     }
     
@@ -471,83 +685,56 @@ export class VisualNovelMode extends BaseChatMode {
         if (event.target.classList.contains('vn-choice-button')) {
             if (this.isSending || this.#isAnimating) return;
             const choiceText = event.target.textContent;
-            this.sendPrompt(choiceText);
-            this.#clearDialogue();
-            if (this.#animationPromiseResolver) {
-                this.#animationPromiseResolver();
-                this.#animationPromiseResolver = null;
+            this.sendPrompt(`<choice>${choiceText}</choice>`);
+            this._clearDialogue();
+            if (this._animationPromiseResolver) {
+                this._animationPromiseResolver();
+                this._animationPromiseResolver = null;
             }
         }
     }
     
     #handleDialogueBoxClick() {
-        if (this.#isAnimating) {
-            if (this.#currentDialogueAnimator) { // If typewriter is running
-                this.#skipAnimation = true;
-                this.#currentDialogueAnimator.stop();
-            } else if (this.#sceneAdvanceResolver) { // If waiting for input to advance scene
-                this.#sceneAdvanceResolver();
-            }
+        if (this._sceneAdvanceResolver) {
+            this._sceneAdvanceResolver();
+        } else if (this.#currentDialogueAnimator) {
+            this.#skipTypewriter = true;
+            this.#currentDialogueAnimator.stop();
+        } else if (!this.#isAnimating && !this.isSending) {
+            // If nothing is animating or waiting, clicking advances the story
+            this.#handleNext();
         }
     }
     
-    #toggleDialogueBox() {
-        this.#dialogueBox.classList.toggle('active');
-    }
-    
-    #toggleInputForm() {
-        this.#form.classList.toggle('hidden');
-        if (!this.#form.classList.contains('hidden')) {
-            this.#textbox.focus();
-        }
-    }
-    
-    #clearDialogue(hideBox = true) {
-        this.#speakerName.textContent = '';
-        this.#dialogueText.innerHTML = '';
-        this.#choicesContainer.innerHTML = '';
-        if (hideBox) {
-            this.#dialogueBox.classList.remove('active');
-        }
-        this.#form.classList.add('hidden');
-        this.#continueIndicator.classList.add('hidden');
-    }
-
-    onPromptStart() {
-        this.updateInputState(true);
-        this.clearUserInput();
-        this.#clearDialogue();
-        this.#dialogueBox.classList.add('active');
-        this.#speakerName.textContent = 'Thinking...';
-        this.#dialogueText.innerHTML = '<div class="spinner-container"><minerva-spinner></minerva-spinner></div>';
-        return `vn-response-${uuidv4()}`;
-    }
+    #toggleDialogueBox() { this._dialogueBox.classList.toggle('active'); }
+    #toggleInputForm() { this.#form.classList.toggle('hidden'); if (!this.#form.classList.contains('hidden')) this.#textbox.focus(); }
     
     getUserInput() { return this.#textbox.value; }
     clearUserInput() { this.#textbox.value = ''; }
 
     updateInputState(isSending = false) {
         this.isSending = isSending;
-        const isWaitingForChoice = this.#choicesContainer.children.length > 0;
-        // Custom input is disabled only when the system is busy.
         const isDisabled = isSending || this.#isAnimating;
 
         this.#textbox.disabled = isDisabled;
         this.#sendButton.disabled = isDisabled || this.getUserInput().trim() === '';
         
-        // Disable choice buttons while busy
-        for (const button of this.#choicesContainer.children) {
-            button.disabled = isDisabled;
-        }
+        for (const button of this._choicesContainer.children) button.disabled = isDisabled;
         
         const fabIcon = this.#fab.querySelector('.material-icons');
-        if (isSending || this.#isAnimating) {
+        if (isDisabled) {
             this.#fab.classList.add('processing');
             fabIcon.textContent = 'hourglass_empty';
         } else {
             this.#fab.classList.remove('processing');
             fabIcon.textContent = 'chat_bubble';
         }
+        
+        // Update nav buttons
+        const canGoBack = this.#findPreviousWaitPoint(this.#currentCommandIndex) > -1;
+        const canGoForward = this.#findNextWaitPoint(this.#currentCommandIndex) > -1;
+        this.#prevButton.disabled = isDisabled || !canGoBack;
+        this.#nextButton.disabled = isDisabled || !canGoForward;
     }
     
     render() {
@@ -557,14 +744,16 @@ export class VisualNovelMode extends BaseChatMode {
                 <div id="vn-dialogue-box">
                     <div id="vn-dialogue-header">
                         <div id="vn-speaker-name"></div>
-                        <button id="vn-input-toggle" class="icon-btn" title="Toggle custom input"><span class="material-icons">edit</span></button>
+                        <div class="header-controls">
+                            <button id="vn-prev-btn" class="icon-btn" title="Previous"><span class="material-icons">arrow_back_ios</span></button>
+                            <button id="vn-next-btn" class="icon-btn" title="Next"><span class="material-icons">arrow_forward_ios</span></button>
+                            <button id="vn-input-toggle" class="icon-btn" title="Toggle custom input"><span class="material-icons">edit</span></button>
+                        </div>
                     </div>
                     <div id="vn-dialogue-content">
                         <div id="vn-dialogue-text"></div>
                         <div id="vn-choices"></div>
-                        <div id="vn-continue-indicator" class="hidden">
-                            <span class="material-icons">arrow_drop_down</span>
-                        </div>
+                        <div id="vn-continue-indicator" class="hidden"><span class="material-icons">arrow_drop_down</span></div>
                     </div>
                     <form id="chat-form" class="hidden">
                         <text-box name="message" placeholder="Type your action... (Enter to send)"></text-box>
@@ -596,7 +785,10 @@ export class VisualNovelMode extends BaseChatMode {
         #vn-dialogue-box.active { transform: translateY(0); }
         #vn-dialogue-header { display: flex; justify-content: space-between; align-items: center; position: absolute; top: 0; left: 0; right: 0; transform: translateY(-50%); padding: 0 var(--spacing-lg); }
         #vn-speaker-name { background-color: var(--bg-2); color: var(--accent-primary); padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); font-weight: 600; }
-        #vn-input-toggle { color: var(--text-primary); background-color: var(--bg-2); border-radius: 50%; width: 32px; height: 32px; }
+        .header-controls { display: flex; align-items: center; gap: var(--spacing-sm); background-color: var(--bg-2); padding: var(--spacing-xs); border-radius: var(--radius-md); }
+        #vn-input-toggle, #vn-prev-btn, #vn-next-btn { color: var(--text-primary); border-radius: 50%; width: 32px; height: 32px; }
+        #vn-prev-btn:disabled, #vn-next-btn:disabled { color: var(--text-disabled); cursor: not-allowed; }
+        
         #vn-dialogue-content { flex-grow: 1; overflow: hidden; display: flex; flex-direction: column; margin-top: var(--spacing-lg); position: relative; }
         #vn-dialogue-text { flex-grow: 1; overflow-y: auto; line-height: 1.6; }
         .spinner-container { display: flex; align-items: center; justify-content: center; height: 100%; }

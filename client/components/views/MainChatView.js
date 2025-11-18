@@ -121,6 +121,7 @@ class MainChatView extends BaseComponent {
         modeContainer.addEventListener('chat-mode-go-to-parent', this.handleGoToParentChat);
         modeContainer.addEventListener('chat-mode-abort-generation', () => this.#abortController?.abort());
         modeContainer.addEventListener('chat-mode-load-more', () => this.#handleLoadMoreMessages());
+        modeContainer.addEventListener('chat-mode-set-user-persona', e => this.#handleSetUserPersona(e.detail.characterId));
     }
 
     async fetchInitialData() {
@@ -263,8 +264,9 @@ class MainChatView extends BaseComponent {
         }
     
         // Check for added messages by iterating new messages
+        // Skip inherited messages to prevent treating them as "newly added"
         for (const newMsg of newMessages) {
-            if (!oldMsgMap.has(newMsg.id)) {
+            if (!oldMsgMap.has(newMsg.id) && !newMsg._isInherited) {
                 addedMessages.push(newMsg);
             }
         }
@@ -736,23 +738,50 @@ class MainChatView extends BaseComponent {
     }
 
     handleChatNameEdit() {
-        const nameInput = this.shadowRoot.querySelector('#chat-name-input');
-        if (!nameInput) return;
-        modal.show({
-            title: "Rename Chat",
-            content: `<input type="text" id="modal-chat-name" class="form-group" value="${this.state.selectedChat.name}">`,
-            buttons: [
-                { label: "Cancel", className: "button-secondary", onClick: () => modal.hide() },
-                { label: "Save", className: "button-primary",
-                    onClick: () => {
-                        const newName = document.getElementById('modal-chat-name').value;
-                        this.handleChatNameSave({ target: { value: newName }});
-                        modal.hide();
-                    }
-                }
-            ]
-        });
-        setTimeout(() => document.getElementById('modal-chat-name')?.focus(), 100);
+        const titleEl = this.shadowRoot.querySelector('#chat-title-mobile');
+        if (!titleEl || !this.state.selectedChat) return;
+
+        // Make it editable
+        titleEl.contentEditable = 'true';
+        titleEl.focus();
+
+        // Select all text
+        const range = document.createRange();
+        range.selectNodeContents(titleEl);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        // Save on blur or Enter key
+        const saveAndReset = () => {
+            titleEl.contentEditable = 'false';
+            const newName = titleEl.textContent.trim();
+            if (newName && newName !== this.state.selectedChat.name) {
+                this.handleChatNameSave({ target: { value: newName }});
+            } else {
+                // Revert to original name if empty or unchanged
+                titleEl.textContent = this.state.selectedChat.name;
+            }
+        };
+
+        const onBlur = () => {
+            saveAndReset();
+            titleEl.removeEventListener('blur', onBlur);
+            titleEl.removeEventListener('keydown', onKeydown);
+        };
+
+        const onKeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                titleEl.blur();
+            } else if (e.key === 'Escape') {
+                titleEl.textContent = this.state.selectedChat.name;
+                titleEl.blur();
+            }
+        };
+
+        titleEl.addEventListener('blur', onBlur, { once: true });
+        titleEl.addEventListener('keydown', onKeydown);
     }
 
     async handleChatNameSave(event) {
@@ -800,7 +829,28 @@ class MainChatView extends BaseComponent {
         const updatedChatState = JSON.parse(JSON.stringify(this.state.selectedChat));
         const messageToUpdate = updatedChatState.messages.find(m => m.id === messageId);
         if (messageToUpdate) {
-            messageToUpdate.content = newContent;
+            // Check if editing an inherited message - if so, create an override
+            if (messageToUpdate._isInherited) {
+                // Initialize messageOverrides if it doesn't exist
+                if (!updatedChatState.messageOverrides) {
+                    updatedChatState.messageOverrides = {};
+                }
+
+                // Create override entry for this inherited message
+                updatedChatState.messageOverrides[messageId] = { content: newContent };
+
+                // Also update the in-memory message for immediate UI feedback
+                messageToUpdate.content = newContent;
+                messageToUpdate._isOverridden = true;
+            } else {
+                // Normal message editing (not inherited) - update content directly
+                messageToUpdate.content = newContent;
+            }
+
+            // CRITICAL: Strip inherited messages before saving to prevent duplication
+            // Only send messages that truly belong to this chat
+            updatedChatState.messages = updatedChatState.messages.filter(msg => !msg._isInherited);
+
             try {
                 await api.put(`/api/chats/${this.state.selectedChat.id}`, updatedChatState);
                 notifier.show({ message: 'Message updated.', type: 'good' });
@@ -816,7 +866,7 @@ class MainChatView extends BaseComponent {
             const newChat = await api.post(`/api/chats/${this.state.selectedChat.id}/branch`, { messageId });
             this.state.selectedChat = newChat;
             this.updateView();
-            this.#activeChatMode?.onChatBranched();
+            this.#activeChatMode?.onChatSwitched();
             notifier.show({ type: 'good', header: 'Chat Branched', message: 'A new chat has been created from this point and is now active.' });
         } catch (error) {
             console.error('Failed to branch chat:', error);
@@ -832,17 +882,25 @@ class MainChatView extends BaseComponent {
     
     async #handleRegenerateWithHistory({ messageId, history }) {
         if (this.state.isSending || !this.state.selectedChat || !this.#activeChatMode) return;
-        
+
         const messageToRegen = this.getMessageById(messageId);
         if (!messageToRegen) return;
 
         this.state.isSending = true;
         this.#activeChatMode.updateInputState(true);
-        this.#activeChatMode.onRegenerateStart(messageId);
+
+        // onRegenerateStart now returns the ID of the optimistic spinner element
+        const spinnerMessageId = this.#activeChatMode.onRegenerateStart(messageId);
+        if (!spinnerMessageId) {
+            notifier.show({ type: 'bad', header: 'Error', message: 'Failed to show regeneration spinner.' });
+            this.state.isSending = false;
+            this.#activeChatMode.updateInputState(false);
+            return;
+        }
 
         this.#abortController = new AbortController();
         const { signal } = this.#abortController;
-        
+
         let endpoint, body;
 
         if (messageToRegen.role === 'assistant') {
@@ -862,7 +920,8 @@ class MainChatView extends BaseComponent {
             body: JSON.stringify(body), signal
         });
 
-        await this.#handleStreamedResponse(fetchPromise, messageId, 'Regeneration Error');
+        // Use the spinner message ID for streaming instead of the original message ID
+        await this.#handleStreamedResponse(fetchPromise, spinnerMessageId, 'Regeneration Error');
     }
 
     async #copyMessageContent(content) {
@@ -871,6 +930,20 @@ class MainChatView extends BaseComponent {
             notifier.show({ message: 'Copied to clipboard.' });
         } catch (err) {
             notifier.show({ header: 'Copy Failed', message: 'Could not copy text to clipboard.', type: 'warn' });
+        }
+    }
+
+    async #handleSetUserPersona(characterId) {
+        try {
+            await api.post('/api/settings/persona', { characterId });
+            const character = this.state.allCharacters.find(c => c.id === characterId);
+            const message = characterId
+                ? `"${character?.name || 'Character'}" is now the user persona.`
+                : 'User persona has been cleared.';
+            notifier.show({ type: 'good', header: 'Persona Updated', message });
+        } catch (error) {
+            console.error('Failed to set user persona:', error);
+            notifier.show({ type: 'bad', header: 'Error', message: 'Failed to update user persona.' });
         }
     }
 
@@ -934,23 +1007,44 @@ class MainChatView extends BaseComponent {
     }
 
     async #handleLoadMoreMessages() {
-        if (!this.state.selectedChat || !this.state.selectedChat.hasMoreMessages) return;
+        if (!this.state.selectedChat || !this.state.selectedChat.hasMoreMessages) {
+            console.log('[MainChatView] Load more messages blocked:', {
+                hasChat: !!this.state.selectedChat,
+                hasMoreMessages: this.state.selectedChat?.hasMoreMessages
+            });
+            return;
+        }
 
         const oldestMessageId = this.state.selectedChat.messages[0]?.id;
         if (!oldestMessageId) return;
+
+        console.log('[MainChatView] Loading more messages before:', oldestMessageId);
 
         this.#activeChatMode?.onHistoryLoading(true);
 
         try {
             const response = await api.get(`/api/chats/${this.state.selectedChat.id}/messages?limit=50&before=${oldestMessageId}`);
-            
+
+            console.log('[MainChatView] Received response:', {
+                messagesReceived: response.messages.length,
+                hasMoreMessages: response.hasMoreMessages,
+                oldTotalMessages: this.state.selectedChat.messages.length
+            });
+
             this.state.selectedChat.messages.unshift(...response.messages);
             this.state.selectedChat.hasMoreMessages = response.hasMoreMessages;
+
+            console.log('[MainChatView] After update:', {
+                newTotalMessages: this.state.selectedChat.messages.length,
+                hasMoreMessages: this.state.selectedChat.hasMoreMessages
+            });
+
             this.#activeChatMode.chat = this.state.selectedChat; // Important: update the mode's chat object reference
 
             this.#activeChatMode?.onHistoryLoaded(response.messages, response.hasMoreMessages);
 
         } catch (error) {
+            console.error('[MainChatView] Error loading messages:', error);
             notifier.show({ type: 'bad', header: 'Error', message: 'Could not load older messages.' });
         } finally {
             this.#activeChatMode?.onHistoryLoading(false);
@@ -1358,7 +1452,7 @@ class MainChatView extends BaseComponent {
             
             const expanderHtml = hasChildren ? `<button class="expander icon-button" data-action="toggle-expand"><span class="material-icons">${isExpanded ? 'expand_more' : 'chevron_right'}</span></button>` : `<span class="expander-placeholder"></span>`;
             const checkboxHtml = this.state.isMultiSelectMode ? `<input type="checkbox" class="multiselect-checkbox" ${isMultiSelected ? 'checked' : ''}>` : '';
-            const childrenHtml = hasChildren && isExpanded ? `<ul class="chat-tree-container">${this.#renderTimelineNodes(root, root.id, 0)}</ul>` : '';
+            const childrenHtml = hasChildren && isExpanded ? `<ul class="chat-tree-container">${this.#renderTimelineNodes(root, root.id, 0, true)}</ul>` : '';
 
             return `
                 <li data-id="${displayNode.id}" data-root-id="${root.id}" class="${liClasses}">
@@ -1381,24 +1475,25 @@ class MainChatView extends BaseComponent {
         chatListEl.innerHTML = listHtml;
     }
 
-    #renderTimelineNodes(node, rootId, level) {
+    #renderTimelineNodes(node, rootId, level, isLastChild = false) {
         const isSelected = this.state.selectedChat?.id === node.id;
         const rowClasses = ['item-row', 'timeline-node', isSelected ? 'selected' : ''].join(' ');
-        const nodeHtml = `
-            <li data-id="${node.id}" data-root-id="${rootId}" class="timeline-item level-${level % 4}">
+        const liClasses = ['timeline-item', `level-${level % 4}`, isLastChild ? 'last-child' : ''].join(' ');
+        const childrenHtml = node.children && node.children.length > 0
+            ? `<ul>${node.children.map((child, index) => this.#renderTimelineNodes(child, rootId, level + 1, index === node.children.length - 1)).join('')}</ul>`
+            : '';
+
+        return `
+            <li data-id="${node.id}" data-root-id="${rootId}" class="${liClasses}">
                 <div class="${rowClasses}">
                     <div class="item-details">
                         <div class="item-name">${this._escapeHtml(node.name)}</div>
                         <div class="item-snippet">${this._escapeHtml(node.lastMessageSnippet || 'No messages yet.')}</div>
                     </div>
                 </div>
+                ${childrenHtml}
             </li>
         `;
-        const childrenHtml = node.children && node.children.length > 0 
-            ? `<ul>${node.children.map(child => this.#renderTimelineNodes(child, rootId, level + 1)).join('')}</ul>` 
-            : '';
-
-        return nodeHtml + childrenHtml;
     }
     
     #getResolvedParticipants() {
@@ -1839,9 +1934,12 @@ class MainChatView extends BaseComponent {
             
             .chat-tree-container { list-style: none; padding: 0; margin: 0; background-color: var(--bg-0); border-top: 1px solid var(--bg-3); }
             .chat-tree-container ul { list-style: none; padding-left: 20px; }
-            .timeline-item > .item-row { --level-0-color: var(--accent-primary); --level-1-color: var(--accent-good); --level-2-color: var(--accent-warn); --level-3-color: var(--accent-danger); position: relative; padding-left: 24px; border-left: 2px solid var(--bg-3); }
-            .timeline-item > .item-row::before { content: ''; position: absolute; left: -7px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background-color: var(--bg-0); border: 2px solid var(--bg-3); z-index: 1; }
-            .timeline-item > .item-row::after { content: ''; position: absolute; left: 0; top: 50%; width: 24px; height: 2px; background-color: var(--bg-3); }
+            .timeline-item { position: relative; padding-left: 24px; }
+            .timeline-item::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background-color: var(--bg-3); }
+            .timeline-item.last-child::before { bottom: auto; height: 40px; }
+            .timeline-item > .item-row { --level-0-color: var(--accent-primary); --level-1-color: var(--accent-good); --level-2-color: var(--accent-warn); --level-3-color: var(--accent-danger); position: relative; }
+            .timeline-item > .item-row::before { content: ''; position: absolute; left: -31px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background-color: var(--bg-0); border: 2px solid var(--bg-3); z-index: 1; }
+            .timeline-item > .item-row::after { content: ''; position: absolute; left: -24px; top: 50%; width: 24px; height: 2px; background-color: var(--bg-3); }
             .timeline-item.level-0 > .item-row::before { border-color: var(--level-0-color); }
             .timeline-item.level-1 > .item-row::before { border-color: var(--level-1-color); }
             .timeline-item.level-2 > .item-row::before { border-color: var(--level-2-color); }
@@ -1850,6 +1948,10 @@ class MainChatView extends BaseComponent {
             .timeline-item > .item-row.selected .item-name { color: var(--accent-primary) !important; }
             .timeline-item > .item-row .avatar { display: none; }
             .timeline-item > .item-row .item-details { margin-left: var(--spacing-sm); }
+            /* Allow branch names in tree view to extend and be scrollable */
+            .chat-tree-container .item-row { overflow: visible; width: max-content; min-width: 100%; }
+            .chat-tree-container .item-details { overflow: visible; min-width: max-content; }
+            .chat-tree-container .item-name { white-space: nowrap; overflow: visible; text-overflow: clip; min-width: max-content; }
             @media (max-width: 768px) {
                 .panel-main { padding: 0; height: 100%; }
                 .chat-main-header { display: none !important; }
@@ -1857,6 +1959,14 @@ class MainChatView extends BaseComponent {
                 .mobile-chat-header h2 { flex-grow: 1; }
                 #back-to-chats-btn { display: flex; }
                 #chat-title-mobile { font-size: 1.1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+                #chat-title-mobile[contenteditable="true"] {
+                    outline: 2px solid var(--accent-primary);
+                    outline-offset: 2px;
+                    border-radius: var(--radius-sm);
+                    padding: 2px 4px;
+                    white-space: normal;
+                    overflow: visible;
+                }
                 #sidebar-btn { display: flex; }
                 .panel-right { position: fixed; top: 0; right: 0; width: 85%; max-width: 320px; height: 100%; z-index: 1001; transform: translateX(100%); transition: transform 0.3s ease-in-out; box-shadow: -2px 0 8px rgba(0,0,0,0.3); border-left: 1px solid var(--bg-3); }
                 .panel-right.visible { transform: translateX(0); }

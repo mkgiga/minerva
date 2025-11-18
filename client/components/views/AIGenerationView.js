@@ -108,11 +108,6 @@ class AIGenerationView extends BaseComponent {
             this.state.connectionConfigs = connectionConfigs;
             this.state.activeConnectionConfigId = settings.activeConnectionConfigId;
 
-            if (!this._hasAutoSelectedFirst && genConfigs.length > 0) {
-                const sortedConfigs = genConfigs.sort((a,b) => a.name.localeCompare(b.name));
-                this.state.selectedGenerationConfig = JSON.parse(JSON.stringify(sortedConfigs[0]));
-                this._hasAutoSelectedFirst = true;
-            }
             this.updateView();
         } catch (error) {
             notifier.show({ header: 'Error', message: 'Could not load generation configurations.' });

@@ -103,12 +103,23 @@ export class DefaultChatMode extends BaseChatMode {
         if (!messageData) return null;
 
         if (messageData.role === 'assistant') {
-            const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"] .message-content`);
-            if (messageEl) {
-                messageEl.innerHTML = '<minerva-spinner mode="infinite"></minerva-spinner>';
+            // For assistant messages, update the existing element to show spinner
+            const messageContentEl = this.shadowRoot.querySelector(`[data-message-id="${messageId}"] .message-content`);
+            if (messageContentEl) {
+                messageContentEl.innerHTML = '<minerva-spinner mode="infinite"></minerva-spinner>';
+                return messageId; // Return the same message ID since we're updating in place
             }
-            return messageId;
+            // Fallback: if we can't find the element, refresh and try again
+            console.warn(`Could not find message element for ${messageId}, refreshing chat history`);
+            this.refreshChatHistory();
+            const retryEl = this.shadowRoot.querySelector(`[data-message-id="${messageId}"] .message-content`);
+            if (retryEl) {
+                retryEl.innerHTML = '<minerva-spinner mode="infinite"></minerva-spinner>';
+                return messageId;
+            }
+            return null;
         } else if (messageData.role === 'user') {
+            // For user messages, create a new assistant spinner
             const assistantSpinnerMessage = {
                 id: `assistant-${uuidv4()}`,
                 role: 'assistant',
@@ -118,6 +129,7 @@ export class DefaultChatMode extends BaseChatMode {
             this.appendMessage(assistantSpinnerMessage);
             return assistantSpinnerMessage.id;
         }
+
         return null;
     }
 
