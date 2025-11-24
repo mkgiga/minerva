@@ -62,11 +62,6 @@ const ADAPTERS = {
 };
 
 // Helper to escape XML special characters to prevent XSS
-// `&` -> `&`,
-// `<` -> `<`,
-// `>` -> `>`,
-// `'` -> `'`,
-// `"` -> `"`
 function escapeXML(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe.replace(/[<>&'"]/g, c => {
