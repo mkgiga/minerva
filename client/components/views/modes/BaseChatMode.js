@@ -243,6 +243,15 @@ export class BaseChatMode extends BaseComponent {
     }
 
     /**
+     * Called by MainChatView when global application settings are changed.
+     * This includes general chat settings like renderer type or curation enabled status.
+     * @param {object} globalSettings - The full global settings object.
+     */
+    onGlobalSettingsChanged(globalSettings) {
+        /* No-op by default. Child classes can implement this to react to global flags. */
+    }
+
+    /**
      * Called when an older page of message history has been loaded.
      * The mode should prepend these messages to its display.
      * @param {Array<object>} newMessages - The array of older messages fetched from the server.

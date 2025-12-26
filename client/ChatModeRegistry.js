@@ -6,6 +6,7 @@ class ChatModeRegistry {
         if (this.#modes.has(renderer)) {
             console.warn(`Chat mode for renderer '${renderer}' is being overwritten. Old: ${this.#modes.get(renderer).tagName}, New: ${tagName}`);
         }
+        
         // Store both tag name and renderer key for easier iteration
         this.#modes.set(renderer, { renderer, tagName });
         console.log(`Registered chat mode: ${renderer} -> <${tagName}>`);

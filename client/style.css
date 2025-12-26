@@ -12,8 +12,8 @@
     --text-secondary: #bdc1c6; /* Lighter text, labels */
     --text-disabled: #9aa0a6; /* Disabled/placeholder text */
 
-    --accent-primary: #8ab4f8; /* Primary action color (blue) */
-    --accent-primary-faded: rgba(138, 180, 248, 0.3); /* For focus rings */
+    --accent-primary: oklch(0.7661 0.1083 259.79); /* Primary action color (blue) */
+    --accent-primary-faded: #8ab4f84d; /* For focus rings */
     --accent-good: #69f0ae; /* Success color (green) */
     --accent-warn: #ffd54f; /* Warning color (yellow) */
     --accent-danger: #f28b82; /* Delete/error color (red) */
@@ -337,13 +337,14 @@ user-card {
     .icon-sidebar {
         flex-direction: row; /* Main nav items side-by-side */
         justify-content: flex-start; width: 100%; height: 55px;
-        border-right: none; border-top: 1px solid var(--bg-3);
-        padding: 0 var(--spacing-sm); flex-shrink: 0;
+        border-top: 1px solid var(--bg-3);
+        flex-shrink: 0;
     }
     .nav-section {
         display: flex !important;
         flex-direction: row !important;
         width: 100%;
+        height: 100%;
         justify-content: space-around;
         align-items: center;
         gap: 0;
@@ -354,9 +355,11 @@ user-card {
     .nav-section .nav-group .nav-button {
         flex: 1;
         width: auto; /* Override desktop width: 100% */
+        height: 100%;
         display: flex;
         align-items: center;
         justify-content: center;
+        border-radius: 0;
     }
     .nav-children { display: none !important; } /* Hide desktop dropdown on mobile */
     .icon-sidebar user-card { display: none; } /* Hide user card on mobile */

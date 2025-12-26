@@ -6,6 +6,7 @@
 import './DefaultChatMode.js';
 import './AdventureChatMode.js';
 import './VisualNovelMode.js';
+import './AdventureBlockEditor.js'; // only used in Adventure mode
 
 // To add a new chat mode:
 // 1. Create your component file (e.g., NewChatMode.js) that extends BaseChatMode.

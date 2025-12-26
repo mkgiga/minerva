@@ -264,12 +264,12 @@ class AIConnectionView extends BaseComponent {
     }
 
     getProviderIcon(provider) {
-        const icons = { v1: 'v1.svg', gemini: 'gemini.svg', deepseek: 'deepseek.svg' };
+        const icons = { v1: 'v1.svg', gemini: 'gemini.svg' };
         return `assets/images/providers/${icons[provider] || 'default_avatar.svg'}`;
     }
 
     getProviderLabel(providerId) {
-        const labels = { v1: 'OpenAI-compatible', gemini: 'Google Gemini', deepseek: 'DeepSeek' };
+        const labels = { v1: 'OpenAI-compatible', gemini: 'Google Gemini' };
         return labels[providerId] || providerId;
     }
 

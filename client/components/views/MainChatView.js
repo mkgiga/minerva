@@ -375,20 +375,26 @@ class MainChatView extends BaseComponent {
             needsUpdate = true;
         }
         
-        // Update chat mode specific settings
-        const oldModeSettings = this.state.chatModeSettings;
-        this.state.chatModeSettings = settings.chatModes || {};
-    
-        if (this.#activeChatMode && JSON.stringify(oldModeSettings) !== JSON.stringify(this.state.chatModeSettings)) {
-            const renderer = this.state.chatRenderer;
-            const newSettingsForMode = this.state.chatModeSettings[renderer] || {};
-            const oldSettingsForMode = oldModeSettings[renderer] || {};
-            
-            // Only call the hook if the settings for *this specific mode* have changed.
-            if (JSON.stringify(newSettingsForMode) !== JSON.stringify(oldSettingsForMode)) {
-                // Update the mode's settings and call the hook
-                this.#activeChatMode.settings = { ...this.#activeChatMode.constructor.getDefaultSettings(), ...newSettingsForMode };
-                this.#activeChatMode.onSettingsChanged(newSettingsForMode);
+        // Pass complete settings to current chat mode if it exists
+        if (this.#activeChatMode) {
+            // First, notify about global settings (like curation)
+            this.#activeChatMode.onGlobalSettingsChanged(settings);
+
+            // Then handle mode-specific settings
+            const oldModeSettings = this.state.chatModeSettings;
+            this.state.chatModeSettings = settings.chatModes || {};
+        
+            if (JSON.stringify(oldModeSettings) !== JSON.stringify(this.state.chatModeSettings)) {
+                const renderer = this.state.chatRenderer;
+                const newSettingsForMode = this.state.chatModeSettings[renderer] || {};
+                const oldSettingsForMode = oldModeSettings[renderer] || {};
+                
+                // Only call the hook if the settings for *this specific mode* have changed.
+                if (JSON.stringify(newSettingsForMode) !== JSON.stringify(oldSettingsForMode)) {
+                    // Update the mode's settings and call the hook
+                    this.#activeChatMode.settings = { ...this.#activeChatMode.constructor.getDefaultSettings(), ...newSettingsForMode };
+                    this.#activeChatMode.onSettingsChanged(newSettingsForMode);
+                }
             }
         }
         
@@ -863,8 +869,13 @@ class MainChatView extends BaseComponent {
     async #handleBranchMessage(messageId) {
         if (!this.state.selectedChat) return;
         try {
-            const newChat = await api.post(`/api/chats/${this.state.selectedChat.id}/branch`, { messageId });
-            this.state.selectedChat = newChat;
+            // The POST returns the new chat's summary. We only need its ID.
+            const newChatSummary = await api.post(`/api/chats/${this.state.selectedChat.id}/branch`, { messageId });
+            
+            // Now, fetch the full chat details for the new branch, which will include inherited messages.
+            const fullNewChat = await api.get(`/api/chats/${newChatSummary.id}`);
+            
+            this.state.selectedChat = fullNewChat;
             this.updateView();
             this.#activeChatMode?.onChatSwitched();
             notifier.show({ type: 'good', header: 'Chat Branched', message: 'A new chat has been created from this point and is now active.' });
@@ -1972,6 +1983,8 @@ class MainChatView extends BaseComponent {
                 .panel-right.visible { transform: translateX(0); }
                 .view-overlay.visible { display: block; position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); z-index: 1000; }
             }
-        `; }
+        `;
+    }
 }
+
 customElements.define('main-chat-view', MainChatView);

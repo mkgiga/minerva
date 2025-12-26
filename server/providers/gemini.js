@@ -1,7 +1,7 @@
 import { BaseProvider } from './base.js';
 import { FAST_MODEL_EQUIVALENTS } from '../model.js';
 
-const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // for now, we use a fixed model ID
+const GEMINI_MODEL_ID = 'gemini-3-pro-preview'; // for now, we use a fixed model ID
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:streamGenerateContent`;
 
 const getGeminiApiUrl = (modelId) => {

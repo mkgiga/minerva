@@ -1,19 +1,122 @@
+// client/components/views/modes/AdventureChatMode.js
+
 import { BaseChatMode } from "./BaseChatMode.js";
 import { chatModeRegistry } from "../../../ChatModeRegistry.js";
-import { notifier, uuidv4, imagePreview } from "../../../client.js";
-import "../../common/TextBox.js";
+import { notifier, uuidv4, imagePreview, api } from "../../../client.js";
 import "../../common/Spinner.js";
 import "../../common/DropdownMenu.js";
+import "./AdventureBlockEditor.js"; 
+
+/**
+ * A physics-based scroller that creates a smooth "camera pan" effect
+ * following the text generation, eliminating line-wrap jumps.
+ */
+class ContinuousScroller {
+    constructor(container) {
+        this.container = container;
+        this.activeElement = null;
+        this.isTyping = false;
+        this.rafId = null;
+        
+        // Configuration
+        // The target "sweet spot" for the active line, as a percentage of container height.
+        // 0.85 means we aim to keep the typing cursor 85% of the way down the screen.
+        // This leaves room below for the next line to appear without immediate scrolling,
+        // but reacts quickly once the text gets too low.
+        this.verticalOffsetRatio = 0.85; 
+        
+        // Smoothing factors
+        this.minSpeed = 1; // Minimum movement in pixels per frame (prevents sticking)
+        this.baseFactor = 0.15; // The fraction of the gap to close per frame (higher = snappier)
+        this.maxSpeed = 8; // Cap speed to avoid disorienting jumps
+    }
+
+    /**
+     * Sets the element currently being typed into.
+     */
+    trackElement(element) {
+        this.activeElement = element;
+        // Ensure loop is running if we are in typing mode
+        if (this.isTyping && !this.rafId) {
+            this.loop();
+        }
+    }
+
+    setTypingStatus(isTyping) {
+        this.isTyping = isTyping;
+        if (isTyping) {
+            if (!this.rafId) this.loop();
+        } else {
+            // Optional: When stopping, we could let the loop run once more to settle,
+            // but usually stopping immediately is fine.
+            if (this.rafId) {
+                cancelAnimationFrame(this.rafId);
+                this.rafId = null;
+            }
+        }
+    }
+
+    loop() {
+        if (!this.isTyping) {
+            this.rafId = null;
+            return;
+        }
+
+        this.update();
+        this.rafId = requestAnimationFrame(() => this.loop());
+    }
+
+    update() {
+        if (!this.activeElement || !this.activeElement.isConnected) return;
+
+        // Use getBoundingClientRect to get absolute visual positions relative to viewport.
+        // This avoids issues with offsetParent nesting and document flow.
+        const containerRect = this.container.getBoundingClientRect();
+        const elemRect = this.activeElement.getBoundingClientRect();
+        
+        // Calculate where the bottom of the active element is relative to the container's top edge.
+        const elementVisualBottom = elemRect.bottom - containerRect.top;
+        
+        // Calculate our target position (pixels from top of container view)
+        const targetVisualBottom = containerRect.height * this.verticalOffsetRatio;
+        
+        // Calculate the difference. 
+        // diff > 0 means element is below target (too low), we need to scroll DOWN to push it visual UP.
+        const diff = elementVisualBottom - targetVisualBottom;
+
+        // If we are above the target line (diff < 0) or effectively on it, do nothing.
+        // We only want to scroll down to reveal new content, never scroll up automatically 
+        // during generation (preserves user manual scrolling if they went up to read history).
+        if (diff <= 1) return;
+
+        // Calculate smooth step
+        // Proportional speed creates an "ease-out" effect as we approach target
+        let step = diff * this.baseFactor;
+        
+        // Clamp speeds for better UX
+        step = Math.max(step, this.minSpeed); // Ensure we actually finish
+        step = Math.min(step, this.maxSpeed); // Prevent motion sickness from huge jumps
+        
+        // Don't overshoot if the diff is tiny
+        if (step > diff) step = diff;
+
+        // Apply scroll. Increasing scrollTop moves content UP, element moves UP visually.
+        this.container.scrollTop += step;
+    }
+}
 
 export class AdventureChatMode extends BaseChatMode {
     #historyContainer = null;
     #form = null;
-    #textbox = null;
+    #inputContainer = null;
+    #plaintextContainer = null;
+    #plaintextInput = null;
+    #inputModeButton = null;
     #sendButton = null;
     #quickRegenButton = null;
+    #continueButton = null; 
     #goToParentButton = null;
     #personaNameEl = null;
-    #lastUnansweredPromptEl = null;
     #isAnimating = false;
     #justAnimatedMessageIds = new Set();
     #settings = {};
@@ -24,6 +127,11 @@ export class AdventureChatMode extends BaseChatMode {
     #personaSearchInput = null;
     #personaCharacterList = null;
     #personaAvatarImg = null;
+    #curationEnabled = false;
+    #inputMode = 'plaintext';
+    
+    // Scroller instance
+    #scroller = null;
 
     static getSettingsSchema() {
         return [
@@ -51,6 +159,7 @@ export class AdventureChatMode extends BaseChatMode {
                 name: "autoScroll",
                 label: "Enable Auto-Scrolling",
                 type: "checkbox",
+                defaultValue: true,
                 description:
                     "Automatically scroll to the newest content as it is being generated during live responses.",
             },
@@ -60,7 +169,7 @@ export class AdventureChatMode extends BaseChatMode {
     static getDefaultSettings() {
         return {
             scrollSpeed: 6,
-            blockGap: 0.75, // Reduced from 1.5 for more compact layout
+            blockGap: 0.75, 
             autoScroll: true,
         };
     }
@@ -89,6 +198,14 @@ export class AdventureChatMode extends BaseChatMode {
         let processedContent = content.trim().replace(/^`{3,}(xml)?\s*\n?/, '').replace(/\n?`{3,}$/, '').trim();
         if (!processedContent) return null;
 
+        // Pre-wrap webview content in CDATA to prevent XML parsing errors with raw HTML/Doctypes
+        processedContent = processedContent.replace(/(<webview(?:\s[^>]*)?>)([\s\S]*?)(<\/webview>)/gi, (match, open, inner, close) => {
+            if (inner.trim().startsWith('<![CDATA[')) return match;
+            // Escape any CDATA end sequences that might exist in the content
+            const safeInner = inner.replace(/]]>/g, ']]]]><![CDATA[>');
+            return `${open}<![CDATA[${safeInner}]]>${close}`;
+        });
+
         const parser = new DOMParser();
         let doc = parser.parseFromString(processedContent, "application/xml");
         let parserError = doc.querySelector("parsererror");
@@ -100,12 +217,13 @@ export class AdventureChatMode extends BaseChatMode {
         console.warn("SceneML parsing failed, attempting repair. Error:", parserError.textContent);
 
         const customBlocks = [];
-        const protectedContent = processedContent.replace(/<custom>[\s\S]*?<\/custom>/g, match => {
+        // Updated regex to be robust against attributes and case sensitivity
+        const protectedContent = processedContent.replace(/<webview(?:\s[^>]*)?>[\s\S]*?<\/webview>/gi, match => {
             customBlocks.push(match);
             return `<!--CUSTOM_BLOCK_${customBlocks.length - 1}-->`;
         });
 
-        const tagNames = ["scene", "narrate", "dialogue", "speech", "image", "prompt", "info", "choice", "ref", "pause", "custom"];
+        const tagNames = ["text", "speech", "image", "pause", "webview", "noop_continue", "unformatted"];
         
         const findBestMatch = (badTag) => {
             let bestMatch = null;
@@ -134,6 +252,10 @@ export class AdventureChatMode extends BaseChatMode {
             return customBlocks[parseInt(index, 10)];
         });
 
+        if (!finalRepairedContent.startsWith("<root>") && !finalRepairedContent.startsWith("<scene>")) {
+             finalRepairedContent = `<root>${finalRepairedContent}</root>`;
+        }
+
         doc = parser.parseFromString(finalRepairedContent, "application/xml");
         parserError = doc.querySelector("parsererror");
         
@@ -149,21 +271,20 @@ export class AdventureChatMode extends BaseChatMode {
 
     #rebuildStrippedHistory() {
         if (!this.chat?.messages) { this.#strippedHistory = []; return; }
-        this.#strippedHistory = this.chat.messages.map(msg => (msg.role === "assistant" ? { ...msg, content: this.#stripPromptTag(msg.content) } : msg));
-    }
-
-    #stripPromptTag(content) {
-        if (typeof content !== "string" || !content.includes("<prompt>")) return content;
-        return content.replace(/<prompt>[\s\S]*?<\/prompt>/g, "").trim();
+        this.#strippedHistory = this.chat.messages; 
     }
 
     onInitialize() {
         this.render();
         this.#historyContainer = this.shadowRoot.querySelector("#chat-history");
         this.#form = this.shadowRoot.querySelector("#chat-form");
-        this.#textbox = this.#form.querySelector("text-box");
+        this.#inputContainer = this.shadowRoot.querySelector("#block-input-list");
+        this.#plaintextContainer = this.shadowRoot.querySelector("#plaintext-input-container");
+        this.#plaintextInput = this.shadowRoot.querySelector("#plaintext-input");
         this.#sendButton = this.#form.querySelector(".send-button");
         this.#quickRegenButton = this.shadowRoot.querySelector("#quick-regen-btn");
+        this.#continueButton = this.shadowRoot.querySelector("#continue-btn");
+        this.#inputModeButton = this.shadowRoot.querySelector("#input-mode-btn");
         this.#goToParentButton = this.shadowRoot.querySelector("#go-to-parent-btn");
         this.#personaModal = this.shadowRoot.querySelector("#persona-modal");
         this.#personaSearchInput = this.shadowRoot.querySelector("#persona-search-input");
@@ -171,26 +292,151 @@ export class AdventureChatMode extends BaseChatMode {
         this.#personaAvatarImg = this.shadowRoot.querySelector("#user-persona-avatar");
         this.#personaNameEl = this.shadowRoot.querySelector("#user-persona-name");
 
+        // Initialize Scroller
+        this.#scroller = new ContinuousScroller(this.#historyContainer);
+
         this.#settings = this.settings;
         this.#applySettings();
 
+        this.#initializeInputBlocks();
+
         this.#form.addEventListener("submit", this.#handleSend.bind(this));
         this.#sendButton.addEventListener("click", this.#handleSend.bind(this));
-        this.#textbox.addEventListener("keydown", this.#handleTextboxKeydown.bind(this));
-        this.#textbox.addEventListener("input", () => { if (!this.isSending) this.#sendButton.disabled = this.#textbox.value.trim() === ""; });
+        
         if (this.#quickRegenButton) this.#quickRegenButton.addEventListener("click", this.#handleQuickRegen.bind(this));
+        if (this.#continueButton) this.#continueButton.addEventListener("click", this.#handleContinue.bind(this));
+        if (this.#inputModeButton) this.#inputModeButton.addEventListener("click", this.#toggleInputMode.bind(this));
         if (this.#goToParentButton) this.#goToParentButton.addEventListener("click", () => this.goToParentChat());
         this.#historyContainer.addEventListener("click", this.#handleHistoryClick.bind(this));
 
-        // Persona modal event listeners
         this.shadowRoot.querySelector("#user-persona-btn").addEventListener("click", () => this.#openPersonaModal());
         this.shadowRoot.querySelector("#close-persona-modal-btn").addEventListener("click", () => this.#closePersonaModal());
         this.#personaModal.addEventListener("click", (e) => { if (e.target === this.#personaModal) this.#closePersonaModal(); });
         this.#personaSearchInput.addEventListener("input", () => this.#renderPersonaList());
         this.#personaCharacterList.addEventListener("click", (e) => this.#handlePersonaSelection(e));
 
+        this.shadowRoot.querySelector('#curation-toggle').addEventListener('click', () => this.#toggleCuration());
+
         this.#updatePersonaAvatar();
         this.#rebuildStrippedHistory();
+        this.#loadGlobalSettings();
+        this.#updateInputModeUI();
+    }
+
+    #initializeInputBlocks() {
+        this.#inputContainer.innerHTML = '';
+        this.#addBlock(false);
+        this.#addBlock(true);
+    }
+
+    #toggleInputMode() {
+        this.#inputMode = this.#inputMode === 'blocks' ? 'plaintext' : 'blocks';
+        this.#updateInputModeUI();
+    }
+
+    #updateInputModeUI() {
+        const scrollContainer = this.shadowRoot.querySelector("#input-scroll-container");
+        const icon = this.#inputModeButton.querySelector(".material-icons");
+
+        if (this.#inputMode === 'plaintext') {
+            scrollContainer.style.display = 'none';
+            this.#plaintextContainer.style.display = 'block';
+            this.#inputModeButton.title = "Switch to Block Editor";
+            if (icon) icon.textContent = "view_agenda";
+            setTimeout(() => {
+                const textarea = this.#plaintextInput?.shadowRoot?.querySelector('textarea');
+                if (textarea) textarea.focus();
+            }, 0);
+        } else {
+            scrollContainer.style.display = 'block';
+            this.#plaintextContainer.style.display = 'none';
+            this.#inputModeButton.title = "Switch to Plaintext Input";
+            if (icon) icon.textContent = "notes";
+        }
+    }
+
+    #addBlock(isPlaceholder = false, insertBeforeEl = null) {
+        const block = document.createElement("adventure-block-editor");
+        const participantIds = this.chat?.participants.map(p => typeof p === 'object' ? p.id : p) || [];
+        block.setContext(this.allCharacters, participantIds, this.userPersona);
+
+        if (isPlaceholder) {
+            block.classList.add("placeholder");
+            block.addEventListener("block-add", () => {
+                this.#addBlock(false, block);
+            });
+            this.#inputContainer.appendChild(block);
+        } else {
+            block.addEventListener("block-delete", () => block.remove());
+            block.addEventListener("block-up", () => {
+                const prev = block.previousElementSibling;
+                if (prev) this.#inputContainer.insertBefore(block, prev);
+            });
+            block.addEventListener("block-down", () => {
+                const next = block.nextElementSibling;
+                if (next && !next.classList.contains("placeholder")) {
+                    this.#inputContainer.insertBefore(next, block);
+                }
+            });
+
+            if (insertBeforeEl) {
+                this.#inputContainer.insertBefore(block, insertBeforeEl);
+            } else {
+                const placeholder = this.#inputContainer.lastElementChild;
+                if (placeholder && placeholder.classList.contains("placeholder")) {
+                    this.#inputContainer.insertBefore(block, placeholder);
+                } else {
+                    this.#inputContainer.appendChild(block);
+                }
+            }
+        }
+        return block;
+    }
+
+    async #loadGlobalSettings() {
+        try {
+            const settings = await api.get('/api/settings');
+            this.#curationEnabled = !!settings.chat?.curateResponse;
+            this.#updateCurationButton();
+        } catch (error) {
+            console.warn('Failed to load global curation setting:', error);
+        }
+    }
+
+    async #toggleCuration() {
+        const newState = !this.#curationEnabled;
+        this.#curationEnabled = newState;
+        this.#updateCurationButton();
+
+        try {
+            await api.post('/api/settings', { chat: { curateResponse: newState } });
+            notifier.show({ type: 'info', message: `Response Curation ${newState ? 'Enabled' : 'Disabled'}`, duration: 2000 });
+        } catch (error) {
+            console.error('Failed to toggle curation setting:', error);
+            this.#curationEnabled = !newState;
+            this.#updateCurationButton();
+            notifier.show({ type: 'bad', message: 'Failed to update setting.' });
+        }
+    }
+
+    #updateCurationButton() {
+        const btn = this.shadowRoot.querySelector('#curation-toggle');
+        if (!btn) return;
+        
+        if (this.#curationEnabled) {
+            btn.classList.add('active');
+            btn.title = "Curation Enabled (Enhance AI responses)";
+        } else {
+            btn.classList.remove('active');
+            btn.title = "Curation Disabled";
+        }
+    }
+
+    onGlobalSettingsChanged(settings) {
+        if (settings.chat?.curateResponse !== undefined) {
+            this.#curationEnabled = settings.chat.curateResponse;
+            this.#updateCurationButton();
+        }
     }
 
     onSettingsChanged(newSettings) {
@@ -199,59 +445,45 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     #applySettings() { this.style.setProperty("--adventure-block-gap", `${this.#settings.blockGap}rem`); }
-    onChatSwitched() { this.refreshChatHistory(); this.#rebuildStrippedHistory(); }
+
+    onChatSwitched() { this.refreshChatHistory(); this.#rebuildStrippedHistory(); this.#refreshInputContext(); }
     onChatBranched() { this.#rebuildStrippedHistory(); }
-    onParticipantsChanged() { this.refreshChatHistory(); }
-    onAllCharactersChanged() { this.refreshChatHistory(); }
-    onUserPersonaChanged() { this.refreshChatHistory(); this.#updatePersonaAvatar(); }
+    onParticipantsChanged() { this.refreshChatHistory(); this.#refreshInputContext(); }
+    onAllCharactersChanged() { this.refreshChatHistory(); this.#refreshInputContext(); }
+    onUserPersonaChanged() { this.refreshChatHistory(); this.#updatePersonaAvatar(); this.#refreshInputContext(); }
+
+    #refreshInputContext() {
+        const editors = this.shadowRoot.querySelectorAll("adventure-block-editor");
+        const participantIds = this.chat?.participants.map(p => typeof p === 'object' ? p.id : p) || [];
+        editors.forEach(ed => ed.setContext(this.allCharacters, participantIds, this.userPersona));
+    }
 
     onMessagesAdded(addedMessages) {
         this.#rebuildStrippedHistory();
         const optimisticUserEl = this.shadowRoot.querySelector('.optimistic-user-message');
         const optimisticAssistantEl = this.shadowRoot.querySelector('.optimistic-assistant-message');
-
-        // Handle normal prompt (user + assistant messages)
-        if (optimisticUserEl && optimisticAssistantEl && addedMessages.length >= 2) {
-            const finalUserMsg = addedMessages.at(-2);
-            const finalAssistantMsg = addedMessages.at(-1);
-            const tempAssistantId = optimisticAssistantEl.dataset.messageId;
-
-            // The onStreamFinish handler flags the temporary ID to prevent re-renders during animation.
-            // We must transfer this flag to the new permanent ID that we receive from the server
-            // to ensure the guard in onMessageUpdated works correctly later.
-            if (this.#justAnimatedMessageIds.has(tempAssistantId)) {
-                this.#justAnimatedMessageIds.delete(tempAssistantId);
-                this.#justAnimatedMessageIds.add(finalAssistantMsg.id);
+    
+        const finalUserMsg = addedMessages.find(m => m.role === 'user');
+        const finalAssistantMsg = addedMessages.find(m => m.role === 'assistant');
+    
+        if (optimisticUserEl || optimisticAssistantEl) {
+            if (optimisticUserEl && finalUserMsg) {
+                this.#updateMessageContent(optimisticUserEl, finalUserMsg);
+                optimisticUserEl.classList.remove('optimistic-user-message');
             }
-
-            // Update the optimistic user message with its final server-confirmed content and ID.
-            this.#updateMessageContent(optimisticUserEl, finalUserMsg);
-
-            // Update the optimistic assistant message element's ID to its permanent one.
-            // We do *not* update its content here, as the animation is handling that.
-            optimisticAssistantEl.dataset.messageId = finalAssistantMsg.id;
-
-            // Clean up the optimistic classes now that messages have been updated
-            optimisticUserEl.classList.remove('optimistic-user-message');
-            optimisticAssistantEl.classList.remove('optimistic-assistant-message');
-        }
-        // Handle regeneration (only assistant message)
-        else if (optimisticAssistantEl && addedMessages.length === 1 && addedMessages[0].role === 'assistant') {
-            const finalAssistantMsg = addedMessages[0];
-            const tempAssistantId = optimisticAssistantEl.dataset.messageId;
-
-            if (this.#justAnimatedMessageIds.has(tempAssistantId)) {
-                this.#justAnimatedMessageIds.delete(tempAssistantId);
-                this.#justAnimatedMessageIds.add(finalAssistantMsg.id);
+    
+            if (optimisticAssistantEl && finalAssistantMsg) {
+                const tempAssistantId = optimisticAssistantEl.dataset.messageId;
+    
+                if (this.#justAnimatedMessageIds.has(tempAssistantId)) {
+                    this.#justAnimatedMessageIds.delete(tempAssistantId);
+                    this.#justAnimatedMessageIds.add(finalAssistantMsg.id);
+                }
+    
+                optimisticAssistantEl.dataset.messageId = finalAssistantMsg.id;
+                optimisticAssistantEl.classList.remove('optimistic-assistant-message');
             }
-
-            optimisticAssistantEl.dataset.messageId = finalAssistantMsg.id;
-            optimisticAssistantEl.classList.remove('optimistic-assistant-message');
-        }
-        else {
-            // Fallback if we can't find the optimistic elements. This will kill any running animation,
-            // but prevents the UI from getting into a stuck state.
-            // Only refresh if not currently animating to avoid interrupting the typewriter effect
+        } else {
             if (!this.#isAnimating) {
                 this.refreshChatHistory();
             }
@@ -299,13 +531,10 @@ export class AdventureChatMode extends BaseChatMode {
         const loaderContainer = this.shadowRoot.querySelector('#history-loader-container');
         loaderContainer.after(fragment);
 
-        // Restore scroll position to keep view stable
         const newScrollHeight = container.scrollHeight;
         container.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
 
-        // Rebuild stripped history to include newly loaded messages for AI context
         this.#rebuildStrippedHistory();
-
         this.#isLoadingHistory = false;
         this.#renderHistoryLoader();
     }
@@ -325,17 +554,14 @@ export class AdventureChatMode extends BaseChatMode {
         if (!messageData) return null;
 
         if (messageData.role === "assistant") {
-            // For assistant messages, update the existing element to show spinner
             const messageEl = this.shadowRoot.querySelector(`[data-message-id="${messageId}"]`);
             if (messageEl) {
                 this.#updateMessageContent(messageEl, {
                     ...messageData,
                     content: '<minerva-spinner mode="infinite"></minerva-spinner>'
                 });
-                return messageId; // Return the same message ID since we're updating in place
+                return messageId; 
             }
-            // Fallback: if we can't find the element, refresh and try again
-            console.warn(`Could not find message element for ${messageId}, refreshing chat history`);
             this.refreshChatHistory();
             const retryEl = this.shadowRoot.querySelector(`[data-message-id="${messageId}"]`);
             if (retryEl) {
@@ -347,7 +573,6 @@ export class AdventureChatMode extends BaseChatMode {
             }
             return null;
         } else if (messageData.role === "user") {
-            // For user messages, create a new assistant spinner
             const assistantSpinnerMessage = {
                 id: `assistant-${uuidv4()}`,
                 role: "assistant",
@@ -371,30 +596,23 @@ export class AdventureChatMode extends BaseChatMode {
     #handleSend(event) {
         event.preventDefault();
         if (this.isSending) { this.abortGeneration(); return; }
-        const promptText = event.target.value || this.getUserInput();
-        const isProgrammaticSend = !!event.target.value;
-        if (promptText && (isProgrammaticSend || !this.#sendButton.disabled)) {
+        
+        const promptText = this.getUserInput();
+        
+        if (promptText && !this.#sendButton.disabled) {
             const userMessage = { role: "user", content: promptText, characterId: this.userPersona?.id || null, timestamp: new Date().toISOString(), id: `user-${uuidv4()}` };
-            console.log('[AdventureChatMode] Sending prompt with message history:', {
-                strippedHistoryLength: this.#strippedHistory.length,
-                totalChatMessages: this.chat?.messages?.length,
-                firstMessageId: this.#strippedHistory[0]?.id,
-                lastMessageId: this.#strippedHistory[this.#strippedHistory.length - 1]?.id
-            });
             this.sendChatCompletion({ userMessage, messages: [...this.#strippedHistory] });
-        }
-    }
-
-    #handleTextboxKeydown(event) {
-        if (event.key === "Enter" && event.ctrlKey && this.#sendButton && !this.#sendButton.disabled) {
-            event.preventDefault();
-            this.#handleSend(event);
         }
     }
 
     #handleQuickRegen() {
         if (this.isSending || this.#isAnimating || !this.chat || this.chat.messages.length === 0) return;
         this.regenerateMessage(this.chat.messages.at(-1).id);
+    }
+
+    #handleContinue() {
+        if (this.isSending || this.#isAnimating) return;
+        this.sendPrompt("<noop_continue/>");
     }
 
     #openPersonaModal() {
@@ -433,7 +651,6 @@ export class AdventureChatMode extends BaseChatMode {
 
         const characterId = characterItem.dataset.characterId;
 
-        // If clicking the current persona, clear it
         if (this.userPersona?.id === characterId) {
             this.setUserPersona(null);
         } else {
@@ -461,35 +678,18 @@ export class AdventureChatMode extends BaseChatMode {
             return;
         }
         
-        const header = event.target.closest(".adventure-prompt-header");
-        if (header) {
-            const promptBlock = header.closest(".adventure-prompt");
-            promptBlock.classList.toggle("collapsed");
-            const icon = header.querySelector(".expand-icon");
-            if (icon) icon.textContent = promptBlock.classList.contains("collapsed") ? "unfold_more" : "unfold_less";
-            return;
-        }
-
         const avatarImg = event.target.closest(".adventure-speaker-avatar, .adventure-image-display");
         if (avatarImg?.tagName === "IMG") { imagePreview.show({ src: avatarImg.src, alt: avatarImg.alt }); return; }
 
         for (const button of event.composedPath()) {
             if (button.tagName === "BUTTON" && button.dataset.action) {
-                const messageId = button.closest(".chat-message")?.dataset.messageId;
-                if (!messageId) continue;
                 const action = button.dataset.action;
                 event.preventDefault();
 
-                if (action === "adventure-choice") {
-                    this.#handleSend({ preventDefault: () => {}, target: { value: `<choice>${button.dataset.choiceText}</choice>` } });
-                    const choiceContainer = button.closest(".adventure-prompt-body");
-                    if (choiceContainer) choiceContainer.innerHTML = `<p><em>You chose: ${this.#escapeHtml(button.dataset.choiceText)}</em></p>`;
-                    return;
-                } else if (action === "navigate-to-character") {
+                if (action === "navigate-to-character") {
                     this.dispatch("navigate-to-view", { view: "characters", state: { selectedCharacterId: button.dataset.characterId } });
                     return;
                 }
-                // Note: Message control actions are now handled by dropdown-menu events
             }
         }
     }
@@ -498,46 +698,138 @@ export class AdventureChatMode extends BaseChatMode {
         const isAdventure = messageEl.classList.contains("adventure-mode");
         const contentContainer = isAdventure ? messageEl : messageEl.querySelector(".message-content");
         if (!contentContainer) return;
+        
         const originalContent = this.getMessageById(messageId)?.content || "";
+        const originalHTML = contentContainer.innerHTML;
 
-        const editor = document.createElement("text-box");
-        editor.value = originalContent;
-        editor.style.minHeight = "150px";
-        editor.style.height = `${Math.max(contentContainer.offsetHeight, 150)}px`;
+        const editContainer = document.createElement("div");
+        editContainer.className = "message-edit-container";
+        editContainer.style.width = "100%";
+        
+        let contentToParse = originalContent.trim();
+        if (!contentToParse.startsWith("<root>") && !contentToParse.startsWith("<scene>") && !contentToParse.includes("<")) {
+            const block = document.createElement("adventure-block-editor");
+            block.setContext(this.allCharacters, this.chat?.participants.map(p => typeof p === 'object' ? p.id : p), this.userPersona);
+            block.setData('text', contentToParse);
+            editContainer.appendChild(block);
+        } else {
+            if (!contentToParse.startsWith("<root>") && !contentToParse.startsWith("<scene>")) {
+                contentToParse = `<root>${contentToParse}</root>`;
+            }
+            
+            const doc = this.#tryRepairSceneML(contentToParse);
+            const rootNodes = doc ? Array.from(doc.documentElement.children) : [];
+            
+            rootNodes.forEach(node => {
+                const tagName = node.nodeName.toLowerCase();
+                const block = document.createElement("adventure-block-editor");
+                block.setContext(this.allCharacters, this.chat?.participants.map(p => typeof p === 'object' ? p.id : p), this.userPersona);
+                
+                block.addEventListener("block-delete", () => block.remove());
+                block.addEventListener("block-up", () => {
+                    const prev = block.previousElementSibling;
+                    if (prev) editContainer.insertBefore(block, prev);
+                });
+                block.addEventListener("block-down", () => {
+                    const next = block.nextElementSibling;
+                    if (next) editContainer.insertBefore(next, block);
+                });
 
-        // Store menu button temporarily if it exists
-        const menuButton = messageEl.querySelector('.message-menu-trigger');
-        if (menuButton) menuButton.style.display = 'none';
+                if (tagName === 'text') {
+                    block.setData('text', node.textContent.trim());
+                    editContainer.appendChild(block);
+                } else if (tagName === 'speech') {
+                    const id = node.getAttribute('id');
+                    const name = node.getAttribute('name');
+                    block.setData('speech', node.textContent.trim(), { id, name });
+                    editContainer.appendChild(block);
+                } else if (tagName === 'unformatted') {
+                    block.setData('unformatted', node.textContent.trim());
+                    editContainer.appendChild(block);
+                }
+            });
+        }
+        
+        const placeholder = document.createElement("adventure-block-editor");
+        placeholder.classList.add("placeholder");
+        placeholder.setContext(this.allCharacters, this.chat?.participants.map(p => typeof p === 'object' ? p.id : p), this.userPersona);
+        placeholder.addEventListener("block-add", () => {
+            const newBlock = document.createElement("adventure-block-editor");
+            newBlock.setContext(this.allCharacters, this.chat?.participants.map(p => typeof p === 'object' ? p.id : p), this.userPersona);
+            newBlock.addEventListener("block-delete", () => newBlock.remove());
+            newBlock.addEventListener("block-up", () => {
+                const prev = newBlock.previousElementSibling;
+                if (prev) editContainer.insertBefore(newBlock, prev);
+            });
+            newBlock.addEventListener("block-down", () => {
+                const next = newBlock.nextElementSibling;
+                if (next && !next.classList.contains("placeholder")) editContainer.insertBefore(next, newBlock);
+            });
+            editContainer.insertBefore(newBlock, placeholder);
+        });
+        editContainer.appendChild(placeholder);
+
+        const controls = document.createElement("div");
+        controls.className = "edit-controls";
+        controls.innerHTML = `
+            <button class="button-secondary cancel-btn">Cancel</button>
+            <button class="button-primary save-btn">Save</button>
+        `;
 
         contentContainer.innerHTML = "";
-        contentContainer.appendChild(editor);
-        editor.focus();
+        contentContainer.appendChild(editContainer);
+        contentContainer.appendChild(controls);
 
-        let isCancelled = false;
-        const onKeydown = (e) => {
-            if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); editor.blur(); }
-            else if (e.key === "Escape") { e.preventDefault(); isCancelled = true; editor.blur(); }
-        };
-        const onBlur = () => {
-            editor.removeEventListener("keydown", onKeydown);
-            editor.removeEventListener("blur", onBlur);
-            const newContent = editor.value;
-            if (isCancelled || newContent.trim() === originalContent.trim()) this.#updateMessageContent(messageEl, this.getMessageById(messageId));
-            else this.saveEditedMessage(messageId, newContent);
-            // Restore menu button
-            if (menuButton) menuButton.style.display = '';
-        };
-        editor.addEventListener("keydown", onKeydown);
-        editor.addEventListener("blur", onBlur);
+        controls.querySelector(".cancel-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            contentContainer.innerHTML = originalHTML;
+            this.#updateMessageContent(messageEl, this.getMessageById(messageId));
+        });
+
+        controls.querySelector(".save-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            const editors = editContainer.querySelectorAll("adventure-block-editor:not(.placeholder)");
+            const newContent = Array.from(editors).map(ed => ed.toXML()).join("\n\n");
+            
+            if (newContent.trim() !== originalContent.trim()) {
+                this.saveEditedMessage(messageId, newContent);
+            } else {
+                this.#updateMessageContent(messageEl, this.getMessageById(messageId));
+            }
+        });
     }
 
-    getUserInput() { return this.#textbox.value; }
-    clearUserInput() { this.#textbox.value = ""; }
+    getUserInput() {
+        if (this.#inputMode === 'plaintext') {
+            const raw = this.#plaintextInput.value.trim();
+            if (!raw) return "";
+            return `<unformatted>\n${raw}\n</unformatted>`;
+        } else {
+            const editors = this.#inputContainer.querySelectorAll("adventure-block-editor:not(.placeholder)");
+            const parts = Array.from(editors).map(ed => ed.toXML());
+            return parts.join("\n\n").trim();
+        }
+    }
+
+    clearUserInput() { 
+        this.#initializeInputBlocks();
+        this.#plaintextInput.value = "";
+    }
 
     updateInputState(isSending = false) {
         this.isSending = isSending;
-        if (!this.#textbox || !this.#sendButton) return;
-        this.#textbox.disabled = isSending || this.#isAnimating;
+        if (!this.#sendButton) return;
+        
+        // Block mode
+        this.#inputContainer.style.pointerEvents = isSending ? "none" : "auto";
+        this.#inputContainer.style.opacity = isSending ? "0.6" : "1";
+        
+        // Plaintext mode
+        this.#plaintextInput.disabled = isSending;
+
+        // Toggle button logic
+        this.#inputModeButton.disabled = isSending;
+
         const sendIcon = this.#sendButton.querySelector(".material-icons");
         if (isSending) {
             this.#sendButton.disabled = false;
@@ -545,12 +837,14 @@ export class AdventureChatMode extends BaseChatMode {
             this.#sendButton.classList.add("stop-button");
             if (sendIcon) sendIcon.textContent = "stop";
         } else {
-            this.#sendButton.disabled = this.getUserInput().trim() === "" || this.#isAnimating;
+            this.#sendButton.disabled = this.#isAnimating; 
             this.#sendButton.title = "Send";
             this.#sendButton.classList.remove("stop-button");
             if (sendIcon) sendIcon.textContent = "send";
         }
+        
         if (this.#quickRegenButton) this.#quickRegenButton.disabled = isSending || this.#isAnimating || !this.chat || this.chat.messages.length === 0;
+        if (this.#continueButton) this.#continueButton.disabled = isSending || this.#isAnimating;
         if (this.#goToParentButton) this.#goToParentButton.style.display = this.chat && this.chat.parentId ? 'flex' : 'none';
     }
 
@@ -567,13 +861,21 @@ export class AdventureChatMode extends BaseChatMode {
             for (const msg of this.shadowRoot.querySelectorAll('.chat-message.assistant')) if (msg.innerHTML.includes('<minerva-spinner')) { messageEl = msg; break; }
         }
         if (messageEl) {
-            // Set animation flag immediately to prevent race conditions with server updates
             this.#isAnimating = true;
             this.#justAnimatedMessageIds.add(messageEl.dataset.messageId);
+            
+            // Start scrolling support for new message animation
+            if (this.#settings.autoScroll) {
+                this.#scroller.setTypingStatus(true);
+            }
+            
             await this.#animateSceneMLResponse(messageEl, { id: messageEl.dataset.messageId, role: "assistant", content: finalContent });
-            // Note: optimistic-assistant-message class is removed in onMessagesAdded after IDs are updated
+            
+            if (this.#settings.autoScroll) {
+                this.#scroller.setTypingStatus(false);
+            }
         } else {
-            notifier.warning(`Failed to render response: Could not find message element (ID: ${messageId})`);
+            notifier.show({ type: 'warn', message: `Failed to render response: Could not find message element (ID: ${messageId})` });
         }
         this.#streamingContent.delete(messageId);
     }
@@ -586,7 +888,6 @@ export class AdventureChatMode extends BaseChatMode {
             messageEl.classList.remove('optimistic-assistant-message');
         }
         this.#streamingContent.delete(messageId);
-        // Ensure animation flag is reset in case of error
         this.#isAnimating = false;
         this.updateInputState(false);
     }
@@ -597,14 +898,7 @@ export class AdventureChatMode extends BaseChatMode {
         this.#historyContainer.innerHTML = '<div id="history-loader-container"></div>';
         this.#renderHistoryLoader();
         
-        this.#lastUnansweredPromptEl = null;
         for (let i = 0; i < this.chat.messages.length; i++) this.appendMessage(this.chat.messages[i], false, i);
-        
-        if (this.#lastUnansweredPromptEl) {
-            this.#lastUnansweredPromptEl.classList.remove("collapsed");
-            const icon = this.#lastUnansweredPromptEl.querySelector(".expand-icon");
-            if (icon) icon.textContent = "unfold_less";
-        }
         
         setTimeout(() => { this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight; }, 0);
         this.updateInputState(this.isSending);
@@ -613,13 +907,6 @@ export class AdventureChatMode extends BaseChatMode {
     #renderHistoryLoader() {
         const container = this.shadowRoot.querySelector('#history-loader-container');
         if (!container) return;
-
-        console.log('[AdventureChatMode] renderHistoryLoader:', {
-            isLoadingHistory: this.#isLoadingHistory,
-            hasMoreMessages: this.chat?.hasMoreMessages,
-            totalMessages: this.chat?.messages?.length,
-            strippedHistoryLength: this.#strippedHistory?.length
-        });
 
         if (this.#isLoadingHistory) {
             container.innerHTML = '<div class="loader-wrapper"><minerva-spinner></minerva-spinner></div>';
@@ -655,123 +942,113 @@ export class AdventureChatMode extends BaseChatMode {
 
     #updateMessageContent(messageEl, msg, index = -1) {
         messageEl.dataset.messageId = msg.id;
-        if (msg.role !== "assistant") {
-            const isUser = msg.role === "user";
-            const isPlayerChoice = isUser && msg.content.startsWith("<choice>") && msg.content.endsWith("</choice>");
-            const author = isUser ? this.getCharacterById(msg.characterId) : null;
-            const authorName = author?.name || "You";
-            let content = isPlayerChoice ? `<em>You chose: ${this.#escapeHtml(msg.content.slice(8, -9))}</em>` : this.#escapeHtml(msg.content).replace(/\n/g, "<br>");
-            const avatarHTML = isUser ? "" : `<img src="assets/images/system_icon.svg" alt="System" class="avatar">`;
-            messageEl.className = `chat-message ${isUser ? 'user' : msg.role}`;
-            messageEl.innerHTML = `${avatarHTML}<div class="message-bubble"><div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${content}</div></div>`;
+        if (msg.content.includes("<minerva-spinner")) {
+            messageEl.className = "chat-message assistant adventure-mode";
+            messageEl.innerHTML = `<div class="message-content">${msg.content}</div>`;
+            return;
+        }
 
-            // Add menu button to header
-            const menuButton = this.#createMessageMenuButton(msg);
-            messageEl.querySelector('.message-header').appendChild(menuButton);
+        let contentToParse = msg.content || "";
+        if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>") && !contentToParse.includes("<")) {
+             contentToParse = `<root><text>${contentToParse}</text></root>`;
+        } else if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>")) {
+             contentToParse = `<root>${contentToParse}</root>`;
+        }
+
+        const doc = this.#tryRepairSceneML(contentToParse);
+        const rootNodes = doc ? Array.from(doc.documentElement.children) : [];
+        const parserError = doc?.querySelector("parsererror");
+
+        if (parserError || rootNodes.length === 0) {
+             const authorName = msg.role === 'user' ? (this.userPersona?.name || "You") : "Assistant";
+             const avatarUrl = msg.role === 'user' ? (this.userPersona?.avatarUrl || "assets/images/user_icon.svg") : "assets/images/assistant_icon.svg";
+             
+             messageEl.className = `chat-message ${msg.role}`;
+             messageEl.innerHTML = `<img src="${avatarUrl}" alt="${authorName}" class="avatar"><div class="message-bubble"><div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this.#escapeHtml(msg.content).replace(/\n/g, "<br>")}</div></div>`;
+             
+             const menuButton = this.#createMessageMenuButton(msg);
+             messageEl.querySelector('.message-header').appendChild(menuButton);
         } else {
-            const content = msg.content || "";
-            if (content.includes("<minerva-spinner")) {
-                messageEl.className = "chat-message assistant adventure-mode";
-                messageEl.innerHTML = `<div class="message-content">${content}</div>`;
-                const menuButton = this.#createMessageMenuButton(msg);
-                menuButton.classList.add('adventure-menu');
-                messageEl.appendChild(menuButton);
-                return;
-            }
+            messageEl.className = `chat-message ${msg.role} adventure-mode`;
+            messageEl.innerHTML = "";
+            
+            messageEl.appendChild(this.#renderSceneMLOutput(rootNodes, msg, index));
 
-            const doc = this.#tryRepairSceneML(content);
-            const sceneNode = doc?.querySelector("scene");
-            const parserError = doc?.querySelector("parsererror");
-
-            if (parserError || !sceneNode) {
-                const author = this.allCharacters.find(c => c.id === this.chat.participants.find(p => !p.isAuto)?.id);
-                const avatarUrl = author?.avatarUrl || "assets/images/assistant_icon.svg";
-                const authorName = author?.name || "Assistant";
-                messageEl.className = "chat-message assistant";
-                messageEl.innerHTML = `<img src="${avatarUrl}" alt="${authorName}" class="avatar"><div class="message-bubble"><div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this.#escapeHtml(content).replace(/\n/g, "<br>")}</div></div>`;
-
-                // Add menu button to header
-                const menuButton = this.#createMessageMenuButton(msg);
-                messageEl.querySelector('.message-header').appendChild(menuButton);
-
-                if (parserError) {
-                    const errorDetails = document.createElement("div");
-                    errorDetails.className = "adventure-parse-error";
-                    errorDetails.innerHTML = "<strong>Parse Error:</strong><pre>" + this.#escapeHtml(parserError.textContent) + "</pre>";
-                    messageEl.querySelector(".message-bubble").appendChild(errorDetails);
-                }
-            } else {
-                messageEl.className = "chat-message assistant adventure-mode";
-                messageEl.appendChild(this.#renderSceneMLOutput(sceneNode, msg, index));
-
-                // Add menu button
-                const menuButton = this.#createMessageMenuButton(msg);
-                menuButton.classList.add('adventure-menu');
-                messageEl.appendChild(menuButton);
-            }
+            const menuButton = this.#createMessageMenuButton(msg);
+            menuButton.classList.add('adventure-menu');
+            messageEl.appendChild(menuButton);
         }
     }
 
     #sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    async #typewriter(element, childNodes) {
+    async #typewriter(targetElement, nodes) {
         const speed = this.#settings.scrollSpeed;
-        element.innerHTML = "";
-        element.style.animation = "none";
-        element.style.opacity = "1";
-        const scrollIntoViewIfNeeded = (el) => {
-            if (!this.#settings.autoScroll) return;
-            const containerRect = this.#historyContainer.getBoundingClientRect();
-            if (el.getBoundingClientRect().bottom > containerRect.bottom) el.scrollIntoView({ behavior: "auto", block: "end", inline: "nearest" });
-        };
-        for (const node of childNodes) {
-            if (node.nodeType === Node.ELEMENT_NODE && node.nodeName.toLowerCase() === 'pause') {
-                const duration = parseFloat(node.getAttribute('for') || 0) * 1000;
-                if (duration > 0) await this.#sleep(duration);
-            } else if (node.nodeType === Node.TEXT_NODE) {
+        
+        // Pass the specific node we are typing into to the scroller
+        // This allows physics-based tracking of the exact visual cursor
+        this.#scroller.trackElement(targetElement);
+
+        for (const node of nodes) {
+            if (node.nodeType === Node.TEXT_NODE) {
                 const text = node.textContent;
                 const textNode = document.createTextNode("");
-                element.appendChild(textNode);
+                targetElement.appendChild(textNode);
+                
                 if (speed > 0) {
                     for (const char of text) {
                         textNode.nodeValue += char;
-                        scrollIntoViewIfNeeded(element);
                         await this.#sleep(speed);
                     }
                 } else {
                     textNode.nodeValue = text;
-                    scrollIntoViewIfNeeded(element);
                 }
-            } else {
-                element.appendChild(node.cloneNode(true));
-                scrollIntoViewIfNeeded(element);
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                if (node.tagName.toLowerCase() === 'pause') {
+                    const duration = parseFloat(node.getAttribute('duration') || node.getAttribute('for') || 0) * 1000;
+                    if (duration > 0) await this.#sleep(duration);
+                    continue;
+                }
+                const clone = node.cloneNode(false);
+                targetElement.appendChild(clone);
+                // Recursively type into children
+                await this.#typewriter(clone, Array.from(node.childNodes));
+                // Resumes tracking parent after child is done
+                this.#scroller.trackElement(targetElement);
             }
         }
     }
 
     #getElementsToType(block) {
         if (!block) return [];
-        const elementsToTypeInBlock = [];
-        if (block.classList.contains("adventure-narrate")) elementsToTypeInBlock.push(block);
-        else if (block.classList.contains("adventure-dialogue")) elementsToTypeInBlock.push(...block.querySelectorAll(".adventure-speech"));
-        else if (block.classList.contains("adventure-image")) elementsToTypeInBlock.push(...block.querySelectorAll(".adventure-narrate, .adventure-speech"));
-        return elementsToTypeInBlock;
+        if (block.classList.contains("adventure-text")) return [block.querySelector(".adventure-text-content") || block]; 
+        if (block.classList.contains("adventure-speech")) return [block.querySelector(".adventure-speech-content")];
+        return [];
     }
     
     async #animateSceneMLResponse(messageEl, msg) {
-        // Note: #isAnimating is already set to true in onStreamFinish before calling this
         this.updateInputState(this.isSending);
         messageEl.innerHTML = "";
 
-        const doc = this.#tryRepairSceneML(msg.content || "");
-        const sceneNode = doc?.querySelector("scene");
-        if (!sceneNode) { this.#updateMessageContent(messageEl, msg); this.#isAnimating = false; this.updateInputState(false); return; }
+        let contentToParse = msg.content || "";
+        if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>")) {
+            contentToParse = `<root>${contentToParse}</root>`;
+        }
+
+        const doc = this.#tryRepairSceneML(contentToParse);
+        const rootNodes = doc ? Array.from(doc.documentElement.children) : [];
+        
+        if (rootNodes.length === 0) { 
+            this.#updateMessageContent(messageEl, msg); 
+            this.#isAnimating = false; 
+            this.updateInputState(false); 
+            return; 
+        }
 
         messageEl.className = "chat-message assistant adventure-mode";
 
-        // 1. Create all blocks and prepare content, but don't add to DOM yet
         const blocksAndContent = [];
-        for (const node of Array.from(sceneNode.children)) {
+        for (const node of rootNodes) {
             const block = this.#createSceneMLBlock(node, msg, -1);
             if (block) {
                 const elementsToType = this.#getElementsToType(block);
@@ -784,7 +1061,6 @@ export class AdventureChatMode extends BaseChatMode {
             }
         }
 
-        // Preload images from all blocks before starting animation
         const allImageElements = blocksAndContent
             .map(item => Array.from(item.block.querySelectorAll('img.adventure-image-display')))
             .flat();
@@ -795,7 +1071,6 @@ export class AdventureChatMode extends BaseChatMode {
         }));
         await Promise.all(imageLoadPromises);
 
-        // 2. Process blocks sequentially
         for (const item of blocksAndContent) {
             const { block, contentMap, elementsToType } = item;
 
@@ -805,147 +1080,199 @@ export class AdventureChatMode extends BaseChatMode {
                 continue;
             }
 
-            // Append one block at a time
             messageEl.appendChild(block);
-            block.style.opacity = 0; // Set opacity just before animating
+            block.style.opacity = 0; 
             block.classList.add("adventure-fade-in");
 
-            await this.#sleep(400); // Wait for fade-in animation
+            await this.#sleep(400); 
 
             for (const element of elementsToType) {
                 await this.#typewriter(element, contentMap.get(element));
             }
         }
 
-        // Add menu button after animation completes
-        const menuButton = this.#createMessageMenuButton(msg);
-        menuButton.classList.add('adventure-menu');
-        messageEl.appendChild(menuButton);
+        const finalMessageId = messageEl.dataset.messageId;
+        const finalMessageObject = this.getMessageById(finalMessageId);
+
+        if (finalMessageObject) {
+            const menuButton = this.#createMessageMenuButton(finalMessageObject);
+            menuButton.classList.add('adventure-menu');
+            messageEl.appendChild(menuButton);
+        }
 
         this.#isAnimating = false;
         this.updateInputState(false);
     }
     
-    #renderSceneMLOutput(sceneNode, msg, index = -1) {
+    #renderSceneMLOutput(nodes, msg, index = -1) {
         const fragment = document.createDocumentFragment();
-        for (const node of Array.from(sceneNode.children)) {
+        for (const node of nodes) {
             const block = this.#createSceneMLBlock(node, msg, index);
             if (block) fragment.appendChild(block);
         }
         return fragment;
     }
 
+    #getXMLNodeContent(node) {
+        let content = "";
+        const serializer = new XMLSerializer();
+        for (const child of node.childNodes) {
+            if (child.nodeType === Node.CDATA_SECTION_NODE) {
+                content += child.nodeValue;
+            } else {
+                content += serializer.serializeToString(child);
+            }
+        }
+        return content;
+    }
+
     #createSceneMLBlock(node, msg, index = -1) {
         let block;
-        switch (node.nodeName.toLowerCase()) {
-            case "narrate": block = document.createElement("div"); block.className = "adventure-block adventure-narrate"; block.appendChild(this.#renderInlineContent(node)); break;
-            case "dialogue": block = this.#createDialogueBlock(node); break;
-            case "image": block = this.#createImageBlock(node, msg, index); break;
-            case "prompt": block = document.createElement("div"); block.className = "adventure-block adventure-prompt collapsed"; this.#populatePromptBlock(block, node, msg, index); break;
-            case "pause": block = document.createElement("div"); block.className = "adventure-block adventure-pause"; block.dataset.duration = node.getAttribute("for") || "0"; break;
-            case "custom": block = this.#createCustomBlock(node); break;
+        const tagName = node.nodeName.toLowerCase();
+        switch (tagName) {
+            case "text":
+            case "unformatted": // Reuse text styling for unformatted
+                block = document.createElement("div"); 
+                block.className = "adventure-block adventure-text"; 
+                const icon = node.getAttribute("icon") || (tagName === 'unformatted' ? 'notes' : null);
+                if (icon) {
+                    const iconEl = document.createElement("span");
+                    iconEl.className = "material-icons adventure-text-icon";
+                    iconEl.textContent = icon;
+                    block.appendChild(iconEl);
+                }
+                const contentWrapper = document.createElement("div");
+                contentWrapper.className = "adventure-text-content";
+                this.#renderMarkdownContent(contentWrapper, this.#getXMLNodeContent(node));
+                block.appendChild(contentWrapper);
+                break;
+                
+            case "speech": 
+                block = this.#createSpeechBlock(node); 
+                break;
+                
+            case "image": 
+                block = this.#createImageBlock(node, msg, index); 
+                break;
+                
+            case "pause": 
+                block = document.createElement("div"); 
+                block.className = "adventure-block adventure-pause"; 
+                block.dataset.duration = node.getAttribute("duration") || "0"; 
+                break;
+                
+            case "webview": 
+                block = this.#createWebviewBlock(node); 
+                break;
+
+            case "noop_continue":
+                block = document.createElement("div");
+                block.className = "adventure-continue-divider";
+                block.innerHTML = `
+                    <div class="adventure-continue-line"></div>
+                    <div class="adventure-continue-text">
+                        <span class="material-icons">fast_forward</span>
+                        Autocontinue
+                    </div>
+                    <div class="adventure-continue-line"></div>
+                `;
+                break;
+                
             default: return null;
         }
         return block;
     }
 
-    #createCustomBlock(node) {
-        const block = document.createElement("div");
-        block.className = "adventure-block adventure-custom";
-    
-        const htmlNode = node.querySelector("custom-html");
-        const cssNode = node.querySelector("custom-css");
-        const scriptNode = node.querySelector("custom-script");
-    
-        if (!htmlNode) {
-            block.innerHTML = `<div class="adventure-parse-error"><strong>Render Error:</strong> &lt;custom&gt; tag must contain a &lt;custom-html&gt; child.</div>`;
-            return block;
-        }
-    
-        // --- API for Custom Scripts ---
-        const minervaApi = {
-            prompt: (text = '') => {
-                if (!this.isSending && !this.#isAnimating) {
-                    this.#handleSend({ preventDefault: () => {}, target: { value: text } });
-                } else {
-                    console.warn('Minerva API: Cannot send prompt while a request is in progress or an animation is playing.');
-                }
-            },
-            canPrompt: () => !this.isSending && !this.#isAnimating,
-            getCharacter: (idOrName) => {
-                const char = this.#findCharacter(idOrName);
-                return char ? JSON.parse(JSON.stringify(char)) : null;
-            },
-            getParticipants: () => {
-                const participants = this.chat?.participants || [];
-                const participantObjects = participants.map(p => {
-                    const id = typeof p === 'string' ? p : p.id;
-                    return this.#findCharacter(id);
-                }).filter(Boolean);
-                return JSON.parse(JSON.stringify(participantObjects));
-            },
-            getPlayer: () => {
-                return this.userPersona ? JSON.parse(JSON.stringify(this.userPersona)) : null;
-            },
-            dispatchEvent: (eventName, detail) => {
-                block.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true, composed: true }));
-            }
-        };
-        block.minerva = minervaApi;
-        // ----------------------------
+    #renderMarkdownContent(targetElement, contentString) {
+        // Pre-process to expand self-closing <ref /> tags to <ref></ref>.
+        // In HTML5 parsing (used by tempDiv.innerHTML), non-void self-closing tags 
+        // are treated as opening tags, causing subsequent text to be included inside the ref element.
+        const protectedContent = (contentString || '').replace(/<ref([^>]*?)\s*\/>/gi, '<ref$1></ref>');
 
-        const shadow = block.attachShadow({ mode: 'open' });
-    
-        const htmlContent = htmlNode.innerHTML || '';
-        const cssContent = cssNode?.textContent || '';
-        const scriptContent = scriptNode?.textContent || '';
-    
-        shadow.innerHTML = `
-            <style>
-                :host {
-                    /* Inherit global variables for styling consistency */
-                    --bg-0: #202124; --bg-1: #282a2e; --bg-2: #323639; --bg-3: #3c4043;
-                    --text-primary: #e8eaed; --text-secondary: #bdc1c6; --text-disabled: #9aa0a6;
-                    --accent-primary: #8ab4f8; --accent-primary-faded: rgba(138, 180, 248, 0.3);
-                    --accent-good: #69f0ae; --accent-warn: #ffd54f; --accent-danger: #f28b82;
-                    --font-family: "Inter", sans-serif;
-                    --font-size-sm: 0.875rem; --font-size-md: 1rem;
-                    --radius-sm: 4px; --radius-md: 8px;
-                    --spacing-xs: 0.25rem; --spacing-sm: 0.5rem; --spacing-md: 1rem; --spacing-lg: 1.5rem;
-                    --transition-fast: all 0.15s ease-in-out;
-                }
-                ${cssContent}
-            </style>
-            ${htmlContent}
-        `;
-    
-        if (scriptContent) {
-            const script = document.createElement('script');
-            // Prepend the API accessor and wrap in a try-catch for safety
-            script.textContent = `
-                const minerva = document.currentScript.getRootNode().host.minerva;
-                try {
-                    ${scriptContent}
-                } catch (e) {
-                    console.error('Error in <custom-script>:', e);
-                    const errorDiv = document.createElement('div');
-                    errorDiv.style.cssText = 'color: var(--accent-danger); border: 1px solid var(--accent-danger); background-color: rgba(242, 139, 130, 0.1); padding: var(--spacing-sm); margin-top: var(--spacing-sm); border-radius: var(--radius-sm); font-family: monospace; white-space: pre-wrap;';
-                    errorDiv.textContent = 'Script Error: ' + e.message;
-                    document.currentScript.getRootNode().appendChild(errorDiv);
-                }
-            `;
-            shadow.appendChild(script);
+        const htmlContent = window.marked.parse(protectedContent);
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        while (tempDiv.firstChild) {
+            targetElement.appendChild(tempDiv.firstChild);
         }
-    
+        
+        const refs = targetElement.querySelectorAll('ref');
+        refs.forEach(ref => {
+            const wrapper = document.createElement('a');
+            wrapper.href = '#';
+            wrapper.className = 'adventure-char-ref';
+            wrapper.dataset.action = 'navigate-to-character';
+            wrapper.dataset.characterId = ref.getAttribute('id');
+            const name = ref.getAttribute('name');
+            wrapper.style.textTransform = 'capitalize';
+            wrapper.textContent = ref.textContent || name || ref.getAttribute('id');
+            ref.replaceWith(wrapper);
+        });
+    }
+
+    #createWebviewBlock(node) {
+        const block = document.createElement("div");
+        block.className = "adventure-block adventure-webview";
+        let htmlContent = this.#getXMLNodeContent(node);
+
+        const iframe = document.createElement("iframe");
+        iframe.className = "webview-frame";
+        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+        
+        iframe.srcdoc = htmlContent;
+        block.appendChild(iframe);
+        return block;
+    }
+
+    #createSpeechBlock(node) {
+        const block = document.createElement("div");
+        block.className = "adventure-block adventure-speech";
+        
+        const charId = node.getAttribute("id");
+        const charName = node.getAttribute("name");
+        const expressionId = node.getAttribute("expression");
+        
+        const character = this.#findCharacter(charId);
+        const displayName = charName || character?.name || charId || "Unknown";
+        
+        let avatarUrl = character?.avatarUrl || "assets/images/default_avatar.svg";
+        
+        if (expressionId && character?.expressions) {
+            const expr = character.expressions.find(e => e.name.toLowerCase() === expressionId.toLowerCase());
+            if (expr) avatarUrl = expr.url;
+        }
+
+        const avatarEl = document.createElement("img");
+        avatarEl.className = "adventure-speaker-avatar";
+        avatarEl.src = avatarUrl;
+        avatarEl.alt = displayName;
+        
+        // No wrapper needed for float layout!
+        // We append elements directly to the block so they flow around the float.
+        
+        const nameEl = document.createElement("div");
+        nameEl.className = "adventure-speaker-name";
+        nameEl.textContent = displayName;
+        
+        const textEl = document.createElement("div");
+        textEl.className = "adventure-speech-content";
+        this.#renderMarkdownContent(textEl, this.#getXMLNodeContent(node));
+        
+        // Append in order: Float (avatar), then Block (name), then Block (text)
+        block.appendChild(avatarEl);
+        block.appendChild(nameEl);
+        block.appendChild(textEl);
+        
         return block;
     }
 
     #createImageBlock(node, msg, index = -1) {
         const block = document.createElement("div");
         block.className = "adventure-block adventure-image";
-        const character = this.#findCharacter(node.getAttribute("from"));
-        const imageItem = character?.gallery?.find(item => item.src === node.getAttribute("src"));
-        if (imageItem?.url) {
+        
+        let imageUrl = node.getAttribute("src");
+        
+        if (imageUrl) {
             const imgContainer = document.createElement("div");
             imgContainer.className = "adventure-image-container";
             const img = document.createElement("img");
@@ -953,140 +1280,43 @@ export class AdventureChatMode extends BaseChatMode {
             img.onload = () => {
                 block.classList.add(img.naturalWidth / img.naturalHeight < 1 ? 'layout-side-by-side' : 'layout-overlay');
             };
-            img.src = imageItem.url;
-            img.alt = imageItem.alt || `Image from ${character.name}`;
+            img.src = imageUrl;
             imgContainer.appendChild(img);
             block.appendChild(imgContainer);
         }
-        const contentContainer = document.createElement("div");
-        contentContainer.className = "adventure-image-content";
-        contentContainer.appendChild(this.#renderSceneMLOutput(node, msg, index));
-        block.appendChild(contentContainer);
-        return block;
-    }
-
-    #populatePromptBlock(block, promptNode, msg, index = -1) {
-        const header = document.createElement("div"); header.className = "adventure-prompt-header";
-        const body = document.createElement("div"); body.className = "adventure-prompt-body";
-        const msgIndex = index > -1 ? index : this.chat.messages.findIndex(m => m.id === msg.id);
-        const isAnswered = this.chat.messages[msgIndex + 1]?.role === "user" && this.chat.messages[msgIndex + 1].content.startsWith("<choice>");
-        for (const child of Array.from(promptNode.children)) {
-            if (child.nodeName.toLowerCase() === "info") { const p = document.createElement("p"); p.className = "adventure-prompt-info"; p.textContent = child.textContent; body.appendChild(p); }
-        }
-        if (isAnswered) {
-            block.classList.add("answered");
-            header.innerHTML = `<span>Player Choice (Answered)</span><span class="material-icons expand-icon">unfold_more</span>`;
-        } else {
-            block.classList.add("unanswered");
-            header.innerHTML = `<span>Player Choice</span><span class="material-icons expand-icon">unfold_more</span>`;
-            for (const child of Array.from(promptNode.children)) {
-                if (child.nodeName.toLowerCase() === "choice") {
-                    const button = document.createElement("button");
-                    button.className = "adventure-choice-button button-secondary";
-                    button.dataset.action = "adventure-choice";
-                    button.dataset.choiceText = child.textContent;
-                    button.textContent = child.textContent;
-                    body.appendChild(button);
-                }
-            }
-            if (this.#lastUnansweredPromptEl && this.#lastUnansweredPromptEl !== block) { this.#lastUnansweredPromptEl.classList.add("collapsed"); const icon = this.#lastUnansweredPromptEl.querySelector(".expand-icon"); if (icon) icon.textContent = "unfold_more"; }
-            this.#lastUnansweredPromptEl = block;
-        }
-        block.appendChild(header); block.appendChild(body);
-    }
-
-    #createDialogueBlock(dialogueNode) {
-        const block = document.createElement("div");
-        block.className = "adventure-block adventure-dialogue";
-        const speaker = this.#findCharacter(dialogueNode.getAttribute("id")?.trim());
-        const speakerName = speaker?.name || dialogueNode.getAttribute("id") || 'Narrator';
-        // FIX: Ensure expressionName is safely parsed and defaults to null if attribute is missing
-        const expressionAttr = dialogueNode.getAttribute("expression");
-        const expressionName = expressionAttr ? expressionAttr.trim().toLowerCase() : null;
         
-        let avatarUrl = speaker?.avatarUrl || (dialogueNode.getAttribute("id") ? null : "assets/images/system_icon.svg");
-
-        if (expressionName && speaker?.expressions?.length > 0) {
-            // FIX: Make the find condition more robust against whitespace in saved data.
-            const expression = speaker.expressions.find(e => e.name?.trim().toLowerCase() === expressionName);
-            if (expression) {
-                avatarUrl = expression.url;
+        if (node.childNodes.length > 0) {
+            const contentContainer = document.createElement("div");
+            contentContainer.className = "adventure-image-content";
+            const textBlock = document.createElement("div");
+            textBlock.className = "adventure-block adventure-text";
+            
+            const icon = node.getAttribute("icon");
+            if (icon) {
+                const iconEl = document.createElement("span");
+                iconEl.className = "material-icons adventure-text-icon";
+                iconEl.textContent = icon;
+                textBlock.appendChild(iconEl);
             }
+            
+            const contentWrapper = document.createElement("div");
+            contentWrapper.className = "adventure-text-content";
+            this.#renderMarkdownContent(contentWrapper, this.#getXMLNodeContent(node));
+            textBlock.appendChild(contentWrapper);
+            
+            contentContainer.appendChild(textBlock);
+            block.appendChild(contentContainer);
         }
-
-        const nameEl = document.createElement("div"); nameEl.className = "adventure-speaker-name"; nameEl.textContent = speakerName;
-        let avatarEl = null;
-        if (avatarUrl) { 
-            avatarEl = document.createElement("img"); 
-            avatarEl.className = "adventure-speaker-avatar"; 
-            avatarEl.src = avatarUrl; 
-            avatarEl.alt = speakerName; 
-        }
-        const contentEl = document.createElement("div"); contentEl.className = "adventure-dialogue-content";
-        const speechContainer = document.createElement("div"); speechContainer.className = "adventure-speech-container";
-        for (const child of Array.from(dialogueNode.childNodes)) {
-            if (child.nodeType !== Node.ELEMENT_NODE) continue;
-            const childName = child.nodeName.toLowerCase();
-            if (childName === "speech") {
-                const speechPart = document.createElement("span");
-                speechPart.className = "adventure-speech";
-                const tone = child.getAttribute("tone");
-                if (tone) speechPart.classList.add(`adventure-speech-${tone}`);
-                speechPart.appendChild(this.#renderInlineContent(child));
-                speechContainer.appendChild(speechPart);
-            } else if (childName === "pause") { speechContainer.appendChild(child.cloneNode(true)); }
-        }
-        contentEl.appendChild(speechContainer); block.appendChild(nameEl); if (avatarEl) block.appendChild(avatarEl); block.appendChild(contentEl);
         return block;
     }
 
-    #renderInlineContent(element) {
-        const fragment = document.createDocumentFragment();
-        for (const child of Array.from(element.childNodes)) {
-            if (child.nodeType === Node.TEXT_NODE) fragment.appendChild(document.createTextNode(child.textContent));
-            else if (child.nodeType === Node.ELEMENT_NODE) {
-                const nodeName = child.nodeName.toLowerCase();
-                if (nodeName === "ref") {
-                    const charId = child.getAttribute("id");
-                    const charInList = this.#findCharacter(charId);
-                    const displayName = charInList?.name || child.textContent || charId;
-                    const avatarUrl = charInList?.avatarUrl || "assets/images/default_avatar.svg";
-                    const wrapper = document.createElement(charInList ? "a" : "span");
-                    wrapper.href = "#";
-                    wrapper.className = `adventure-char-ref ${charInList ? "" : "non-interactive"}`;
-                    if (charInList) { wrapper.dataset.action = "navigate-to-character"; wrapper.dataset.characterId = charId; }
-                    wrapper.innerHTML = `<img src="${avatarUrl}" alt="${displayName}" class="adventure-char-avatar"><span class="adventure-char-link-text">${displayName}</span>`;
-                    fragment.appendChild(wrapper);
-                } else if (nodeName === "pause") {
-                    fragment.appendChild(child.cloneNode(true));
-                } else {
-                    const genericWrapper = document.createElement(child.nodeName);
-                    genericWrapper.appendChild(this.#renderInlineContent(child));
-                    fragment.appendChild(genericWrapper);
-                }
-            }
-        }
-        return fragment;
-    }
-
-    /**
-     * Shows a dropdown menu at the position of the trigger element
-     * @param {HTMLElement} triggerElement - The element that triggered the dropdown
-     * @param {Array} items - Array of menu items with structure:
-     *   { icon: 'icon_name', label: 'Label', callback: function, danger: boolean }
-     *   { separator: true } for dividers
-     */
     showDropdown(triggerElement, items) {
-        // Check if dropdown already exists and remove it
         const existingDropdown = this.shadowRoot.querySelector('dropdown-menu');
         if (existingDropdown) {
             existingDropdown.remove();
         }
 
-        // Create new dropdown
         const dropdown = document.createElement('dropdown-menu');
-
-        // Convert items to dropdown format
         const dropdownItems = items.map(item => {
             if (item.separator) {
                 return { divider: true };
@@ -1094,25 +1324,21 @@ export class AdventureChatMode extends BaseChatMode {
             return {
                 icon: item.icon,
                 label: item.label,
-                action: item.label, // Use label as action identifier
+                action: item.label, 
                 danger: item.danger || false
             };
         });
 
         dropdown.setItems(dropdownItems);
-
-        // Handle menu actions
         dropdown.addEventListener('menu-action', (e) => {
             const actionLabel = e.detail.action;
             const item = items.find(i => i.label === actionLabel);
             if (item && item.callback) {
                 item.callback();
             }
-            // Remove dropdown after action
             dropdown.remove();
         });
 
-        // Append to shadow root and open
         this.shadowRoot.appendChild(dropdown);
         dropdown.open(triggerElement);
     }
@@ -1137,6 +1363,14 @@ export class AdventureChatMode extends BaseChatMode {
                     callback: () => this.copyMessageContent(msg.content)
                 },
                 {
+                    icon: 'edit',
+                    label: 'Edit',
+                    callback: () => {
+                        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+                        if (messageEl) this.#handleEditMessage(messageId, messageEl);
+                    }
+                },
+                {
                     icon: 'call_split',
                     label: 'Branch',
                     callback: () => this.branchFromMessage(messageId)
@@ -1152,14 +1386,7 @@ export class AdventureChatMode extends BaseChatMode {
             }
 
             items.push(
-                {
-                    icon: 'edit',
-                    label: 'Edit',
-                    callback: () => {
-                        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
-                        if (messageEl) this.#handleEditMessage(messageId, messageEl);
-                    }
-                },
+                
                 { separator: true },
                 {
                     icon: 'delete',
@@ -1182,25 +1409,38 @@ export class AdventureChatMode extends BaseChatMode {
             <div id="chat-history">
                 <div id="history-loader-container"></div>
             </div>
-            <div id="chat-input-container">
+            <form id="chat-form">
                 <div id="chat-toolbar">
-                    <button id="go-to-parent-btn" type="button" title="Go to Parent Chat" style="display: none;">
+                    <button id="go-to-parent-btn" class="icon-button" type="button" title="Go to Parent Chat" style="display: none;">
                         <span class="material-icons">arrow_upward</span>
                     </button>
-                    <button id="quick-regen-btn" type="button" title="Regenerate Last Response">
+                    <button id="quick-regen-btn" class="icon-button" type="button" title="Regenerate Last Response">
                         <span class="material-icons">replay</span>
                     </button>
+                    <button id="continue-btn" class="icon-button" type="button" title="Continue Story">
+                        <span class="material-icons">fast_forward</span>
+                    </button>
+                    <div class="toolbar-divider"></div>
+                    <button id="curation-toggle" class="icon-button toggle-btn" type="button" title="Toggle Curation">
+                        <span class="material-icons">auto_fix_high</span>
+                    </button>
                     <div style="flex-grow: 1;"></div>
-                    <button id="user-persona-btn" type="button" title="Change User Persona">
+                    <button id="input-mode-btn" class="icon-button" type="button" title="Switch to Plaintext Input">
+                        <span class="material-icons">notes</span>
+                    </button>
+                    <button id="user-persona-btn" class="persona-btn" type="button" title="Change User Persona">
                         <span id="user-persona-name">Select Persona</span>
                         <img id="user-persona-avatar" src="assets/images/default_avatar.svg" alt="User Persona">
                     </button>
+                    <button type="submit" class="send-button" title="Send"><span class="material-icons">send</span></button>
                 </div>
-                <form id="chat-form">
-                    <text-box name="message" placeholder="Type your message... (Ctrl+Enter to send)"></text-box>
-                    <button type="submit" class="send-button" title="Send" disabled><span class="material-icons">send</span></button>
-                </form>
-            </div>
+                <div id="input-scroll-container">
+                    <div id="block-input-list"></div>
+                </div>
+                <div id="plaintext-input-container" style="display: none;">
+                    <text-box id="plaintext-input" placeholder="Type a message..."></text-box>
+                </div>
+            </form>
 
             <!-- User Persona Selection Modal -->
             <div id="persona-modal" class="modal-backdrop">
@@ -1226,16 +1466,47 @@ export class AdventureChatMode extends BaseChatMode {
     styles() {
         return `
             :host { display: flex; flex-direction: column; height: 100%; position: relative; }
-            #chat-history { display: flex; flex-direction: column; flex-grow: 1; overflow-y: auto; padding: var(--spacing-md) var(--spacing-lg); gap: var(--spacing-md); }
+            #chat-history {
+                display: flex; 
+                flex-direction: column; 
+                flex-grow: 1; 
+                overflow-y: auto; 
+                overflow-x: hidden; 
+                padding-left: var(--spacing-lg);
+                padding-right: var(--spacing-lg); 
+                gap: var(--spacing-md);
+                /* IMPORTANT: Extra buffer to allow smooth scrolling without layout jumps */
+                padding-bottom: 50vh;
+            }
             #history-loader-container { min-height: 36px; }
             .loader-wrapper { display: flex; justify-content: center; padding: var(--spacing-xs) 0; }
             #load-more-btn { padding: var(--spacing-xs) var(--spacing-md); font-size: 0.7rem; }
-            #chat-input-container {
+            
+            #chat-form {
                 display: flex;
                 flex-direction: column;
                 border-top: 1px solid var(--bg-3);
                 background-color: var(--bg-1);
                 flex-shrink: 0;
+            }
+
+            #input-scroll-container {
+                max-height: 50vh;
+                overflow-y: auto;
+                padding: 0;
+            }
+            
+            #plaintext-input-container {
+                padding: 0;
+                background-color: var(--bg-1);
+            }
+            
+            #plaintext-input {
+                min-height: 120px;
+                max-height: 50vh;
+                background-color: var(--bg-0);
+                border-radius: var(--radius-sm);
+                padding: var(--spacing-sm);
             }
 
             #chat-toolbar {
@@ -1246,510 +1517,296 @@ export class AdventureChatMode extends BaseChatMode {
                 border-bottom: 1px solid var(--bg-3);
                 background-color: var(--bg-0);
                 min-height: 36px;
-            }
-
-            #go-to-parent-btn {
-                width: 32px;
-                height: 32px;
-                border: none;
-                background: transparent;
-                color: var(--text-secondary);
-                border-radius: var(--radius-sm);
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: background-color var(--transition-fast), color var(--transition-fast);
-            }
-
-            #go-to-parent-btn:hover {
-                background-color: var(--bg-2);
-                color: var(--text-primary);
-            }
-
-            #go-to-parent-btn .material-icons { font-size: 18px; }
-
-            #quick-regen-btn {
-                width: 32px;
-                height: 32px;
-                border: none;
-                background: transparent;
-                color: var(--text-secondary);
-                border-radius: var(--radius-sm);
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: background-color var(--transition-fast), color var(--transition-fast);
-            }
-
-            #quick-regen-btn:hover:not(:disabled) {
-                background-color: var(--bg-2);
-                color: var(--text-primary);
-            }
-
-            #quick-regen-btn:disabled {
-                color: var(--text-disabled);
-                cursor: not-allowed;
-                opacity: 0.4;
-            }
-
-            #quick-regen-btn .material-icons { font-size: 18px; }
-
-            #user-persona-btn {
-                width: auto;
-                height: 32px;
-                border: none;
-                background: transparent;
-                border-radius: var(--radius-sm);
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: var(--spacing-xs);
-                padding: 0 var(--spacing-xs);
-                transition: background-color var(--transition-fast);
-            }
-
-            #user-persona-btn:hover {
-                background-color: var(--bg-2);
-            }
-
-            #user-persona-name {
-                color: var(--text-secondary);
-                font-size: var(--font-size-sm);
+                overflow-x: auto;
                 white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 150px;
+                scrollbar-width: none; 
+                -ms-overflow-style: none; 
             }
+            #chat-toolbar::-webkit-scrollbar { display: none; }
 
-            #user-persona-avatar {
-                width: 28px;
-                height: 28px;
-                border-radius: 50%;
-                object-fit: cover;
-                background-color: var(--bg-3);
-                flex-shrink: 0;
+            .toolbar-divider { width: 1px; height: 20px; background-color: var(--bg-3); flex-shrink: 0; }
+
+            .icon-button {
+                width: 32px; height: 32px; border: none; background: transparent; color: var(--text-secondary);
+                border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center;
+                transition: background-color var(--transition-fast), color var(--transition-fast); flex-shrink: 0;
             }
+            .icon-button:hover:not(:disabled) { background-color: var(--bg-2); color: var(--text-primary); }
+            .icon-button:disabled { color: var(--text-disabled); cursor: not-allowed; opacity: 0.4; }
+            .icon-button .material-icons { font-size: 18px; }
+            .toggle-btn.active { color: var(--accent-primary); background-color: var(--bg-2); }
 
-            #chat-form {
-                display: flex;
-                align-items: flex-end;
-                padding: 0;
-                gap: 0;
-                min-height: 48px;
-            }
-
-            text-box {
-                flex-grow: 1;
-                align-self: stretch;
-                min-height: 48px;
-                max-height: 120px;
-                padding: 0.75rem 1rem;
-                border-radius: 0;
-                border: none;
-                background-color: var(--bg-0);
-                font-family: var(--font-family);
-                font-size: 0.7rem;
+            .persona-btn {
+                width: auto; 
+                height: 32px; 
+                border: none; 
+                background: transparent;
+                border-radius: var(--radius-sm);
+                cursor: pointer;
+                display: flex; align-items: center; gap: var(--spacing-sm);
                 transition: background-color var(--transition-fast);
-                resize: none;
             }
-
-            text-box:focus-within {
-                background-color: var(--bg-0);
-                outline: none;
+            .persona-btn:hover { background-color: var(--bg-2); }
+            #user-persona-name { color: var(--text-secondary); font-size: var(--font-size-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; font-style: italic; }
+            #user-persona-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background-color: var(--bg-3); flex-shrink: 0; }
+            
+            #block-input-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                width: 100%;
             }
 
             .send-button {
-                flex-shrink: 0;
-                align-self: stretch;
-                aspect-ratio: 1;
-                min-width: 48px;
+                flex-shrink: 0; 
+                width: 48px; height: 32px; 
                 border: none;
-                background-color: var(--accent-primary);
-                color: var(--bg-0);
-                border-radius: 0;
+                background-color: transparent;
+                color: var(--accent-primary);
+                border-radius: var(--radius-sm); 
                 cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
+                display: flex; align-items: center; justify-content: center; 
                 transition: background-color var(--transition-fast);
-                border-left: 1px solid var(--bg-3);
             }
-
-            .send-button:hover:not(:disabled) {
-                filter: brightness(1.15);
-            }
-
-            .send-button:disabled {
-                background-color: var(--bg-2);
-                color: var(--text-disabled);
-                cursor: not-allowed;
-                opacity: 0.4;
-            }
-
-            .send-button.stop-button {
-                background-color: var(--accent-danger);
-            }
-
-            .send-button.stop-button:hover {
-                filter: brightness(1.15);
-            }
-
+            .send-button:hover:not(:disabled) { filter: brightness(1.15); }
+            .send-button:disabled { background-color: transparent; color: var(--text-disabled); cursor: not-allowed; opacity: 0.4; }
+            .send-button.stop-button { background-color: transparent; color: var(--accent-danger); }
+            .send-button.stop-button:hover { filter: brightness(1.15); }
             .send-button .material-icons { font-size: 20px; }
             
+            /* Ghost/Placeholder block styling */
+            adventure-block-editor.placeholder {
+                opacity: 0.6;
+                border: 2px dotted var(--bg-3);
+                border-radius: var(--radius-md);
+                min-height: 48px;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-bottom: 0 !important; /* Remove bottom margin to sit flush */
+            }
+            adventure-block-editor.placeholder:hover {
+                opacity: 0.9;
+                border-color: var(--accent-primary);
+                background-color: var(--bg-2);
+            }
+            
+            /* Message Editing Styles */
+            .edit-controls {
+                display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;
+            }
+            
             .chat-message { display: flex; flex-direction: column; gap: 0; position: relative; font-size: 0.7rem; margin-bottom: var(--spacing-sm); }
-            .chat-message.assistant.adventure-mode { position: relative; gap: var(--spacing-sm); }
-            .chat-message:not(.assistant.adventure-mode) { display: flex; gap: var(--spacing-sm); width: 100%; }
+            .chat-message.assistant.adventure-mode { position: relative; }
+            .chat-message:not(.assistant.adventure-mode) { display: flex; width: 100%; }
             .chat-message .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 3px; background-color: var(--bg-3); }
-            .chat-message.system { margin: color: var(--text-secondary); max-width: 100%; }
-            .chat-message.system .message-bubble { background: none; }
-            .message-bubble { background-color: var(--accent-primary-faded); padding-bottom: var(--spacing-md); padding-left: var(--spacing-sm); flex-grow: 1; position: relative; width: 100%; border-radius: var(--radius-sm); }
-            .chat-message.user .message-bubble { color: var(--text-primary); padding-bottom: var(--spacing-sm); width: 100%; }
+            .message-bubble { background-color: var(--accent-primary-faded); padding-bottom: var(--spacing-md); padding-left: var(--spacing-md); flex-grow: 1; position: relative; width: 100%; border-radius: var(--radius-sm); }
+            .chat-message.user .message-bubble { position: relative; display: flex; flex-direction: column; color: var(--text-primary); padding-bottom: var(--spacing-sm); width: 100%; }
             .message-content { font-size: 0.7rem; line-height: 1.4; }
-            .chat-message.user .message-bubble .icon-btn { color: var(--bg-1); }
-            .chat-message.user { margin-left: var(--spacing-sm); margin-right: var(--spacing-sm); padding-right: 13px; }
+            .chat-message.user { margin-left: var(--spacing-md); }
             .message-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs); margin-top: var(--spacing-xs); }
             .author-name { font-weight: 600; font-size: 0.7rem; }
+            
+            .adventure-pause { display: none; }
 
-            pause { display: none; line-height: 0; }
-
+            #input-mode-btn { opacity: 0;  }
+            
             /* Menu button styling */
             .message-menu-trigger {
-                background: transparent;
-                border: none;
-                cursor: pointer;
-                color: var(--text-secondary);
-                padding: 2px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                width: 24px;
-                height: 24px;
-                border-radius: var(--radius-sm);
-                transition: var(--transition-fast);
+                background: transparent; border: none; cursor: pointer; color: var(--text-secondary);
+                padding: 2px; display: inline-flex; align-items: center; justify-content: center;
+                width: 24px; height: 24px; border-radius: var(--radius-sm); transition: var(--transition-fast);
             }
-
-            .message-menu-trigger:hover {
-                background-color: var(--bg-2);
-                color: var(--text-primary);
+            .message-menu-trigger:hover { background-color: var(--bg-2); color: var(--text-primary); }
+            .message-menu-trigger .material-icons { font-size: 18px; }
+            .message-header .message-menu-trigger { transition: opacity var(--transition-fast); }
+            .message-bubble:hover .message-menu-trigger { opacity: 1; }
+            .chat-message.adventure-mode .message-menu-trigger.adventure-menu {
+                position: absolute; top: var(--spacing-xs); right: var(--spacing-xs); transition: opacity var(--transition-fast); z-index: 5;
             }
+            .chat-message.user.adventure-mode .message-menu-trigger.adventure-menu { background-color: var(--bg-1); top: 0; right: calc(var(--spacing-lg) + var(--spacing-sm)); }
+            
+            .chat-message.adventure-mode:hover .message-menu-trigger.adventure-menu { opacity: 1; }
 
-            .message-menu-trigger .material-icons {
-                font-size: 18px;
-            }
-
-            .message-header .message-menu-trigger {
-                opacity: 0;
-                transition: opacity var(--transition-fast);
-            }
-
-            .message-bubble:hover .message-menu-trigger {
-                opacity: 1;
-            }
-
-            .chat-message.assistant.adventure-mode .message-menu-trigger.adventure-menu {
-                position: absolute;
-                top: var(--spacing-xs);
-                right: var(--spacing-xs);
-                opacity: 0;
-                transition: opacity var(--transition-fast);
-            }
-
-            .chat-message.assistant.adventure-mode:hover .message-menu-trigger.adventure-menu {
-                opacity: 1;
-            }
-
-            .message-bubble text-box, .adventure-dialogue-content text-box, .chat-message.assistant.adventure-mode > text-box { outline: 1px solid var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-faded); border-radius: var(--radius-sm); padding: var(--spacing-sm); background-color: var(--bg-0); color: white; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             .adventure-fade-in { animation: fadeIn 0.4s ease-out both; }
-            .adventure-custom {
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            
+            /* -- New Block Styles -- */
+            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; font-size: 0.7rem; margin-bottom: var(--adventure-block-gap, 0.75rem); }
+            
+            .adventure-text {
+                position: relative;
+                display: flow-root;
+                color: var(--text-secondary);
+                padding: 0 calc(var(--spacing-md) + 4px);
+                line-height: 1.5;
+                z-index: 0;
+                background-color: transparent;
+            }
+
+            .adventure-text-icon {
+                font-size: 32px;
+                color: var(--accent-primary);
+                float: left;
+                margin-right: 6px;
+                margin-top: 4px;
+            }
+
+            :not(.assistant) .adventure-text-icon {
+                margin-left: 0;
+                transform: translateX(-4px);
+            }
+            
+            .adventure-text-content {
+                position: relative;
+                display: block;
+                text-align: justify;
+                text-wrap: pretty;
+                hyphens: auto;
+            }
+            .adventure-text-content p { margin: 0 0 1em 0; }
+            .adventure-text-content p:last-child { margin: 0; }
+            .chat-message:not(.assistant) .adventure-block::before {
+                content: "";
+                display: block;
+                width: 10000px;
+                padding: 0;
+                margin: 0;
+                background-color: var(--accent-primary-faded);
+                position: absolute;
+                left: calc(-1 * (100svw - 100% + var(--spacing-lg)));
+                top: calc(-1 * calc(var(--spacing-md)) / 2);
+                right: 0;
+                bottom: 0;
+                z-index: -1;
+            }
+            .adventure-speech { 
+                position: relative;
+                /* Float Layout Implementation */
+                display: flow-root; /* Contains floats */
+                padding-left: calc(var(--spacing-md) + 4px); /* Space for the vertical line */
+                text-align: justify;
+            }
+            .adventure-speech::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                outline: 4px dotted var(--accent-primary);
+                background-color: var(--accent-primary);
+                border-radius: 4px;
+            }
+            .adventure-speaker-avatar {
+                float: left;
+                margin-right: 8px;
+                box-shadow: 0 0px 2px 2px var(--bg-1);
+                width: 64px; height: 64px;
+                border-radius: var(--radius-md);
+                object-fit: cover;
+                background-color: var(--bg-3);
+            }
+            .adventure-speaker-name {
+                font-weight: 600; color: var(--text-primary);
+                font-size: 1.2rem; margin-bottom: 2px;
+                display: block; /* Ensures name takes up a line */
+            }
+            .adventure-speech-content {
+                color: var(--text-secondary);
+                line-height: 1.4;
+                display: block; /* Text follows flow rules around float */
+            }
+            .adventure-speech-content p { margin: 0; line-height: 1.4; }
+            .adventure-speech-content p:last-child { margin: 0; }
+
+            .adventure-webview {
                 border: 1px solid var(--bg-3);
                 border-radius: var(--radius-sm);
                 overflow: hidden;
+                background-color: var(--bg-0);
+            }
+            .webview-frame {
+                width: 100%; border: none; height: 300px; display: block;
             }
             
-            .adventure-parse-error { border: 2px solid var(--accent-danger); background: rgba(242, 139, 130, 0.1); padding: var(--spacing-md); border-radius: var(--radius-md); margin-top: var(--spacing-md); }
-            .adventure-parse-error pre { background: var(--bg-0); padding: var(--spacing-sm); border-radius: var(--radius-sm); white-space: pre-wrap; word-break: break-all; }
-            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; font-size: 0.7rem; }
-            .adventure-narrate {
-                font-style: italic;
-                color: var(--text-secondary);
-                /* text-align: justify; - Removed for better readability in quote blocks */
-                padding-left: var(--spacing-sm);
-                padding-right: var(--spacing-sm);
-                padding-top: 0;
-                padding-bottom: var(--spacing-xs);
+            .adventure-char-ref { color: var(--accent-primary); text-decoration: none; font-weight: 600; cursor: pointer; }
+            .adventure-char-ref:hover { text-decoration: underline; }
 
-                border-left: 2px solid var(--accent-primary);
-                border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-                font-size: 0.7rem;
-                line-height: 1.4;
-            }
-            .adventure-dialogue { border-left: 2px solid var(--accent-primary); padding-left: var(--spacing-sm); display: grid; grid-template-areas: "avatar name" "avatar content"; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; gap: 0 var(--spacing-sm); }
-            .adventure-speaker-avatar { border-radius: var(--radius-md); object-fit: cover; background-color: var(--bg-3); grid-area: avatar; column-span: 1; height: 80px; width: 60px; cursor: pointer; }
-            .adventure-dialogue-content { grid-area: content; font-size: 0.7rem; line-height: 1.4; }
-            .adventure-speaker-name { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); grid-area: name; padding-bottom: 2px; border-bottom: 1px solid var(--bg-3); margin-bottom: var(--spacing-xs); }
-            .adventure-speech-container { font-size: 0.7rem; line-height: 1.4; }
-            .adventure-speech { display: inline; animation: fadeIn 0.3s ease-out both; opacity: 0; font-size: 0.7rem; line-height: 1.4; }
-            .adventure-speech:not(:first-child)::before { content: ' '; }
-            .adventure-speech-yell { text-transform: uppercase; font-weight: bold; font-size: 0.9rem; }
-            .adventure-speech-whisper { font-style: italic; color: var(--text-secondary); font-size: 0.8rem; }
-            .adventure-prompt { border-radius: var(--radius-md); background-color: var(--bg-1); color: var(--text-primary); position: relative; font-size: 0.9rem; }
-            .adventure-prompt-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: var(--spacing-xs) var(--spacing-sm); background-color: var(--bg-2); border-radius: var(--radius-sm); user-select: none; font-size: 0.9rem; }
-            .adventure-prompt-header .expand-icon { font-size: 1.2rem; }
-            .adventure-prompt.collapsed .adventure-prompt-body { display: none; }
-            .adventure-prompt-body { display: flex; flex-direction: column; gap: var(--spacing-xs); padding: var(--spacing-sm); }
-            .adventure-prompt-info { margin-bottom: var(--spacing-xs);}
-            .adventure-choice-button { user-select: none; width: 100%; }
-            .adventure-char-ref { display: inline-flex; align-items: center; gap: 3px; color: var(--accent-primary); text-decoration: none; font-weight: 600; line-height: 1; vertical-align: middle; font-size: 0.7rem; padding: 0 2px; border-radius: var(--radius-sm); transition: var(--transition-fast); }
-            .adventure-char-ref.non-interactive { cursor: default; color: var(--text-primary); }
-            a.adventure-char-ref:hover { text-decoration: none; background-color: rgba(138, 180, 248, 0.1); }
-            a.adventure-char-ref:hover .adventure-char-link-text { text-decoration: underline; }
-            .adventure-char-avatar { width: 1.3em; height: 1.3em; border-radius: 50%; object-fit: cover; border: 1px solid var(--bg-3); line-height: 1; }
-            
-            .adventure-image { display: grid; border-radius: var(--radius-md); overflow: hidden; }
+            .adventure-image { display: grid; border-radius: var(--radius-md); overflow: hidden; background-color: var(--bg-0); }
             .adventure-image.layout-overlay { grid-template-columns: 1fr; grid-template-rows: auto; }
             .adventure-image.layout-side-by-side { grid-template-columns: 200px 1fr; }
-            .adventure-image-container { grid-area: 1 / 1; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background-color: var(--bg-0); }
-            .adventure-image-display { width: 100%; height: 100%; object-fit: cover; cursor: pointer; flex-grow: 1; }
+            .adventure-image-container { grid-area: 1 / 1; width: 100%; display: flex; justify-content: center; align-items: center; }
+            .adventure-image-display { width: 100%; height: auto; object-fit: cover; cursor: pointer; }
             .adventure-image-content { grid-area: 1 / 1; z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; }
-            .adventure-image.layout-side-by-side .adventure-image-content { grid-area: 1 / 2; }
+            .adventure-image.layout-side-by-side .adventure-image-content { grid-area: 1 / 2; padding: var(--spacing-md); }
             .adventure-image.layout-overlay .adventure-image-content { padding: var(--spacing-md); background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 50%, transparent 100%); }
-            .adventure-image.layout-side-by-side .adventure-image-content { padding: var(--spacing-md); }
-            .adventure-image-content .adventure-block { color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.8); flex: 1; }
-            .adventure-image-content .adventure-dialogue { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); border-radius: var(--radius-md); align-self: flex-start; margin-bottom: var(--spacing-sm); }
-            .adventure-image-content .adventure-dialogue .adventure-speaker-name { color: white; border-bottom-color: rgba(255,255,255,0.3); }
+            
+            /* Autocontinue Divider Styles */
+            .adventure-continue-divider {
+                display: flex;
+                align-items: center;
+                gap: var(--spacing-sm);
+                width: 100%;
+                opacity: 0.8;
+                user-select: none;
+                transform: translateX(-12px);
+            }
+            .adventure-continue-line {
+                flex-grow: 1;
+                height: 1px;
+                background-color: var(--accent-primary);
+                opacity: 0.5;
+            }
+            .adventure-continue-text {
+                color: var(--accent-primary);
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .adventure-continue-text .material-icons {
+                font-size: 16px;
+            }
 
+            /* Modal Styles */
+            .modal-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center; }
+            .modal-content { background-color: var(--bg-1); border-radius: var(--radius-md); max-width: 500px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }
+            .modal-content header { display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--bg-3); }
+            .modal-content header h2 { margin: 0; font-size: 1.2rem; color: var(--text-primary); }
+            .close-modal-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); border-radius: var(--radius-sm); }
+            .close-modal-btn:hover { color: var(--text-primary); background-color: var(--bg-2); }
+            .modal-body { display: flex; flex-direction: column; overflow-y: auto; flex-grow: 1; gap: var(--spacing-md); padding: var(--spacing-md); }
+            .modal-search-bar { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--bg-3); background-color: var(--bg-0); border-radius: var(--radius-sm); flex-shrink: 0; }
+            .modal-search-bar input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); font-size: 0.9rem; }
+            .character-list { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+            .character-item { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--bg-0); border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition-fast); border: 1px solid transparent; }
+            .character-item:hover { background-color: var(--bg-2); }
+            .character-item.is-persona { background-color: var(--accent-primary-faded); border-color: var(--accent-primary); }
+            .character-item img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background-color: var(--bg-3); flex-shrink: 0; }
+            .character-item .character-name { flex-grow: 1; color: var(--text-primary); font-size: 0.9rem; font-weight: 500; }
+            .character-item .persona-icon { color: var(--accent-good); font-size: 20px; }
+            
             @media (max-width: 768px) {
-                #chat-history { padding: var(--spacing-sm) var(--spacing-xs); gap: var(--spacing-sm); overflow-y: auto; overflow-x: hidden; }
-                /* Ensure menu buttons are always visible on mobile */
-                .message-header .message-menu-trigger,
-                .chat-message.assistant.adventure-mode .message-menu-trigger.adventure-menu {
-                    opacity: 1;
+                #chat-history { 
+                    padding: var(--spacing-md);
+                    gap: var(--spacing-sm); 
                 }
-
-                /* Make regular messages more compact too */
-                .chat-message { font-size: 0.8rem; }
-                .message-content { font-size: 0.8rem; }
-                .author-name { font-size: 0.8rem; }
-
-                /* Make layout more compact */
-                .adventure-block { font-size: 0.8rem; } /* Consistent spacing between all blocks */
-                .adventure-narrate { font-size: 0.8rem; }
-                .adventure-dialogue { gap: 2px var(--spacing-xs); }
-                .adventure-speaker-avatar { border-radius: var(--radius-sm); height: 60px; width: 45px; }
-                .adventure-speaker-avatar img { width: 100%; height: auto; border-radius: var(--radius-sm); }
-                .adventure-speaker-name { font-size: 0.7rem; }
-                .adventure-speech { font-size: 0.8rem; font-size: 0.8rem; }
-                .adventure-dialogue-content { font-size: 0.8rem; }
-                .adventure-prompt-body { padding: var(--spacing-xs); gap: 3px; }
-                .adventure-prompt-info { font-size: 0.8rem; }
-                .adventure-choice-button { padding: 0.3rem 0.8rem; font-size: 0.7rem; }
-                .adventure-char-ref { font-size: 0.8rem; line-height: 1; }
-                .adventure-char-link-text { font-size: 0.8rem; line-height: 1; }
-
-                /* --- Image Block Overrides for Mobile --- */
-                /* Stack image and content vertically */
-                .adventure-image,
-                .adventure-image.layout-side-by-side,
-                .adventure-image.layout-overlay {
-                    display: flex;
-                    flex-direction: column;
-                    background-color: var(--bg-0); /* A subtle background for the whole block */
-                }
-                
-                .adventure-image-container {
-                    order: 1; /* Image first */
-                    max-height: 250px; /* Constrain image height */
-                }
-
-                .adventure-image-display {
-                    object-fit: contain; /* Show full image without cropping */
-                    background-color: var(--bg-0);
-                }
-
-                /* Reset grid-area and styles for content */
-                .adventure-image-content,
-                .adventure-image.layout-side-by-side .adventure-image-content,
-                .adventure-image.layout-overlay .adventure-image-content {
-                    order: 2; /* Content second */
-                    grid-area: auto;
-                    padding: var(--spacing-sm) var(--spacing-md);
-                    background: none; /* Remove overlay gradient */
-                    color: inherit;
-                    text-shadow: none;
-                }
-
-                .adventure-image-content .adventure-block,
-                .adventure-image.layout-overlay .adventure-image-content .adventure-block {
-                    color: inherit;
-                    text-shadow: none;
-                    margin-bottom: var(--spacing-xs);
-                }
-
-                /* Override for dialogue inside image on mobile */
-                .adventure-image-content .adventure-dialogue {
-                    backdrop-filter: none;
-                    -webkit-backdrop-filter: none;
-                    margin-bottom: 0;
-                }
-                .adventure-image-content .adventure-dialogue .adventure-speaker-name,
-                .adventure-image.layout-overlay .adventure-image-content .adventure-dialogue .adventure-speaker-name {
-                    color: var(--text-primary);
-                    border-bottom-color: var(--bg-3);
-                }
-            }
-
-            /* Persona Selection Modal */
-            .modal-backdrop {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.7);
-                z-index: 1000;
-                align-items: center;
-                justify-content: center;
-            }
-
-            .modal-content {
-                background-color: var(--bg-1);
-                border-radius: var(--radius-md);
-                max-width: 500px;
-                width: 90%;
-                max-height: 80vh;
-                display: flex;
-                flex-direction: column;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-            }
-
-            .modal-content header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: var(--spacing-md) var(--spacing-lg);
-                border-bottom: 1px solid var(--bg-3);
-            }
-
-            .modal-content header h2 {
-                margin: 0;
-                font-size: 1.2rem;
-                color: var(--text-primary);
-            }
-
-            .close-modal-btn {
-                background: none;
-                border: none;
-                color: var(--text-secondary);
-                cursor: pointer;
-                padding: var(--spacing-xs);
-                border-radius: var(--radius-sm);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: var(--transition-fast);
-            }
-
-            .close-modal-btn:hover {
-                color: var(--text-primary);
-                background-color: var(--bg-2);
-            }
-
-            .close-modal-btn .material-icons {
-                font-size: 24px;
-            }
-
-            .modal-body {
-                display: flex;
-                flex-direction: column;
-                overflow-y: auto;
-                flex-grow: 1;
-                gap: var(--spacing-md);
-                padding: var(--spacing-md);
-            }
-
-            .modal-search-bar {
-                display: flex;
-                align-items: center;
-                gap: var(--spacing-sm);
-                padding: var(--spacing-sm) var(--spacing-md);
-                border: 1px solid var(--bg-3);
-                background-color: var(--bg-0);
-                border-radius: var(--radius-sm);
-                flex-shrink: 0;
-            }
-
-            .modal-search-bar .material-icons {
-                color: var(--text-secondary);
-                font-size: 20px;
-            }
-
-            .modal-search-bar input {
-                background: none;
-                border: none;
-                outline: none;
-                width: 100%;
-                color: var(--text-primary);
-                font-size: 0.9rem;
-            }
-
-            .character-list {
-                display: flex;
-                flex-direction: column;
-                gap: var(--spacing-xs);
-            }
-
-            .character-item {
-                display: flex;
-                align-items: center;
-                gap: var(--spacing-sm);
-                padding: var(--spacing-sm) var(--spacing-md);
-                background-color: var(--bg-0);
-                border-radius: var(--radius-sm);
-                cursor: pointer;
-                transition: var(--transition-fast);
-                border: 1px solid transparent;
-            }
-
-            .character-item:hover {
-                background-color: var(--bg-2);
-            }
-
-            .character-item.is-persona {
-                background-color: var(--accent-primary-faded);
-                border-color: var(--accent-primary);
-            }
-
-            .character-item.is-persona:hover {
-                background-color: rgba(138, 180, 248, 0.4);
-            }
-
-            .character-item img {
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                object-fit: cover;
-                background-color: var(--bg-3);
-                flex-shrink: 0;
-            }
-
-            .character-item .character-name {
-                flex-grow: 1;
-                color: var(--text-primary);
-                font-size: 0.9rem;
-                font-weight: 500;
-            }
-
-            .character-item .persona-icon {
-                color: var(--accent-good);
-                font-size: 20px;
+                .chat-message { display: flex; flex-direction: column; font-size: 0.8rem; gap: var(--spacing-lg); }
+                .message-header .message-menu-trigger, .chat-message.assistant.adventure-mode .message-menu-trigger.adventure-menu { opacity: 1; }
+                .adventure-block { font-size: 0.8rem; }
+                .adventure-speech { gap: 8px; }
+                .adventure-speaker-avatar { width: 48px; height: 48px; border-radius: var(--radius-sm); }
+                .adventure-image, .adventure-image.layout-side-by-side, .adventure-image.layout-overlay { display: flex; flex-direction: column; background-color: var(--bg-0); }
+                .adventure-image-container { order: 1; max-height: 250px; }
+                .adventure-image-display { object-fit: contain; }
+                .adventure-image-content { order: 2; grid-area: auto; padding: var(--spacing-sm) var(--spacing-md); background: none; color: inherit; }
             }
         `;
     }
 }
 
-customElements.define("adventure-chat-mode", AdventureChatMode);
-chatModeRegistry.register("adventure", "adventure-chat-mode");
+customElements.define('adventure-chat-mode', AdventureChatMode);
+chatModeRegistry.register('adventure', 'adventure-chat-mode');

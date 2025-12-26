@@ -310,7 +310,8 @@ function resolveMacros(text, context) {
             // Get the list of characters participating in the chat
             let charactersToRender = [...chatCharacters];
             
-            const includePlayer = props.includes('player');
+            // Check for 'player' or 'focus' attribute requests
+            const includePlayer = props.includes('player') || props.includes('focus');
 
             if (includePlayer && userPersonaCharacterId) {
                 const playerCharacter = allCharacters.find(c => c.id === userPersonaCharacterId);
@@ -324,7 +325,8 @@ function resolveMacros(text, context) {
             
             return charactersToRender.map(c => {
                 const isPlayer = includePlayer && c.id === userPersonaCharacterId;
-                const playerAttr = isPlayer ? ' is-player="true"' : '';
+                // Updated: use 'focus' instead of 'is-player' for the new syntax
+                const focusAttr = isPlayer ? ' focus="true"' : '';
                 
                 const characterLines = [];
                 if (props.includes('name') && c.name) {
@@ -349,12 +351,20 @@ function resolveMacros(text, context) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
                     }
                 }
+                if (props.includes('avatar') && c.avatarUrl) {
+                    // Extract filename from URL for simple reference, or pass full relative path?
+                    // Usually macro just needs filename if system knows path, or full path.
+                    // For now, let's pass the basename if it's a local file.
+                    const avatarFilename = path.basename(c.avatarUrl.split('?')[0]);
+                    characterLines.push(`    <avatar>${escapeXML(avatarFilename)}</avatar>`);
+                }
+
                 if (props.includes('note')) {
                     const characterNoteXmlString = activeNotes.map(s => {
                         const overrideText = s.characterOverrides?.[c.id];
                         if (!overrideText?.trim()) return null;
-                        const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
-                        return `    <note${describesAttr}>\n        <override>${escapeXML(overrideText)}</override>\n    </note>`;
+                        const describesAttr = s.describes ? ` type="${escapeXML(s.describes)}"` : '';
+                        return `    <context${describesAttr}>\n    </context>`;
                     }).filter(Boolean).join('\n');
 
                     if (characterNoteXmlString) {
@@ -363,7 +373,8 @@ function resolveMacros(text, context) {
                 }
                 
                 if (characterLines.length > 0) {
-                    return `<character id="${escapeXML(c.id)}"${playerAttr}>\n${characterLines.join('\n')}\n</character>`;
+                    // Updated: use <entity> instead of <character>
+                    return `<entity id="${escapeXML(c.id)}"${focusAttr}>\n${characterLines.join('\n')}\n</entity>`;
                 }
                 return '';
             }).filter(Boolean).join('\n\n');
@@ -390,8 +401,8 @@ function resolveMacros(text, context) {
             
             return activeNotes.map(s => {
                 if (!s.description?.trim()) return null;
-                const describesAttr = s.describes ? ` describes="${escapeXML(s.describes)}"` : '';
-                return `<note${describesAttr}>${escapeXML(s.description)}</note>`;
+                const describesAttr = s.describes ? ` type="${escapeXML(s.describes)}"` : '';
+                return `<context${describesAttr}>${escapeXML(s.description)}</context>`;
             }).filter(Boolean).join('\n\n');
         },
         player: () => {
@@ -910,7 +921,7 @@ function initHttp() {
      * @returns {Promise<Array>} Array of messages from parent chain, ordered chronologically
      */
     async function collectParentMessages(chatId, branchPointMessageId = null, depth = 0, visitedChatIds = new Set(), overridesChain = []) {
-        const MAX_RECURSION_DEPTH = 50; // Prevent excessive recursion
+        const MAX_RECURSION_DEPTH = 100; // Prevent excessive recursion
         const MAX_TOTAL_MESSAGES = 10000; // Prevent collecting too many messages
 
         // Safeguard: Check recursion depth
