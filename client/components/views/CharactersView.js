@@ -16,6 +16,7 @@ class CharactersView extends BaseComponent {
         this.handleResourceChange = this.handleResourceChange.bind(this);
         this.handleItemAction = this.handleItemAction.bind(this);
         this.handleListHeaderClick = this.handleListHeaderClick.bind(this);
+        this.handleCharacterDuplicate = this.handleCharacterDuplicate.bind(this);
         this._pendingSelectedId = null; // To hold an ID before data is fetched
         this._hasAutoSelectedFirst = false; // Track if we've auto-selected the first item
     }
@@ -159,7 +160,7 @@ class CharactersView extends BaseComponent {
         }
     }
 
-    handleItemAction(event) {
+        handleItemAction(event) {
         const { id, action } = event.detail;
         const character = this.state.characters.find(c => c.id === id);
         if (!character) return;
@@ -175,6 +176,22 @@ class CharactersView extends BaseComponent {
             case 'set-user':
                 this.handleSetUserPersona(character);
                 break;
+            case 'duplicate':
+                this.handleCharacterDuplicate(character);
+                break;
+        }
+    }
+
+    async handleCharacterDuplicate(item) {
+        try {
+            const newChar = await api.post(`/api/characters/${item.id}/duplicate`);
+            notifier.show({ header: 'Character Duplicated', message: `Created copy of ${item.name}.`, type: 'good' });
+            // Optimistically select the new character
+            this.state.selectedCharacter = newChar;
+            // Note: The list update happens automatically via SSE, but we set selectedCharacter so the editor opens it when the update arrives.
+        } catch (error) {
+            console.error('Failed to duplicate character:', error);
+            notifier.show({ header: 'Error', message: 'Failed to duplicate character.', type: 'bad' });
         }
     }
 
@@ -373,6 +390,9 @@ class CharactersView extends BaseComponent {
                         <div class="actions">
                             <button class="icon-button user-btn ${isUser ? 'active' : ''}" data-action="set-user" title="${setUserTitle}">
                                 <span class="material-icons">account_circle</span>
+                            </button>
+                            <button class="icon-button" data-action="duplicate" title="Duplicate">
+                                <span class="material-icons">content_copy</span>
                             </button>
                             <button class="icon-button delete-btn" data-action="delete" title="Delete">
                                 <span class="material-icons">delete</span>

@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs/promises';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { glob } from 'glob';
@@ -22,10 +22,11 @@ const PORT = serverConfig.server.port || 8077;
 const STATIC_DIR = serverConfig.data.static_dir || 'client';
 const DATA_DIR = serverConfig.data.data_dir || 'data';
 const CHARACTERS_DIR = path.join(DATA_DIR, 'characters');
+const SCENARIOS_DIR = path.join(DATA_DIR, 'scenarios');
 const GENERATION_CONFIGS_DIR = path.join(DATA_DIR, 'generation_configs');
 const CONNECTION_CONFIGS_DIR = path.join(DATA_DIR, 'connection_configs');
 const CHATS_DIR = path.join(DATA_DIR, 'chats');
-const SCENARIOS_DIR = path.join(DATA_DIR, 'notes');
+const NOTES_DIR = path.join(DATA_DIR, 'notes');
 const SETTINGS_FILE_PATH = path.join(DATA_DIR, 'settings.json');
 
 // CORS
@@ -56,7 +57,7 @@ function broadcastEvent(type, data) {
 }
 
 /** Maps provider id to their respective provider class. */
-const ADAPTERS = {
+const PROVIDERS = {
     v1: OpenAIV1Provider,
     gemini: GoogleGeminiProvider,
 };
@@ -99,14 +100,42 @@ const createCharacterStorage = (subfolder = '') => {
     });
 };
 
+const createScenarioStorage = () => {
+    return multer.diskStorage({
+        destination: async (req, file, cb) => {
+            const destDir = path.join(SCENARIOS_DIR, req.params.id);
+            await fs.mkdir(destDir, { recursive: true });
+
+            // req.body.type should be 'avatar' or 'banner'
+            // IMPORTANT: Client must append 'type' to FormData BEFORE 'image' for this to work in diskStorage
+            const type = req.body.type || 'avatar';
+
+            try {
+                // Remove old files of the same type (e.g. avatar.png, avatar.jpg)
+                const oldFiles = await glob(path.join(destDir, `${type}.*`).replace(/\\/g, '/'));
+                for (const old of oldFiles) await fs.unlink(old);
+            } catch (err) { console.error(`Error removing old scenario ${type}:`, err); }
+
+            cb(null, destDir);
+        },
+        filename: (req, file, cb) => {
+            const extension = path.extname(file.originalname);
+            const type = req.body.type || 'avatar';
+            cb(null, `${type}${extension}`);
+        }
+    });
+};
+
 const avatarUpload = multer({ storage: createCharacterStorage('') });
 const galleryUpload = multer({ storage: createCharacterStorage('images') });
 const expressionUpload = multer({ storage: createCharacterStorage('expressions') });
+const scenarioUpload = multer({ storage: createScenarioStorage() });
 
 // Application state, loaded from filesystem
 const state = {
     connectionConfigs: [],
     characters: [],
+    scenarios: [],
     generationConfigs: [],
     chats: [],
     notes: [],
@@ -115,14 +144,15 @@ const state = {
 
 async function main() {
     console.log('Starting Minerva server...');
-    
+
     // Create data directories early so migrations can access them.
     await fs.mkdir(CHARACTERS_DIR, { recursive: true });
+    await fs.mkdir(SCENARIOS_DIR, { recursive: true });
     await fs.mkdir(GENERATION_CONFIGS_DIR, { recursive: true });
     await fs.mkdir(CONNECTION_CONFIGS_DIR, { recursive: true });
     await fs.mkdir(CHATS_DIR, { recursive: true });
-    await fs.mkdir(SCENARIOS_DIR, { recursive: true });
-    
+    await fs.mkdir(NOTES_DIR, { recursive: true });
+
     // Run migrations before loading any data.
     // await runMigrations({ CHARACTERS_DIR, GENERATION_CONFIGS_DIR, CONNECTION_CONFIGS_DIR, CHATS_DIR, SCENARIOS_DIR });
 
@@ -137,13 +167,15 @@ async function initializeData() {
     try {
         state.settings = await loadSettings();
         state.characters = await loadCharacters();
+        state.scenarios = await loadScenarios();
         state.chats = (await loadJsonFilesFromDir(CHATS_DIR, Chat)).map(chatData => new Chat(chatData));
-        state.notes = await loadJsonFilesFromDir(SCENARIOS_DIR, Note);
+        state.notes = await loadJsonFilesFromDir(NOTES_DIR, Note);
         state.generationConfigs = await loadJsonFilesFromDir(GENERATION_CONFIGS_DIR, GenerationConfig);
         state.connectionConfigs = await loadJsonFilesFromDir(CONNECTION_CONFIGS_DIR, ConnectionConfig);
 
         console.log('Data loaded successfully.');
         console.log(`- ${state.characters.length} characters`);
+        console.log(`- ${state.scenarios.length} scenarios`);
         console.log(`- ${state.chats.length} chats`);
         console.log(`- ${state.notes.length} notes`);
         console.log(`- ${state.connectionConfigs.length} connection configs`);
@@ -152,13 +184,14 @@ async function initializeData() {
         console.log(`- Active Gen. Config ID: ${state.settings.activeGenerationConfigId || 'None'}`);
         console.log(`- User Persona ID: ${state.settings.userPersonaCharacterId || 'None'}`);
 
-        // Check for legacy branches
+        // Check for legacy branches (have parentId but no branchPointMessageId)
         const legacyBranches = state.chats.filter(c => c.parentId && !c.branchPointMessageId);
         if (legacyBranches.length > 0) {
             console.log('');
             console.log('⚠️  WARNING: Found legacy branches without branchPointMessageId');
-            console.log(`⚠️  ${legacyBranches.length} chat(s) will use dynamic inference (may cause performance issues)`);
-            console.log('⚠️  To permanently fix this, run: node server/utils/migrate-legacy-branches.js');
+            console.log(`⚠️  ${legacyBranches.length} chat(s) will NOT inherit parent messages`);
+            console.log('⚠️  These branches only have access to their own messages');
+            console.log('⚠️  Consider re-creating these branches to restore full message history');
         }
 
     } catch (error) {
@@ -171,17 +204,18 @@ async function loadSettings() {
     try {
         const settingsJson = await fs.readFile(SETTINGS_FILE_PATH, 'utf-8');
         const loadedSettings = JSON.parse(settingsJson);
-        const defaultSettings = { 
-            activeConnectionConfigId: null, 
+        const defaultSettings = {
+            activeConnectionConfigId: null,
             userPersonaCharacterId: null,
             activeGenerationConfigId: null,
             chat: {
                 renderer: 'raw', // Default renderer
                 curateResponse: false,
+                curationConnectionConfigId: '', // Default: use main connection
             },
             chatModes: {}
         };
-        
+
         // Deep merge for nested objects like 'chat' and 'chatModes'
         const mergedSettings = { ...defaultSettings, ...loadedSettings };
         if (loadedSettings.chat) {
@@ -195,13 +229,14 @@ async function loadSettings() {
     } catch (error) {
         if (error.code === 'ENOENT') {
             console.log('settings.json not found, creating default.');
-            const defaultSettings = { 
-                activeConnectionConfigId: null, 
+            const defaultSettings = {
+                activeConnectionConfigId: null,
                 userPersonaCharacterId: null,
                 activeGenerationConfigId: null,
                 chat: {
                     renderer: 'raw',
-                    curateResponse: false
+                    curateResponse: false,
+                    curationConnectionConfigId: '',
                 },
                 chatModes: {}
             };
@@ -231,7 +266,7 @@ async function loadCharacters() {
                 } else {
                     charData.avatarUrl = null;
                 }
-                
+
                 // Load expressions and build full URLs
                 if (charData.expressions && Array.isArray(charData.expressions)) {
                     charData.expressions = charData.expressions.map(item => ({
@@ -254,11 +289,48 @@ async function loadCharacters() {
 
                 characters.push(new Character(charData));
             } catch (err) {
-                 if (err.code !== 'ENOENT') console.error(`Error loading character ${charId}:`, err);
+                if (err.code !== 'ENOENT') console.error(`Error loading character ${charId}:`, err);
             }
         }
     }
     return characters;
+}
+
+async function loadScenarios() {
+    const scenarioFolders = await fs.readdir(SCENARIOS_DIR, { withFileTypes: true });
+    const scenarios = [];
+    for (const dirent of scenarioFolders) {
+        if (dirent.isDirectory()) {
+            const id = dirent.name;
+            const dirPath = path.join(SCENARIOS_DIR, id);
+            const filePath = path.join(dirPath, 'scenario.json');
+            try {
+                const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+                data.id = id;
+
+                // Load avatar
+                const avatarFiles = await glob(path.join(dirPath, 'avatar.*').replace(/\\/g, '/'));
+                if (avatarFiles.length > 0) {
+                    data.avatarUrl = `/${path.relative(process.cwd(), avatarFiles[0]).replace(/\\/g, '/')}?t=${Date.now()}`;
+                } else {
+                    data.avatarUrl = null;
+                }
+
+                // Load banner
+                const bannerFiles = await glob(path.join(dirPath, 'banner.*').replace(/\\/g, '/'));
+                if (bannerFiles.length > 0) {
+                    data.bannerUrl = `/${path.relative(process.cwd(), bannerFiles[0]).replace(/\\/g, '/')}?t=${Date.now()}`;
+                } else {
+                    data.bannerUrl = null;
+                }
+
+                scenarios.push(new Scenario(data));
+            } catch (err) {
+                if (err.code !== 'ENOENT') console.error(`Error loading scenario ${id}:`, err);
+            }
+        }
+    }
+    return scenarios;
 }
 
 async function loadJsonFilesFromDir(dir, ClassConstructor) {
@@ -302,14 +374,30 @@ function resolveMacros(text, context) {
     if (!text) return '';
     const { allCharacters = [], userPersonaCharacterId = null, chatCharacters = [], activeNotes = [] } = context;
 
+    // Helper to get description with appended note info
+    const getAugmentedDescription = (char) => {
+        let desc = char.description || '';
+        if (activeNotes && activeNotes.length > 0) {
+            for (const note of activeNotes) {
+                if (note.characterOverrides && note.characterOverrides[char.id]) {
+                    const specificInfo = note.characterOverrides[char.id];
+                    if (specificInfo && specificInfo.trim()) {
+                        desc += `\n\n${specificInfo}`;
+                    }
+                }
+            }
+        }
+        return desc;
+    };
+
     // New complex macro handler: {{characters[name,description,...]}}
     text = text.replace(/{{\s*([a-zA-Z0-9_]+)\[(.*?)\]\s*}}/g, (match, resourceName, propsString) => {
         const props = propsString.split(',').map(p => p.trim().toLowerCase());
-        
+
         if (resourceName.toLowerCase() === 'characters') {
             // Get the list of characters participating in the chat
             let charactersToRender = [...chatCharacters];
-            
+
             // Check for 'player' or 'focus' attribute requests
             const includePlayer = props.includes('player') || props.includes('focus');
 
@@ -322,19 +410,25 @@ function resolveMacros(text, context) {
             }
 
             if (!charactersToRender || charactersToRender.length === 0) return '';
-            
+
             return charactersToRender.map(c => {
                 const isPlayer = includePlayer && c.id === userPersonaCharacterId;
                 // Updated: use 'focus' instead of 'is-player' for the new syntax
                 const focusAttr = isPlayer ? ' focus="true"' : '';
-                
+
                 const characterLines = [];
                 if (props.includes('name') && c.name) {
                     characterLines.push(`    <name>\n        ${escapeXML(c.name)}\n    </name>`);
                 }
-                if (props.includes('description') && c.description) {
-                    characterLines.push(`    <description>\n        ${escapeXML(c.description)}\n    </description>`);
+
+                // Use augmented description
+                if (props.includes('description')) {
+                    const desc = getAugmentedDescription(c);
+                    if (desc) {
+                        characterLines.push(`    <description>\n        ${escapeXML(desc)}\n    </description>`);
+                    }
                 }
+
                 if (props.includes('expressions') && c.expressions && c.expressions.length > 0) {
                     const expressionLines = c.expressions.map(expr => {
                         return `        <expression name="${escapeXML(expr.name)}">${escapeXML(expr.src)}</expression>`;
@@ -345,7 +439,7 @@ function resolveMacros(text, context) {
                 }
                 if (props.includes('images') && c.gallery && c.gallery.length > 0) {
                     const imageLines = c.gallery.map(img => {
-                        return `        <image>\n            <filename>${escapeXML(img.src)}</filename>\n            <alt>${escapeXML(img.alt || '')}</alt>\n        </image>`;
+                        return `        <image>\n            <src>${escapeXML(img.src)}</src>\n            <alt>${escapeXML(img.alt || '')}</alt>\n        </image>`;
                     });
                     if (imageLines.length > 0) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
@@ -359,19 +453,8 @@ function resolveMacros(text, context) {
                     characterLines.push(`    <avatar>${escapeXML(avatarFilename)}</avatar>`);
                 }
 
-                if (props.includes('note')) {
-                    const characterNoteXmlString = activeNotes.map(s => {
-                        const overrideText = s.characterOverrides?.[c.id];
-                        if (!overrideText?.trim()) return null;
-                        const describesAttr = s.describes ? ` type="${escapeXML(s.describes)}"` : '';
-                        return `    <context${describesAttr}>\n    </context>`;
-                    }).filter(Boolean).join('\n');
+                // Removed legacy 'note' prop handling for character overrides since it's now part of description
 
-                    if (characterNoteXmlString) {
-                        characterLines.push(characterNoteXmlString);
-                    }
-                }
-                
                 if (characterLines.length > 0) {
                     // Updated: use <entity> instead of <character>
                     return `<entity id="${escapeXML(c.id)}"${focusAttr}>\n${characterLines.join('\n')}\n</entity>`;
@@ -379,7 +462,7 @@ function resolveMacros(text, context) {
                 return '';
             }).filter(Boolean).join('\n\n');
         }
-        
+
         return match; // Return original if resourceName is not 'characters'
     });
 
@@ -390,15 +473,16 @@ function resolveMacros(text, context) {
     const macros = {
         characters: () => {
             if (!chatCharacters || chatCharacters.length === 0) return '';
-            
+
             return chatCharacters.map(c => {
                 // Include character ID to help the LLM use it.
-                return `${c.name} (ID: ${c.id})\n${c.description}`;
+                const desc = getAugmentedDescription(c);
+                return `${c.name} (ID: ${c.id})\n${desc}`;
             }).join('\n\n\n\n');
         },
         notes: () => {
             if (!activeNotes || activeNotes.length === 0) return '';
-            
+
             return activeNotes.map(s => {
                 if (!s.description?.trim()) return null;
                 const describesAttr = s.describes ? ` type="${escapeXML(s.describes)}"` : '';
@@ -407,7 +491,8 @@ function resolveMacros(text, context) {
         },
         player: () => {
             if (!playerCharacter) return '';
-            return `${playerCharacter.name}\n${playerCharacter.description}`;
+            const desc = getAugmentedDescription(playerCharacter);
+            return `${playerCharacter.name}\n${desc}`;
         },
         time: () => new Date().toLocaleTimeString(),
         date: () => new Date().toLocaleDateString(),
@@ -448,7 +533,7 @@ function resolveMacros(text, context) {
                 }
             }
         }
-        
+
         console.warn(`Macro {{${macroName}}} not found.`);
         return match;
     });
@@ -458,12 +543,12 @@ function resolveMacros(text, context) {
  * If curation is enabled, collects the initial stream and passes it through a second
  * curation prompt. Otherwise, returns the initial stream.
  * @param {AsyncGenerator<string>} initialStream The first response stream from the provider.
- * @param {BaseProvider} provider The provider instance to use for curation.
- * @param {object} generationParameters The generation parameters for the curation prompt.
+ * @param {BaseProvider} defaultProvider The provider instance used for the main prompt.
+ * @param {object} generationParameters The generation parameters used for the main prompt.
  * @param {AbortSignal} signal The AbortSignal to cancel the process.
  * @returns {AsyncGenerator<string>} The final stream to be sent to the client.
  */
-async function getFinalStream(initialStream, provider, generationParameters, signal) {
+async function getFinalStream(initialStream, defaultProvider, generationParameters, signal) {
     if (!state.settings.chat?.curateResponse) {
         return initialStream;
     }
@@ -485,15 +570,53 @@ async function getFinalStream(initialStream, provider, generationParameters, sig
         return emptyStream();
     }
 
+    // Determine which provider to use for curation
+    let curationProvider = defaultProvider;
+    let curationGenParams = { ...generationParameters };
+    const curationConfigId = state.settings.chat?.curationConnectionConfigId;
+
+    if (curationConfigId) {
+        const config = state.connectionConfigs.find(c => c.id === curationConfigId);
+        if (config) {
+            const ProviderClass = PROVIDERS[config.provider];
+            if (ProviderClass) {
+                // If providers are different (or simply to isolate instances), create new provider
+                if (config.provider !== defaultProvider.config.provider || config.id !== defaultProvider.config.id) {
+                    console.log(`Using separate provider for curation: ${config.name} (${config.provider})`);
+                    curationProvider = new ProviderClass(config);
+
+                    // Since we switched providers, we must update generation parameters
+                    // because params for Gemini (e.g. topK) might break OpenAI provider and vice versa.
+                    // We attempt to find matching parameters in the *active* generation config.
+                    const { activeGenerationConfigId } = state.settings;
+                    if (activeGenerationConfigId) {
+                        const genConfig = state.generationConfigs.find(c => c.id === activeGenerationConfigId);
+                        if (genConfig && genConfig.parameters && genConfig.parameters[config.provider]) {
+                            curationGenParams = genConfig.parameters[config.provider];
+                        } else {
+                            curationGenParams = {}; // Default if no specific params found for this provider
+                        }
+                    } else {
+                        curationGenParams = {};
+                    }
+                }
+            } else {
+                console.warn(`Unsupported curation provider type: ${config.provider}, falling back to default.`);
+            }
+        } else {
+            console.warn(`Curation config ID ${curationConfigId} not found, falling back to default.`);
+        }
+    }
+
     const curationSystemPrompt = await fs.readFile(path.join(__dirname, 'server/utils/prompts/curate.md'), 'utf-8');
     const curationMessages = [{ role: 'user', content: initialResponseContent }];
-    
-    // Re-use the same provider and generation parameters for the curation step
-    const finalStream = provider.prompt(curationMessages, {
+
+    const finalStream = curationProvider.prompt(curationMessages, {
         systemInstruction: curationSystemPrompt,
         signal,
-        ...generationParameters,
+        ...curationGenParams,
     }, true);
+
     console.log('Curation prompt sent. Awaiting curated stream.');
     return finalStream;
 }
@@ -539,10 +662,10 @@ function initHttp() {
                     newSettings.chatModes[mode] = { ...(state.settings.chatModes?.[mode] || {}), ...modeSettings };
                 }
             }
-            
+
             state.settings = newSettings;
             await fs.writeFile(SETTINGS_FILE_PATH, JSON.stringify(state.settings, null, 2));
-            
+
             broadcastEvent('resourceChange', { resourceType: 'setting', eventType: 'update', data: state.settings });
             res.json(state.settings);
         } catch (error) {
@@ -566,13 +689,64 @@ function initHttp() {
             res.status(500).json({ message: 'Failed to save settings.' });
         }
     });
-    
+
     // Characters API
     app.get('/api/characters', async (req, res) => {
         try {
             state.characters = await loadCharacters();
             res.json(state.characters);
         } catch (error) { res.status(500).json({ message: 'Failed to retrieve characters' }); }
+    });
+
+    // NEW: Duplicate Character Endpoint
+    app.post('/api/characters/:id/duplicate', async (req, res) => {
+        try {
+            const { id } = req.params;
+            const originalChar = state.characters.find(c => c.id === id);
+            if (!originalChar) return res.status(404).json({ message: 'Character not found' });
+
+            const sourceDir = path.join(CHARACTERS_DIR, id);
+
+            // Create new character object with modified name
+            const newCharData = originalChar.toSaveObject();
+            newCharData.name = `${originalChar.name} (Copy)`;
+            const newChar = new Character(newCharData); // Generates new UUID
+
+            const destDir = path.join(CHARACTERS_DIR, newChar.id);
+
+            // Check if source directory exists
+            try {
+                await fs.access(sourceDir);
+                // Copy directory (recursive) including assets
+                // fs.cp is available in Node.js v16.7.0+
+                await fs.cp(sourceDir, destDir, { recursive: true });
+            } catch (err) {
+                // If source dir doesn't exist, just create the new dir
+                if (err.code === 'ENOENT') {
+                    await fs.mkdir(destDir, { recursive: true });
+                } else {
+                    throw err;
+                }
+            }
+
+            // Overwrite character.json with updated name and revision
+            await fs.writeFile(path.join(destDir, 'character.json'), JSON.stringify(newChar.toSaveObject(), null, 2));
+
+            // Reload single character to resolve asset URLs correctly
+            const loadedChar = await loadSingleCharacter(newChar.id);
+
+            if (loadedChar) {
+                state.characters.push(loadedChar);
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'create', data: loadedChar });
+                res.status(201).json(loadedChar);
+            } else {
+                throw new Error('Failed to load duplicated character');
+            }
+
+        } catch (error) {
+            console.error('Failed to duplicate character:', error);
+            res.status(500).json({ message: 'Failed to duplicate character' });
+        }
     });
     app.post('/api/characters', async (req, res) => {
         try {
@@ -583,7 +757,7 @@ function initHttp() {
             if (isImport) {
                 charData = await migrateData(charData, 'character');
             }
-            
+
             // The user can suggest an ID, but we ensure it's unique.
             let id = charData.id || uuidv4();
             if (state.characters.some(c => c.id === id)) {
@@ -619,15 +793,15 @@ function initHttp() {
             const { name } = req.body;
             if (!req.file) return res.status(400).json({ message: 'No image file provided.' });
             if (!name) return res.status(400).json({ message: 'Expression name is required.' });
-            
+
             const character = state.characters.find(c => c.id === id);
             if (!character) return res.status(404).json({ message: 'Character not found' });
-    
+
             const newExpressionItem = { src: req.file.filename, name };
             character.expressions.push(newExpressionItem);
-    
+
             await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-            
+
             const updatedCharacter = await loadSingleCharacter(id);
             if (updatedCharacter) {
                 const charIndex = state.characters.findIndex(c => c.id === id);
@@ -635,29 +809,29 @@ function initHttp() {
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
                 res.status(201).json(updatedCharacter);
             } else {
-                 res.status(404).json({ message: 'Character not found after update.' });
+                res.status(404).json({ message: 'Character not found after update.' });
             }
         } catch (error) {
             console.error('Error adding expression image:', error);
             res.status(500).json({ message: 'Failed to add expression.' });
         }
     });
-    
+
     app.put('/api/characters/:id/expressions/:filename', async (req, res) => {
         try {
             const { id, filename } = req.params;
             const { name } = req.body;
             if (!name) return res.status(400).json({ message: 'Expression name is required.' });
-    
+
             const character = state.characters.find(c => c.id === id);
             if (!character) return res.status(404).json({ message: 'Character not found.' });
-    
+
             const expressionItem = character.expressions.find(item => item.src === filename);
             if (!expressionItem) return res.status(404).json({ message: 'Expression not found.' });
-    
+
             expressionItem.name = name;
             await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-            
+
             const updatedCharacter = await loadSingleCharacter(id);
             if (updatedCharacter) {
                 const charIndex = state.characters.findIndex(c => c.id === id);
@@ -665,25 +839,25 @@ function initHttp() {
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
                 res.json(updatedCharacter);
             } else {
-                 res.status(404).json({ message: 'Character not found after update.' });
+                res.status(404).json({ message: 'Character not found after update.' });
             }
         } catch (error) {
             res.status(500).json({ message: 'Failed to update expression.' });
         }
     });
-    
+
     app.delete('/api/characters/:id/expressions/:filename', async (req, res) => {
         try {
             const { id, filename } = req.params;
             const character = state.characters.find(c => c.id === id);
             if (!character) return res.status(404).json({ message: 'Character not found.' });
-    
+
             const imagePath = path.join(CHARACTERS_DIR, id, 'expressions', filename);
             await fs.unlink(imagePath).catch(err => console.warn(`Could not delete file ${imagePath}: ${err.message}`));
-    
+
             character.expressions = character.expressions.filter(item => item.src !== filename);
             await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-    
+
             const updatedCharacter = await loadSingleCharacter(id);
             if (updatedCharacter) {
                 const charIndex = state.characters.findIndex(c => c.id === id);
@@ -691,7 +865,7 @@ function initHttp() {
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
                 res.status(204).send();
             } else {
-                 res.status(404).json({ message: 'Character not found after update.' });
+                res.status(404).json({ message: 'Character not found after update.' });
             }
         } catch (error) {
             res.status(500).json({ message: 'Failed to delete expression.' });
@@ -704,7 +878,7 @@ function initHttp() {
             const { id } = req.params;
             const { alt = '' } = req.body;
             if (!req.file) return res.status(400).json({ message: 'No image file provided.' });
-            
+
             const character = state.characters.find(c => c.id === id);
             if (!character) return res.status(404).json({ message: 'Character not found' });
 
@@ -712,16 +886,16 @@ function initHttp() {
             character.gallery.push(newGalleryItem);
 
             await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-            
+
             // Re-load character to get the full URL for the new image in the broadcast
             const updatedCharacter = await loadSingleCharacter(id);
-             if (updatedCharacter) {
+            if (updatedCharacter) {
                 const charIndex = state.characters.findIndex(c => c.id === id);
                 if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
                 res.status(201).json(updatedCharacter);
             } else {
-                 res.status(404).json({ message: 'Character not found after update.' });
+                res.status(404).json({ message: 'Character not found after update.' });
             }
         } catch (error) {
             console.error('Error adding gallery image:', error);
@@ -742,15 +916,15 @@ function initHttp() {
 
             galleryItem.alt = alt;
             await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-            
+
             const updatedCharacter = await loadSingleCharacter(id);
-             if (updatedCharacter) {
+            if (updatedCharacter) {
                 const charIndex = state.characters.findIndex(c => c.id === id);
                 if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
                 res.json(updatedCharacter);
             } else {
-                 res.status(404).json({ message: 'Character not found after update.' });
+                res.status(404).json({ message: 'Character not found after update.' });
             }
         } catch (error) {
             res.status(500).json({ message: 'Failed to update gallery item.' });
@@ -770,13 +944,13 @@ function initHttp() {
             await fs.writeFile(path.join(CHARACTERS_DIR, id, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
 
             const updatedCharacter = await loadSingleCharacter(id);
-             if (updatedCharacter) {
+            if (updatedCharacter) {
                 const charIndex = state.characters.findIndex(c => c.id === id);
                 if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
                 res.status(204).send();
             } else {
-                 res.status(404).json({ message: 'Character not found after update.' });
+                res.status(404).json({ message: 'Character not found after update.' });
             }
         } catch (error) {
             res.status(500).json({ message: 'Failed to delete gallery item.' });
@@ -791,7 +965,7 @@ function initHttp() {
 
             let character = state.characters.find(c => c.id === originalId);
             if (!character) return res.status(404).json({ message: 'Character not found' });
-            
+
             // Handle ID change
             if (newId && newId !== originalId) {
                 // 1. Check for conflict
@@ -810,20 +984,20 @@ function initHttp() {
 
                 // 3. Update all references
                 await updateCharacterIdReferences(originalId, newId);
-                
+
                 // 4. Update the character object and save it
                 character.id = newId;
                 Object.assign(character, updates);
                 await fs.writeFile(path.join(newPath, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-                
+
                 // 5. Reload the character to get correct URLs and broadcast
                 const reloadedCharacter = await loadSingleCharacter(newId);
                 const oldCharacterData = { id: originalId };
-                
+
                 // Update state
                 state.characters = state.characters.filter(c => c.id !== originalId);
                 state.characters.push(reloadedCharacter);
-                
+
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'delete', data: oldCharacterData });
                 broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'create', data: reloadedCharacter });
                 return res.json(reloadedCharacter);
@@ -832,7 +1006,7 @@ function initHttp() {
             // Standard update without ID change
             Object.assign(character, updates);
             await fs.writeFile(path.join(CHARACTERS_DIR, originalId, 'character.json'), JSON.stringify(character.toSaveObject(), null, 2));
-            
+
             const reloadedCharacter = await loadSingleCharacter(originalId);
             const charIndex = state.characters.findIndex(c => c.id === originalId);
             if (charIndex !== -1) state.characters[charIndex] = reloadedCharacter;
@@ -840,9 +1014,9 @@ function initHttp() {
             broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: reloadedCharacter });
             res.json(reloadedCharacter);
 
-        } catch (error) { 
+        } catch (error) {
             console.error('Error updating character:', error);
-            res.status(500).json({ message: 'Failed to update character' }); 
+            res.status(500).json({ message: 'Failed to update character' });
         }
     });
     app.delete('/api/characters/:id', async (req, res) => {
@@ -862,12 +1036,77 @@ function initHttp() {
         } catch (error) { res.status(500).json({ message: 'Failed to delete character' }); }
     });
 
+    // Scenarios API
+    app.get('/api/scenarios', async (req, res) => {
+        try {
+            state.scenarios = await loadScenarios();
+            res.json(state.scenarios);
+        } catch (error) { res.status(500).json({ message: 'Failed to retrieve scenarios' }); }
+    });
+
+    app.post('/api/scenarios', async (req, res) => {
+        try {
+            const newScenario = new Scenario(req.body);
+            const dir = path.join(SCENARIOS_DIR, newScenario.id);
+            await fs.mkdir(dir, { recursive: true });
+            await fs.writeFile(path.join(dir, 'scenario.json'), JSON.stringify(newScenario, null, 2));
+            state.scenarios.push(newScenario);
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'create', data: newScenario });
+            res.status(201).json(newScenario);
+        } catch (error) { res.status(500).json({ message: 'Failed to create scenario' }); }
+    });
+
+    app.put('/api/scenarios/:id', async (req, res) => {
+        try {
+            const { id } = req.params;
+            const scenario = state.scenarios.find(s => s.id === id);
+            if (!scenario) return res.status(404).json({ message: 'Scenario not found' });
+
+            Object.assign(scenario, req.body);
+            await fs.writeFile(path.join(SCENARIOS_DIR, id, 'scenario.json'), JSON.stringify(scenario, null, 2));
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'update', data: scenario });
+            res.json(scenario);
+        } catch (error) { res.status(500).json({ message: 'Failed to update scenario' }); }
+    });
+
+    app.delete('/api/scenarios/:id', async (req, res) => {
+        try {
+            const { id } = req.params;
+            if (!state.scenarios.some(s => s.id === id)) return res.status(404).json({ message: 'Scenario not found' });
+            await fs.rm(path.join(SCENARIOS_DIR, id), { recursive: true, force: true });
+            state.scenarios = state.scenarios.filter(s => s.id !== id);
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'delete', data: { id } });
+            res.status(204).send();
+        } catch (error) { res.status(500).json({ message: 'Failed to delete scenario' }); }
+    });
+
+    app.post('/api/scenarios/:id/image', scenarioUpload.single('image'), async (req, res) => {
+        try {
+            const { id } = req.params;
+            const type = req.body.type || 'avatar'; // 'avatar' or 'banner'
+            if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
+
+            const scenario = state.scenarios.find(s => s.id === id);
+            if (!scenario) return res.status(404).json({ message: 'Scenario not found.' });
+
+            const url = `/${path.relative(process.cwd(), req.file.path).replace(/\\/g, '/')}?t=${Date.now()}`;
+            if (type === 'banner') scenario.bannerUrl = url;
+            else scenario.avatarUrl = url;
+
+            broadcastEvent('resourceChange', { resourceType: 'scenario', eventType: 'update', data: scenario });
+            res.json(scenario);
+        } catch (error) {
+            console.error('Error uploading scenario image:', error);
+            res.status(500).json({ message: 'Failed to upload image' });
+        }
+    });
+
     // Notes API
     app.get('/api/notes', (req, res) => res.json(state.notes));
     app.post('/api/notes', async (req, res) => {
         try {
             const note = new Note(req.body);
-            await fs.writeFile(path.join(SCENARIOS_DIR, `${note.id}.json`), JSON.stringify(note, null, 2));
+            await fs.writeFile(path.join(NOTES_DIR, `${note.id}.json`), JSON.stringify(note, null, 2));
             state.notes.push(note);
             broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'create', data: note });
             res.status(201).json(note);
@@ -879,7 +1118,7 @@ function initHttp() {
             const index = state.notes.findIndex(s => s.id === id);
             if (index === -1) return res.status(404).json({ message: 'Note not found.' });
             const updatedNote = new Note({ ...req.body, id });
-            await fs.writeFile(path.join(SCENARIOS_DIR, `${id}.json`), JSON.stringify(updatedNote, null, 2));
+            await fs.writeFile(path.join(NOTES_DIR, `${id}.json`), JSON.stringify(updatedNote, null, 2));
             state.notes[index] = updatedNote;
             broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'update', data: updatedNote });
             res.json(updatedNote);
@@ -889,8 +1128,8 @@ function initHttp() {
         try {
             const { id } = req.params;
             if (!state.notes.some(s => s.id === id)) return res.status(404).json({ message: 'Note not found.' });
-            
-            await fs.unlink(path.join(SCENARIOS_DIR, `${id}.json`));
+
+            await fs.unlink(path.join(NOTES_DIR, `${id}.json`));
             state.notes = state.notes.filter(s => s.id !== id);
             broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'delete', data: { id } });
 
@@ -962,40 +1201,9 @@ function initHttp() {
                 overridesChain.push({ depth, overrides: chat.messageOverrides });
             }
 
-            // If this chat has a parent, recursively collect its messages first
-            if (chat.parentId) {
-                let inferredBranchPoint = chat.branchPointMessageId;
-
-                // LEGACY BRANCH DETECTION: If branchPointMessageId is missing, try to infer it
-                if (!inferredBranchPoint && chat.messages.length > 0) {
-                    try {
-                        const parentPath = path.join(CHATS_DIR, `${chat.parentId}.json`);
-                        const parentData = JSON.parse(await fs.readFile(parentPath, 'utf-8'));
-                        const parentChat = new Chat(parentData);
-
-                        // Find the last message in current chat that exists in parent (by content)
-                        // This is where the branch diverged
-                        for (let i = chat.messages.length - 1; i >= 0; i--) {
-                            const currentMsg = chat.messages[i];
-                            const foundInParent = parentChat.messages.find(
-                                pm => pm.content === currentMsg.content && pm.role === currentMsg.role
-                            );
-                            if (foundInParent) {
-                                inferredBranchPoint = foundInParent.id;
-                                console.warn(`[LEGACY BRANCH] Inferred branch point for chat ${chatId}: message "${foundInParent.content.substring(0, 50)}..."`);
-                                break;
-                            }
-                        }
-
-                        if (!inferredBranchPoint) {
-                            console.warn(`[LEGACY BRANCH] Could not infer branch point for chat ${chatId}, will collect all parent messages`);
-                        }
-                    } catch (err) {
-                        console.error(`[LEGACY BRANCH] Error inferring branch point for chat ${chatId}:`, err);
-                    }
-                }
-
-                const parentMessages = await collectParentMessages(chat.parentId, inferredBranchPoint, depth + 1, visitedChatIds, overridesChain);
+            // If this chat has a parent AND a branch point, recursively collect parent messages
+            if (chat.parentId && chat.branchPointMessageId) {
+                const parentMessages = await collectParentMessages(chat.parentId, chat.branchPointMessageId, depth + 1, visitedChatIds, overridesChain);
                 // Mark all parent messages as inherited (runtime-only flag, not saved to disk)
                 messages.push(...parentMessages.map(msg => ({ ...msg, _isInherited: true })));
 
@@ -1070,7 +1278,7 @@ function initHttp() {
             // New-style branch - include parent messages
             const parentMessages = await collectParentMessages(chat.parentId, chat.branchPointMessageId);
             // parentMessages are already marked as _isInherited by collectParentMessages
-            const allMessages = [...parentMessages, ...chat.messages];
+            let allMessages = [...parentMessages, ...chat.messages];
 
             // Apply this chat's own overrides to the combined message list
             // This chat is the youngest descendant (depth -1 conceptually), so its overrides have highest priority
@@ -1083,28 +1291,46 @@ function initHttp() {
                 }
             }
 
+            // Apply this chat's deletions - filter out inherited messages this branch considers "deleted"
+            // This is the branch's opinion of history - sibling branches are not affected
+            if (chat.deletedMessageIds && chat.deletedMessageIds.length > 0) {
+                const deletedSet = new Set(chat.deletedMessageIds);
+                allMessages = allMessages.filter(msg => !deletedSet.has(msg.id));
+            }
+
             return { ...chat, messages: allMessages };
         }
-        // Legacy branch or root chat - return as-is - emit notification to client to warn about legacy branch
-        broadcastEvent('notification', {
-            type: 'info',
-            header: 'Legacy Branch Detected',
-            message: `Chat "${chat.title}" is a legacy branch without a defined branch point. ` +
-                     `For best results, consider creating new branches using the latest features.`
-        });
+
+        // Check if this is a LEGACY BRANCH (has parentId but missing branchPointMessageId)
+        // Root chats (no parentId) should NOT trigger this warning
+        if (chat.parentId && !chat.branchPointMessageId) {
+            broadcastEvent('notification', {
+                type: 'info',
+                header: 'Legacy Branch Detected',
+                message: `Chat "${chat.name}" is a legacy branch without a defined branch point. ` +
+                    `Message history from parent may be incomplete. Consider re-creating this branch.`
+            });
+        }
+
+        // Root chat or legacy branch - return as-is
         return chat;
     }
 
     // Chats API
     app.get('/api/chats', async (req, res) => {
         const chats = await loadJsonFilesFromDir(CHATS_DIR, Chat);
-        // Ensure new Chat objects are instantiated to apply defaults like systemInstruction
-        res.json(chats.map(c => new Chat(c)).sort((a,b) => new Date(b.lastModifiedAt) - new Date(a.lastModifiedAt)).map(c => c.getSummary()));
+        // Ensure new Chat objects are instantiated to apply defaults
+        res.json(chats.map(c => new Chat(c)).sort((a, b) => new Date(b.lastModifiedAt) - new Date(a.lastModifiedAt)).map(c => c.getSummary()));
     });
     app.post('/api/chats', async (req, res) => {
-        const newChat = new Chat(req.body);
-        // The user persona is NOT automatically added as a participant anymore.
-        // It's defined at prompt-time via macros.
+        const { firstMessage, ...chatData } = req.body;
+        const newChat = new Chat(chatData);
+
+        // Handle scenario-based initialization
+        if (firstMessage) {
+            newChat.addMessage({ role: 'assistant', content: firstMessage });
+        }
+
         await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
         state.chats.push(newChat);
         broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'create', data: newChat.getSummary() });
@@ -1136,6 +1362,8 @@ function initHttp() {
             res.status(500).json({ message: 'Failed to retrieve chat' });
         }
     });
+
+
 
     app.get('/api/chats/:id/messages', async (req, res) => {
         const { id } = req.params;
@@ -1179,21 +1407,44 @@ function initHttp() {
             const chatPath = path.join(CHATS_DIR, `${id}.json`);
             const existingChatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
 
-            // Strip inherited messages before saving to prevent duplication
-            // Only save messages that truly belong to this chat
-            const incomingData = { ...req.body };
-            if (incomingData.messages && Array.isArray(incomingData.messages)) {
-                incomingData.messages = incomingData.messages.filter(msg => !msg._isInherited);
+            // ALLOWLIST APPROACH: Only accept specific fields the client legitimately controls
+            // Server is the source of truth - never trust arbitrary client data
+            const ALLOWED_FIELDS = ['name', 'participants', 'notes', 'messageOverrides', 'deletedMessageIds'];
+
+            const incomingData = {};
+            for (const field of ALLOWED_FIELDS) {
+                if (req.body[field] !== undefined) {
+                    incomingData[field] = req.body[field];
+                }
             }
 
-            // Handle message overrides for inherited messages
-            // Merge incoming overrides with existing ones
+            // Special handling for messageOverrides - MERGE with existing (don't replace)
             if (incomingData.messageOverrides) {
-                const existingOverrides = existingChatData.messageOverrides || {};
-                incomingData.messageOverrides = { ...existingOverrides, ...incomingData.messageOverrides };
+                incomingData.messageOverrides = {
+                    ...(existingChatData.messageOverrides || {}),
+                    ...incomingData.messageOverrides
+                };
             }
 
-            const updatedChat = new Chat({ ...existingChatData, ...incomingData, id });
+            // Special handling for deletedMessageIds - MERGE with existing (no duplicates)
+            // This is a branch's opinion of which inherited messages are "deleted" from its view
+            if (incomingData.deletedMessageIds) {
+                const existingDeleted = new Set(existingChatData.deletedMessageIds || []);
+                for (const msgId of incomingData.deletedMessageIds) {
+                    existingDeleted.add(msgId);
+                }
+                incomingData.deletedMessageIds = [...existingDeleted];
+            }
+
+            // PROTECTED FIELDS: These should NEVER come from client
+            const protectedFields = {
+                messages: existingChatData.messages,
+                parentId: existingChatData.parentId,
+                branchPointMessageId: existingChatData.branchPointMessageId,
+                childChatIds: existingChatData.childChatIds || [],
+            };
+
+            const updatedChat = new Chat({ ...existingChatData, ...incomingData, ...protectedFields, id });
             updatedChat.lastModifiedAt = new Date().toISOString();
             await fs.writeFile(chatPath, JSON.stringify(updatedChat, null, 2));
             const index = state.chats.findIndex(c => c.id === id);
@@ -1209,9 +1460,29 @@ function initHttp() {
             res.json(updatedChat);
         } catch (e) {
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
+            console.error(`[Chat PUT] Error updating chat ${id}:`, e);
             res.status(500).json({ message: 'Failed to update chat' });
         }
     });
+    // Helper function to recursively collect all descendant chat IDs for cascade delete
+    async function collectDescendantIds(chatId, visited = new Set()) {
+        if (visited.has(chatId)) return []; // Circular reference protection
+        visited.add(chatId);
+
+        const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
+        try {
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            const descendants = [chatId];
+            for (const childId of chatData.childChatIds || []) {
+                descendants.push(...await collectDescendantIds(childId, visited));
+            }
+            return descendants;
+        } catch (e) {
+            // If we can't read the chat, just return its ID (it might not exist)
+            return [chatId];
+        }
+    }
+
     app.delete('/api/chats/:id', async (req, res) => {
         const { id } = req.params;
         try {
@@ -1232,29 +1503,108 @@ function initHttp() {
                     if (e.code !== 'ENOENT') console.error(`Error updating parent chat ${chatToDelete.parentId} after child deletion:`, e);
                 }
             }
-            
-            // If this chat has children, clear their parentId (they become root-level or orphaned for now)
-            for (const childId of chatToDelete.childChatIds) {
-                const childChatPath = path.join(CHATS_DIR, `${childId}.json`);
+
+            // CASCADE DELETE: Delete this chat and ALL descendants
+            // This prevents orphaned branches that lose their message history
+            const allIdsToDelete = await collectDescendantIds(id);
+            console.log(`[Delete] Deleting chat ${id} and ${allIdsToDelete.length - 1} descendant(s)`);
+
+            for (const idToDelete of allIdsToDelete) {
                 try {
-                    const childChatData = JSON.parse(await fs.readFile(childChatPath, 'utf-8'));
-                    const childChat = new Chat(childChatData);
-                    childChat.parentId = null; // Orphan the child
-                    childChat.lastModifiedAt = new Date().toISOString();
-                    await fs.writeFile(childChatPath, JSON.stringify(childChat, null, 2));
-                    broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: childChat.getSummary() });
+                    await fs.unlink(path.join(CHATS_DIR, `${idToDelete}.json`));
                 } catch (e) {
-                    if (e.code !== 'ENOENT') console.error(`Error updating child chat ${childId} after parent deletion:`, e);
+                    if (e.code !== 'ENOENT') console.error(`Error deleting chat file ${idToDelete}:`, e);
                 }
+                state.chats = state.chats.filter(c => c.id !== idToDelete);
+                broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'delete', data: { id: idToDelete } });
             }
 
-
-            await fs.unlink(chatPath);
-            state.chats = state.chats.filter(c => c.id !== id);
-            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'delete', data: { id } });
             res.status(204).send();
         } catch (e) { res.status(404).json({ message: 'Chat not found' }); }
     });
+
+    // DELETE a message that belongs to THIS chat (not inherited)
+    // For inherited messages, use PUT with deletedMessageIds instead
+    app.delete('/api/chats/:chatId/messages/:messageId', async (req, res) => {
+        const { chatId, messageId } = req.params;
+        try {
+            const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+
+            // Only delete if message exists in this chat's OWN messages (not inherited)
+            const msgIndex = chatData.messages.findIndex(m => m.id === messageId);
+            if (msgIndex === -1) {
+                return res.status(404).json({
+                    message: 'Message not found in this chat. If this is an inherited message, use deletedMessageIds instead.'
+                });
+            }
+
+            chatData.messages.splice(msgIndex, 1);
+            chatData.lastModifiedAt = new Date().toISOString();
+            await fs.writeFile(chatPath, JSON.stringify(chatData, null, 2));
+
+            // Update in-memory state
+            const index = state.chats.findIndex(c => c.id === chatId);
+            if (index !== -1) state.chats[index] = new Chat(chatData);
+
+            // Broadcast the change
+            const updatedChat = new Chat(chatData);
+            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: updatedChat.getSummary() });
+            const fullChat = await buildFullChatForClient(updatedChat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
+
+            res.status(204).send();
+        } catch (e) {
+            if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
+            console.error(`Error deleting message ${messageId} from chat ${chatId}:`, e);
+            res.status(500).json({ message: 'Failed to delete message' });
+        }
+    });
+
+    // PATCH (update) a message that belongs to THIS chat (not inherited)
+    // For inherited messages, use PUT with messageOverrides instead
+    app.patch('/api/chats/:chatId/messages/:messageId', async (req, res) => {
+        const { chatId, messageId } = req.params;
+        const { content } = req.body;
+
+        if (content === undefined) {
+            return res.status(400).json({ message: 'Content is required' });
+        }
+
+        try {
+            const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+
+            // Only update if message exists in this chat's OWN messages (not inherited)
+            const msg = chatData.messages.find(m => m.id === messageId);
+            if (!msg) {
+                return res.status(404).json({
+                    message: 'Message not found in this chat. If this is an inherited message, use messageOverrides instead.'
+                });
+            }
+
+            msg.content = content;
+            chatData.lastModifiedAt = new Date().toISOString();
+            await fs.writeFile(chatPath, JSON.stringify(chatData, null, 2));
+
+            // Update in-memory state
+            const index = state.chats.findIndex(c => c.id === chatId);
+            if (index !== -1) state.chats[index] = new Chat(chatData);
+
+            // Broadcast the change
+            const updatedChat = new Chat(chatData);
+            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: updatedChat.getSummary() });
+            const fullChat = await buildFullChatForClient(updatedChat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
+
+            res.json({ id: messageId, content });
+        } catch (e) {
+            if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found' });
+            console.error(`Error updating message ${messageId} in chat ${chatId}:`, e);
+            res.status(500).json({ message: 'Failed to update message' });
+        }
+    });
+
     app.post('/api/chats/:id/branch', async (req, res) => {
         const { id: originalChatId } = req.params;
         const { messageId } = req.body;
@@ -1276,7 +1626,7 @@ function initHttp() {
                 const parentMessages = await collectParentMessages(originalChat.parentId, originalChat.branchPointMessageId);
                 fullMessages = [...parentMessages, ...originalChat.messages];
             } else {
-                // Legacy branch or root chat - use own messages
+                // Root chat or legacy branch - use own messages directly
                 fullMessages = originalChat.messages;
             }
 
@@ -1293,27 +1643,133 @@ function initHttp() {
                 notes: originalChat.notes, // Copy notes to branch
                 parentId: originalChat.id, // Set parent ID
                 branchPointMessageId: messageId, // Store where this branch diverged
-                systemInstruction: originalChat.systemInstruction,
                 messages: [] // Empty - messages will come from parent chain!
             });
+
+            // Log branch creation for debugging
+            console.log(`[Branch] Creating branch from chat "${originalChat.name}" (${originalChat.id}) at message ${messageId}`);
+            console.log(`[Branch] New branch: id=${newChat.id}, parentId=${newChat.parentId}, branchPointMessageId=${newChat.branchPointMessageId}`);
+
+            if (existsSync(path.join(CHATS_DIR, `${newChat.id}.json`))) {
+                broadcastEvent('notification', {
+                    type: 'bad',
+                    header: 'Branch Creation Failed',
+                    message: `Chat ID "${newChat.id}" already exists. Branch creation aborted.`
+                });
+                return res.status(409).json({ message: `Chat ID "${newChat.id}" already exists. Try again.` });
+
+            }
             await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
             state.chats.push(newChat);
 
             // Update the original chat to record the new branch as its child
-            originalChat.childChatIds.push(newChat.id);
-            originalChat.lastModifiedAt = new Date().toISOString();
-            await fs.writeFile(path.join(CHATS_DIR, `${originalChat.id}.json`), JSON.stringify(originalChat, null, 2));
-            
+            // Re-read the parent chat to avoid race condition (another request may have modified it)
+            const freshParentData = JSON.parse(await fs.readFile(originalChatPath, 'utf-8'));
+            const freshParentChat = new Chat(freshParentData);
+            freshParentChat.childChatIds = freshParentChat.childChatIds || [];
+            if (!freshParentChat.childChatIds.includes(newChat.id)) {
+                freshParentChat.childChatIds.push(newChat.id);
+            }
+            freshParentChat.lastModifiedAt = new Date().toISOString();
+            await fs.writeFile(originalChatPath, JSON.stringify(freshParentChat, null, 2));
+
+            // Update in-memory state as well
+            const stateChat = state.chats.find(c => c.id === originalChatId);
+            if (stateChat) {
+                stateChat.childChatIds = freshParentChat.childChatIds;
+                stateChat.lastModifiedAt = freshParentChat.lastModifiedAt;
+            }
+
             // Broadcast updates for both the new chat and the updated original chat
             broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'create', data: newChat.getSummary() });
-            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: originalChat.getSummary() });
-            
+            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: freshParentChat.getSummary() });
+
             res.status(201).json(newChat);
 
         } catch (e) {
             if (e.code === 'ENOENT') return res.status(404).json({ message: 'Original chat not found.' });
             console.error(`Error branching chat ${originalChatId}:`, e);
             res.status(500).json({ message: 'Failed to create chat branch.' });
+        }
+    });
+
+    app.post('/api/chats/:id/rewind', async (req, res) => {
+        const { id } = req.params;
+        const { targetMessageId } = req.body;
+
+        if (!targetMessageId) {
+            return res.status(400).json({ message: 'targetMessageId is required.' });
+        }
+
+        try {
+            const chatPath = path.join(CHATS_DIR, `${id}.json`);
+            const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            const chat = new Chat(chatData);
+
+            // 1. Reconstruct full history to determine chronological order
+            // We need to know exactly which messages come AFTER the target
+            const fullChat = await buildFullChatForClient(chat);
+            const allMessages = fullChat.messages;
+
+            const targetIndex = allMessages.findIndex(m => m.id === targetMessageId);
+
+            if (targetIndex === -1) {
+                return res.status(404).json({ message: 'Target message not found in chat history.' });
+            }
+
+            // 2. Identify messages to delete (everything AFTER the target index)
+            // We keep the target message, removing only what follows it.
+            const messagesToDelete = allMessages.slice(targetIndex + 1);
+
+            if (messagesToDelete.length === 0) {
+                return res.json({ message: 'No messages to rewind (target is the latest message).' });
+            }
+
+            let modified = false;
+            const existingDeletedSet = new Set(chat.deletedMessageIds || []);
+
+            // 3. Process deletions based on ownership
+            for (const msg of messagesToDelete) {
+                if (msg._isInherited) {
+                    // Inherited message: Add to deletedMessageIds list for this branch
+                    if (!existingDeletedSet.has(msg.id)) {
+                        existingDeletedSet.add(msg.id);
+                        modified = true;
+                    }
+                } else {
+                    // Owned message: Remove from the local messages array
+                    const localIndex = chat.messages.findIndex(m => m.id === msg.id);
+                    if (localIndex !== -1) {
+                        chat.messages.splice(localIndex, 1);
+                        modified = true;
+                    }
+                }
+            }
+
+            if (modified) {
+                chat.deletedMessageIds = Array.from(existingDeletedSet);
+                chat.lastModifiedAt = new Date().toISOString();
+
+                await fs.writeFile(chatPath, JSON.stringify(chat, null, 2));
+
+                // Update in-memory state
+                const index = state.chats.findIndex(c => c.id === id);
+                if (index !== -1) state.chats[index] = chat;
+
+                // Broadcast updates
+                broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: chat.getSummary() });
+
+                // Re-build full chat for client (now truncated)
+                const updatedFullChat = await buildFullChatForClient(chat);
+                broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: updatedFullChat });
+            }
+
+            res.json({ success: true, rewoundCount: messagesToDelete.length });
+
+        } catch (e) {
+            if (e.code === 'ENOENT') return res.status(404).json({ message: 'Chat not found.' });
+            console.error(`Error rewinding chat ${id}:`, e);
+            res.status(500).json({ message: 'Failed to rewind chat.' });
         }
     });
 
@@ -1333,21 +1789,21 @@ function initHttp() {
             const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
             const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
             const chat = new Chat(chatData);
-            
+
             let newGlobalResource;
             let found = false;
 
             if (resourceType === 'character') {
                 const charIndex = chat.participants.findIndex(p => typeof p === 'object' && p.id === resourceId);
                 if (charIndex === -1) return res.status(404).json({ message: 'Embedded character not found in chat.' });
-                
+
                 const embeddedCharData = chat.participants[charIndex];
                 const newChar = new Character(embeddedCharData); // This assigns a new permanent ID
-                
+
                 const charDir = path.join(CHARACTERS_DIR, newChar.id);
                 await fs.mkdir(charDir, { recursive: true });
                 await fs.writeFile(path.join(charDir, 'character.json'), JSON.stringify(newChar.toSaveObject(), null, 2));
-                
+
                 state.characters.push(newChar);
                 chat.participants[charIndex] = newChar.id; // Replace object with ID
                 newGlobalResource = newChar;
@@ -1359,7 +1815,7 @@ function initHttp() {
                 const embeddedNoteData = chat.notes[noteIndex];
                 const newNote = new Note(embeddedNoteData); // Assigns new permanent ID
 
-                await fs.writeFile(path.join(SCENARIOS_DIR, `${newNote.id}.json`), JSON.stringify(newNote, null, 2));
+                await fs.writeFile(path.join(NOTES_DIR, `${newNote.id}.json`), JSON.stringify(newNote, null, 2));
 
                 state.notes.push(newNote);
                 chat.notes[noteIndex] = newNote.id; // Replace object with ID
@@ -1377,7 +1833,7 @@ function initHttp() {
                 // Build full chat with parent messages for client
                 const fullChat = await buildFullChatForClient(chat);
                 broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
-                
+
                 res.json(chat);
             }
 
@@ -1391,7 +1847,7 @@ function initHttp() {
     // Providers API
     app.get('/api/providers/schemas', (req, res) => {
         const schemas = {};
-        for (const [id, providerClass] of Object.entries(ADAPTERS)) {
+        for (const [id, providerClass] of Object.entries(PROVIDERS)) {
             if (typeof providerClass.getProviderSchema === 'function') {
                 schemas[id] = providerClass.getProviderSchema();
             }
@@ -1401,7 +1857,7 @@ function initHttp() {
 
     app.get('/api/providers/generation-schemas', (req, res) => {
         const schemas = {};
-        for (const [id, providerClass] of Object.entries(ADAPTERS)) {
+        for (const [id, providerClass] of Object.entries(PROVIDERS)) {
             if (typeof providerClass.getGenerationParametersSchema === 'function') {
                 schemas[id] = providerClass.getGenerationParametersSchema();
             }
@@ -1444,10 +1900,10 @@ function initHttp() {
     app.post('/api/connection-configs/:id/activate', async (req, res) => {
         const { id } = req.params;
         if (id === 'null') {
-             state.settings.activeConnectionConfigId = null;
+            state.settings.activeConnectionConfigId = null;
         } else {
-             if (!state.connectionConfigs.some(c => c.id === id)) return res.status(404).json({ message: 'Config not found.' });
-             state.settings.activeConnectionConfigId = id;
+            if (!state.connectionConfigs.some(c => c.id === id)) return res.status(404).json({ message: 'Config not found.' });
+            state.settings.activeConnectionConfigId = id;
         }
         await fs.writeFile(SETTINGS_FILE_PATH, JSON.stringify(state.settings, null, 2));
         broadcastEvent('resourceChange', { resourceType: 'setting', eventType: 'update', data: state.settings });
@@ -1456,7 +1912,7 @@ function initHttp() {
     app.post('/api/connection-configs/test', async (req, res) => {
         try {
             const config = new ConnectionConfig(req.body);
-            const ProviderClass = ADAPTERS[config.provider];
+            const ProviderClass = PROVIDERS[config.provider];
             if (!ProviderClass) {
                 return res.status(400).json({ ok: false, message: `Unsupported provider type: '${config.provider}'` });
             }
@@ -1515,10 +1971,10 @@ function initHttp() {
         res.json(state.settings);
     });
 
-    
+
     // Prompting API
     function sendSse(res, event, data) {
-        
+
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
     }
@@ -1550,11 +2006,11 @@ function initHttp() {
         // 1. Get Active Connection and Provider
         const { activeConnectionConfigId, userPersonaCharacterId, activeGenerationConfigId } = state.settings;
         if (!activeConnectionConfigId) throw new Error('No active connection configuration set.');
-        
+
         const config = state.connectionConfigs.find(c => c.id === activeConnectionConfigId);
         if (!config) throw new Error(`Active connection config (ID: ${activeConnectionConfigId}) not found.`);
-        
-        const ProviderClass = ADAPTERS[config.provider];
+
+        const ProviderClass = PROVIDERS[config.provider];
         if (!ProviderClass) throw new Error(`Unsupported provider type: ${config.provider}`);
         const provider = new ProviderClass(config);
 
@@ -1569,23 +2025,23 @@ function initHttp() {
         const fullChat = await buildFullChatForClient(chat);
         let historyForPrompt = fullChat.messages;
         let userMessageToAppend = null;
-        
+
         if (isRegen) {
             const regenIndex = historyForPrompt.findIndex(m => m.id === messageIdToRegen);
             if (regenIndex === -1) throw new Error('Message to regenerate not found.');
             if (historyForPrompt[regenIndex].role !== 'assistant') throw new Error('Can only regenerate an assistant message.');
             historyForPrompt = historyForPrompt.slice(0, regenIndex);
         } else if (userMessageContent !== null) {
-            userMessageToAppend = { 
-                role: 'user', 
+            userMessageToAppend = {
+                role: 'user',
                 content: userMessageContent,
                 characterId: userPersonaCharacterId // Add the author ID
             };
         }
-        
-        const macroContext = { 
-            allCharacters: state.characters, 
-            userPersonaCharacterId, 
+
+        const macroContext = {
+            allCharacters: state.characters,
+            userPersonaCharacterId,
             chatCharacters,
             activeNotes
         };
@@ -1594,18 +2050,14 @@ function initHttp() {
         let finalMessageList = [];
         let systemParts = [];
         let generationParameters = {};
-        
-        const genConfig = activeGenerationConfigId ? state.generationConfigs.find(c => c.id === activeGenerationConfigId) : null;
 
-        if (chat.systemInstruction) {
-            systemParts.push(resolveMacros(chat.systemInstruction, macroContext));
-        }
+        const genConfig = activeGenerationConfigId ? state.generationConfigs.find(c => c.id === activeGenerationConfigId) : null;
 
         if (genConfig) {
             if (genConfig.parameters && genConfig.parameters[config.provider]) {
                 generationParameters = genConfig.parameters[config.provider];
             }
-            
+
             // Add the generation config's system prompt to system parts
             if (genConfig.systemPrompt) {
                 systemParts.push(resolveMacros(genConfig.systemPrompt, macroContext));
@@ -1623,7 +2075,7 @@ function initHttp() {
         const TEMP_DIR = path.join(__dirname, 'temp');
         await fs.mkdir(TEMP_DIR, { recursive: true });
         const tempPromptPath = path.join(TEMP_DIR, `prompt-${chatId}-${Date.now()}.json`);
-        await fs.writeFile(tempPromptPath, JSON.stringify({system: resolvedSystemInstruction, messages: finalMessageList}, null, 2));
+        await fs.writeFile(tempPromptPath, JSON.stringify({ system: resolvedSystemInstruction, messages: finalMessageList }, null, 2));
 
         // 5. Stream response from provider
         console.log('About to call provider.prompt with:', {
@@ -1632,13 +2084,13 @@ function initHttp() {
             systemInstructionLength: resolvedSystemInstruction.length,
             generationParameters
         });
-        
+
         const stream = provider.prompt(finalMessageList, {
             systemInstruction: resolvedSystemInstruction,
             signal,
             ...generationParameters,
         });
-        
+
         console.log('Provider returned stream:', !!stream);
         return { stream, chat, userMessageToAppend, historyForPrompt, isRegen, messageIdToRegen, provider, generationParameters };
     }
@@ -1647,7 +2099,7 @@ function initHttp() {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
         const abortController = new AbortController();
 
-        
+
         try {
             const { id: chatId } = req.params;
             const { messageId, history } = req.body;
@@ -1670,7 +2122,7 @@ function initHttp() {
             if (regenIndex === -1) {
                 throw new Error(`Message with ID "${messageId}" not found in chat "${chat.id}" for regeneration.`);
             }
-            
+
             // Update the existing message object instead of replacing it.
             // This preserves the message ID, simplifying client-side logic.
             const messageToUpdate = chat.messages[regenIndex];
@@ -1710,7 +2162,7 @@ function initHttp() {
             if (!history && (existingChat.messages.length === 0 || existingChat.messages.at(-1).role !== 'user')) {
                 throw new Error('Cannot resend: the last message is not from the user.');
             }
-            
+
             // This is equivalent to a normal prompt but without a *new* user message.
             const { stream: initialStream, chat, provider, generationParameters } = await processPrompt(chatId, null, false, null, history, abortController.signal);
             const finalStream = await getFinalStream(initialStream, provider, generationParameters, abortController.signal);
@@ -1767,7 +2219,7 @@ function initHttp() {
                 sendSse(res, 'token', { token });
             }
             console.log(`[Prompt] Stream complete - Tokens: ${tokenCount}, Characters: ${assistantMessage.content.length}`);
-            
+
             if (userMessageToAppend) chat.addMessage(userMessageToAppend);
             chat.addMessage(assistantMessage);
             chat.lastModifiedAt = new Date().toISOString();
@@ -1800,25 +2252,25 @@ function initHttp() {
     app.post('/api/completions', async (req, res) => {
         try {
             const { messages, stream = false, temperature, max_tokens } = req.body;
-            
+
             // Get active connection config
             const { activeConnectionConfigId, activeGenerationConfigId } = state.settings;
             if (!activeConnectionConfigId) {
                 return res.status(400).json({ message: 'No active connection configuration set.' });
             }
-            
+
             const config = state.connectionConfigs.find(c => c.id === activeConnectionConfigId);
             if (!config) {
                 return res.status(404).json({ message: `Active connection config not found.` });
             }
-            
-            const ProviderClass = ADAPTERS[config.provider];
+
+            const ProviderClass = PROVIDERS[config.provider];
             if (!ProviderClass) {
                 return res.status(400).json({ message: `Unsupported provider: ${config.provider}` });
             }
-            
+
             const provider = new ProviderClass(config);
-            
+
             // Get generation config if exists
             let generationParams = {};
             if (activeGenerationConfigId) {
@@ -1827,10 +2279,10 @@ function initHttp() {
                     generationParams = { ...genConfig.params };
                 }
             }
-            
+
             // Override with request params if provided
             if (temperature !== undefined) generationParams.temperature = temperature;
-            
+
             // Handle max_tokens based on provider
             if (max_tokens !== undefined) {
                 if (config.provider === 'gemini') {
@@ -1839,28 +2291,28 @@ function initHttp() {
                     generationParams.max_tokens = max_tokens;
                 }
             }
-            
+
             // For non-streaming response
             if (!stream) {
                 // Extract system message if present
                 let systemInstruction = '';
                 let messageList = [...messages];
-                
+
                 if (messages.length > 0 && messages[0].role === 'system') {
                     systemInstruction = messages[0].content;
                     messageList = messages.slice(1);
                 }
-                
+
                 const completion = provider.prompt(messageList, {
                     systemInstruction,
                     ...generationParams
                 });
-                
+
                 let fullContent = '';
                 for await (const token of completion) {
                     fullContent += token;
                 }
-                
+
                 return res.json({
                     choices: [{
                         message: {
@@ -1870,241 +2322,90 @@ function initHttp() {
                     }]
                 });
             }
-            
+
             // For streaming response (not implemented for plugins yet)
             res.status(501).json({ message: 'Streaming not implemented for completions endpoint' });
-            
+
         } catch (error) {
             console.error('Error in completions endpoint:', error);
             res.status(500).json({ message: error.message });
         }
     });
 
-    // --- NEW: Chat Export Endpoint ---
-    app.get('/api/chats/:id/export', async (req, res) => {
-        const initialChatId = req.params.id;
+    // Tool API: Generate Character
+    app.post('/api/tools/generate-character', async (req, res) => {
         try {
-            // 1. Find the ultimate root of the chat tree
-            let currentChatId = initialChatId;
-            let rootChatId = initialChatId;
-            const allChatRecords = await loadJsonFilesFromDir(CHATS_DIR, Chat); // Load all chats to build the tree
-            const chatMap = new Map(allChatRecords.map(c => [c.id, c]));
+            const { name, description } = req.body;
 
-            while (true) {
-                const chat = chatMap.get(currentChatId);
-                if (!chat) { // Chat not found or broken link
-                    rootChatId = initialChatId; // Fallback to initial if chain is broken
-                    break;
-                }
-                if (chat.parentId && chatMap.has(chat.parentId)) {
-                    currentChatId = chat.parentId;
-                    rootChatId = currentChatId;
-                } else {
-                    break; // No parent, this is the root
-                }
-            }
+            // 1. Get Active Connection
+            const { activeConnectionConfigId } = state.settings;
+            if (!activeConnectionConfigId) return res.status(400).json({ message: 'No active connection configuration.' });
 
-            // 2. Collect all chats in the tree (including root and all descendants)
-            const chatTree = new Map(); // Map of ID to full chat object
-            const q = [rootChatId];
-            const visited = new Set();
+            const config = state.connectionConfigs.find(c => c.id === activeConnectionConfigId);
+            if (!config) return res.status(404).json({ message: 'Active connection config not found.' });
 
-            while (q.length > 0) {
-                const currentId = q.shift();
-                if (visited.has(currentId)) continue;
-                visited.add(currentId);
+            const ProviderClass = PROVIDERS[config.provider];
+            if (!ProviderClass) return res.status(400).json({ message: `Unsupported provider: ${config.provider}` });
+            const provider = new ProviderClass(config);
 
-                const chat = chatMap.get(currentId);
-                if (chat) {
-                    chatTree.set(chat.id, JSON.parse(JSON.stringify(chat))); // Deep copy for modification
-                    for (const childId of chat.childChatIds) {
-                        if (!visited.has(childId)) {
-                            q.push(childId);
-                        }
-                    }
+            // 2. Prepare Prompt
+            const promptTemplate = await fs.readFile(path.join(__dirname, 'server/utils/prompts/generate_char.md'), 'utf-8');
+            const systemInstruction = promptTemplate;
+
+            // Use user description as the prompt, or a default instruction if empty
+            const userContent = `
+Name: ${name || '(No name provided)'}
+Description: ${description || '(No description provided)'}
+            `.trim();
+
+            const messages = [{ role: 'user', content: userContent }];
+
+            // 3. Call LLM
+            let generationParameters = {};
+            const { activeGenerationConfigId } = state.settings;
+            if (activeGenerationConfigId) {
+                const genConfig = state.generationConfigs.find(c => c.id === activeGenerationConfigId);
+                if (genConfig && genConfig.parameters && genConfig.parameters[config.provider]) {
+                    generationParameters = genConfig.parameters[config.provider];
                 }
             }
 
-            if (chatTree.size === 0) {
-                return res.status(404).json({ message: 'Chat tree not found.' });
+            const stream = provider.prompt(messages, {
+                systemInstruction,
+                ...generationParameters,
+            }, false, { websearchEnabled: true });
+
+            let fullContent = '';
+            for await (const token of stream) {
+                fullContent += token;
             }
 
-            // 3. Collect all unique referenced characters and notes
-            const exportedCharacters = new Map(); // Map of ID to full Character object
-            const exportedNotes = new Map();   // Map of ID to full Note object
+            // 4. Parse JSON
+            let jsonString = fullContent.trim();
+            // Remove markdown code blocks if present
+            jsonString = jsonString.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
 
-            // Helper to add character to the map
-            const addCharacterToExport = (charData) => {
-                if (charData && !exportedCharacters.has(charData.id)) {
-                    exportedCharacters.set(charData.id, charData.toSaveObject());
-                    exportedCharacters.get(charData.id).id = charData.id; // Ensure ID is present in exported object
-                    exportedCharacters.get(charData.id).avatarUrl = charData.avatarUrl; // Include avatar URL for preview
-                    // For gallery, convert local paths to simple filenames
-                    if (charData.gallery) {
-                        exportedCharacters.get(charData.id).gallery = charData.gallery.map(item => ({
-                            src: item.src,
-                            alt: item.alt
-                        }));
-                    }
-                }
-            };
-
-            // Helper to add note to the map
-            const addNoteToExport = (noteData) => {
-                if (noteData && !exportedNotes.has(noteData.id)) {
-                    exportedNotes.set(noteData.id, JSON.parse(JSON.stringify(noteData)));
-                }
-            };
-            
-            // Get all library characters and notes for lookup
-            const allLibraryCharacters = new Map(state.characters.map(c => [c.id, c]));
-            const allLibraryNotes = new Map(state.notes.map(s => [s.id, s]));
-
-            for (const chat of chatTree.values()) {
-                // Collect participants
-                const newParticipants = [];
-                for (const p of chat.participants) {
-                    let charObj;
-                    if (typeof p === 'string') { // It's a reference to a library character
-                        charObj = allLibraryCharacters.get(p);
-                    } else { // It's an embedded character object
-                        charObj = new Character(p); // Convert to Character class to ensure methods like toSaveObject are available
-                    }
-                    if (charObj) {
-                        addCharacterToExport(charObj);
-                        newParticipants.push(charObj); // Store as object in chat, not ID
-                    }
-                }
-                chat.participants = newParticipants; // Update the chat's participants array
-
-                // Collect notes
-                const newNotes = [];
-                for (const s of chat.notes) {
-                    let noteObj;
-                    if (typeof s === 'string') { // It's a reference to a library note
-                        noteObj = allLibraryNotes.get(s);
-                    } else { // It's an embedded note object
-                        noteObj = new Note(s);
-                    }
-                    if (noteObj) {
-                        addNoteToExport(noteObj);
-                        newNotes.push(noteObj); // Store as object in chat, not ID
-                    }
-                }
-                chat.notes = newNotes; // Update the chat's notes array
-
-                // Collect characters from user messages
-                for (const msg of chat.messages) {
-                    if (msg.role === 'user' && msg.characterId) {
-                        const userChar = allLibraryCharacters.get(msg.characterId);
-                        if (userChar) {
-                            addCharacterToExport(userChar);
-                            // The message's characterId itself remains a string ID
-                        }
-                    }
-                }
+            let result;
+            try {
+                result = JSON.parse(jsonString);
+            } catch (e) {
+                console.warn('Failed to parse character generation JSON:', jsonString);
+                broadcastEvent('notification', {
+                    type: 'error',
+                    header: 'Character Creation Failed',
+                    message: 'Failed to parse the LLM\'s response as JSON. Please try again.',
+                });
+                // Fallback: attempt to assume the whole text is the description if JSON parsing failed
+                result = { name: name, description: fullContent };
             }
 
-            // 4. Construct the packed object
-            const packedChat = {
-                minervaFormat: "PackedChat",
-                version: "1.0",
-                exportedChatRootId: rootChatId,
-                chats: Object.fromEntries(chatTree), // Chat objects now have embedded participants/notes
-                characters: Object.fromEntries(exportedCharacters),
-                notes: Object.fromEntries(exportedNotes),
-            };
-
-            // 5. Send to client
-            const filename = `chat_${chatMap.get(initialChatId)?.name?.replace(/[^a-zA-Z0-9_\-.]/g, '_').substring(0, 50) || initialChatId}.minerva-chat`;
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-            res.setHeader('Content-Type', 'application/json');
-            res.send(JSON.stringify(packedChat, null, 2));
+            res.json(result);
 
         } catch (error) {
-            console.error('Error exporting chat:', error);
-            res.status(500).json({ message: 'Failed to export chat.' });
+            console.error('Error generating character:', error);
+            res.status(500).json({ message: error.message });
         }
     });
-
-    // --- NEW: Chat Import Endpoint ---
-    app.post('/api/chats/import', async (req, res) => {
-        try {
-            const packedData = req.body;
-
-            if (packedData.minervaFormat !== 'PackedChat' || !packedData.chats) {
-                return res.status(400).json({ message: 'Invalid Minerva Packed Chat format.' });
-            }
-
-            // Phase 1: Prepare Chat ID mapping for the entire tree
-            const oldChatIdToNewChatIdMap = {};
-            for (const oldChatId of Object.keys(packedData.chats)) {
-                oldChatIdToNewChatIdMap[oldChatId] = uuidv4();
-            }
-
-            // Phase 2: Import chats, keeping resources embedded
-            console.log('Importing chats from packed file...');
-            const newChatsToSave = [];
-            for (const [oldChatId, chatData] of Object.entries(packedData.chats)) {
-                const newChat = new Chat(chatData); // Instantiate with data from file
-                newChat.id = oldChatIdToNewChatIdMap[oldChatId]; // Assign new permanent ID
-
-                // Update parent/child relationships using the new ID map
-                newChat.parentId = chatData.parentId ? oldChatIdToNewChatIdMap[chatData.parentId] : null;
-                newChat.childChatIds = (chatData.childChatIds || []).map(id => oldChatIdToNewChatIdMap[id]).filter(Boolean);
-
-                // This map will link old resource IDs from the file to new temp IDs for this chat
-                const resourceIdMap = {};
-
-                // Process participants: they are full objects. Assign new temporary IDs to them.
-                newChat.participants = (chatData.participants || []).map(p_obj => {
-                    const oldResourceId = p_obj.id;
-                    const newTempId = `temp-${uuidv4()}`;
-                    resourceIdMap[oldResourceId] = newTempId;
-                    p_obj.id = newTempId;
-                    return p_obj; // Return the object with its new temporary ID
-                });
-
-                // Process notes: same logic as participants
-                newChat.notes = (chatData.notes || []).map(s_obj => {
-                    const oldResourceId = s_obj.id;
-                    const newTempId = `temp-${uuidv4()}`;
-                    resourceIdMap[oldResourceId] = newTempId;
-                    s_obj.id = newTempId;
-                    return s_obj;
-                });
-
-                // Update character IDs in messages to use the new temporary IDs
-                newChat.messages = (chatData.messages || []).map(msg => {
-                    if (msg.role === 'user' && msg.characterId && resourceIdMap[msg.characterId]) {
-                        return { ...msg, characterId: resourceIdMap[msg.characterId] };
-                    }
-                    return msg;
-                });
-
-                // Reset timestamps for the new import
-                const now = new Date().toISOString();
-                newChat.createdAt = now;
-                newChat.lastModifiedAt = now;
-                
-                newChatsToSave.push(newChat);
-            }
-
-            // Phase 3: Save all the newly constructed chats to disk and broadcast
-            for (const newChat of newChatsToSave) {
-                await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
-                state.chats.push(newChat);
-                broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'create', data: newChat.getSummary() });
-            }
-            
-            res.json({ message: `Successfully imported ${newChatsToSave.length} chats.` });
-
-        } catch (error) {
-            console.error('Error importing chat:', error);
-            res.status(500).json({ message: `Failed to import chat: ${error.message}` });
-        }
-    });
-
 }
 
 // Helper Functions for Data Handling
@@ -2167,9 +2468,9 @@ async function updateCharacterIdReferences(oldId, newId) {
             console.error(`Failed to update character ID in chat file ${chatFile}:`, e);
         }
     }
-    
+
     // 3. Update notes
-    const noteFiles = await glob(path.join(SCENARIOS_DIR, '*.json').replace(/\\/g, '/'));
+    const noteFiles = await glob(path.join(NOTES_DIR, '*.json').replace(/\\/g, '/'));
     for (const noteFile of noteFiles) {
         try {
             const noteData = JSON.parse(await fs.readFile(noteFile, 'utf-8'));
@@ -2207,7 +2508,7 @@ class Character {
             _rev: CURRENT_REV
         }, data);
     }
-    
+
     /**
      * Creates a plain object suitable for saving to a character.json file.
      * This omits runtime data like `id` (which is derived from the folder name)
@@ -2236,9 +2537,9 @@ class Chat {
     branchPointMessageId = null; // ID of the message where this branch diverged from parent
     childChatIds = [];
     messageOverrides = {}; // { messageId: { content: "...", depth: N } } - overrides for inherited messages
+    deletedMessageIds = []; // IDs of inherited messages this branch considers "deleted" from its view
     createdAt = new Date().toISOString();
     lastModifiedAt = new Date().toISOString();
-    systemInstruction = '';
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
@@ -2253,16 +2554,16 @@ class Chat {
             branchPointMessageId: null,
             childChatIds: [],
             messageOverrides: {},
+            deletedMessageIds: [],
             createdAt: now,
             lastModifiedAt: now,
-            systemInstruction: '',
             _rev: CURRENT_REV,
         };
         Object.assign(this, defaults, data);
     }
 
     addMessage(msg) { this.messages.push({ id: uuidv4(), timestamp: new Date().toISOString(), ...msg }); }
-    
+
     getSummary() {
         const lastMessage = this.messages.at(-1);
         let snippet = '';
@@ -2276,17 +2577,17 @@ class Chat {
                 snippet = `Player chose: ${lastMessage.content.slice(8, -9)}`;
             }
         }
-        
-        return { 
-            id: this.id, 
-            name: this.name, 
-            avatarUrl: 'assets/images/default_avatar.svg', 
-            createdAt: this.createdAt, 
+
+        return {
+            id: this.id,
+            name: this.name,
+            avatarUrl: 'assets/images/default_avatar.svg',
+            createdAt: this.createdAt,
             lastModifiedAt: this.lastModifiedAt,
-            parentId: this.parentId, 
+            parentId: this.parentId,
             childChatIds: this.childChatIds,
             lastMessageSnippet: snippet,
-        }; 
+        };
     }
 }
 
@@ -2298,15 +2599,15 @@ class ConnectionConfig {
     apiKey = '';
     _rev = CURRENT_REV;
 
-    constructor(data = {}) { 
-        Object.assign(this, { 
-            id: uuidv4(), 
-            name: 'New Config', 
-            provider: 'v1', 
-            url: '', 
+    constructor(data = {}) {
+        Object.assign(this, {
+            id: uuidv4(),
+            name: 'New Config',
+            provider: 'v1',
+            url: '',
             apiKey: '',
             _rev: CURRENT_REV,
-        }, data); 
+        }, data);
     }
     toJSON() { return { id: this.id, name: this.name, provider: this.provider, url: this.url, apiKey: this.apiKey, _rev: this._rev }; }
 }
@@ -2350,5 +2651,30 @@ class GenerationConfig {
     }
 }
 
+class Scenario {
+    id = uuidv4();
+    name = 'New Scenario';
+    description = '';
+    firstMessage = ''; // The initial message to start the chat with
+    participants = []; // Array of character IDs
+    notes = []; // Array of note IDs
+    avatarUrl = null;
+    bannerUrl = null;
+    _rev = CURRENT_REV;
+
+    constructor(data = {}) {
+        Object.assign(this, {
+            id: uuidv4(),
+            name: 'New Scenario',
+            description: '',
+            firstMessage: '',
+            participants: [],
+            notes: [],
+            avatarUrl: null,
+            bannerUrl: null,
+            _rev: CURRENT_REV
+        }, data);
+    }
+}
 
 main();

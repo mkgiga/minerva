@@ -1346,9 +1346,7 @@ export class AdventureChatMode extends BaseChatMode {
     #createMessageMenuButton(msg) {
         const button = document.createElement('button');
         button.className = 'message-menu-trigger';
-        button.type = 'button';
-        button.title = 'More options';
-        button.innerHTML = '<span class="material-icons">more_vert</span>';
+        // ... [Existing button setup]
 
         button.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1385,8 +1383,17 @@ export class AdventureChatMode extends BaseChatMode {
                 });
             }
 
+            // Only show Rewind if it's NOT the very last message
+            if (!isLastMessage) {
+                items.push({
+                    icon: 'fast_rewind',
+                    label: 'Rewind Here',
+                    callback: () => this.rewindToMessage(messageId),
+                    danger: true
+                });
+            }
+
             items.push(
-                
                 { separator: true },
                 {
                     icon: 'delete',
@@ -1480,7 +1487,7 @@ export class AdventureChatMode extends BaseChatMode {
             }
             #history-loader-container { min-height: 36px; }
             .loader-wrapper { display: flex; justify-content: center; padding: var(--spacing-xs) 0; }
-            #load-more-btn { padding: var(--spacing-xs) var(--spacing-md); font-size: 0.7rem; }
+            #load-more-btn { padding: var(--spacing-xs) var(--spacing-md); font-size: 0.6rem; }
             
             #chat-form {
                 display: flex;
@@ -1595,16 +1602,16 @@ export class AdventureChatMode extends BaseChatMode {
                 display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;
             }
             
-            .chat-message { display: flex; flex-direction: column; gap: 0; position: relative; font-size: 0.7rem; margin-bottom: var(--spacing-sm); }
+            .chat-message { display: flex; flex-direction: column; gap: 0; position: relative; font-size: 0.6rem; margin-bottom: var(--spacing-sm); }
             .chat-message.assistant.adventure-mode { position: relative; }
             .chat-message:not(.assistant.adventure-mode) { display: flex; width: 100%; }
             .chat-message .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 3px; background-color: var(--bg-3); }
             .message-bubble { background-color: var(--accent-primary-faded); padding-bottom: var(--spacing-md); padding-left: var(--spacing-md); flex-grow: 1; position: relative; width: 100%; border-radius: var(--radius-sm); }
             .chat-message.user .message-bubble { position: relative; display: flex; flex-direction: column; color: var(--text-primary); padding-bottom: var(--spacing-sm); width: 100%; }
-            .message-content { font-size: 0.7rem; line-height: 1.4; }
+            .message-content { font-size: 0.6rem; line-height: 1.4; }
             .chat-message.user { margin-left: var(--spacing-md); }
             .message-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs); margin-top: var(--spacing-xs); }
-            .author-name { font-weight: 600; font-size: 0.7rem; }
+            .author-name { font-weight: 600; font-size: 0.6rem; }
             
             .adventure-pause { display: none; }
 
@@ -1631,13 +1638,13 @@ export class AdventureChatMode extends BaseChatMode {
             @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             
             /* -- New Block Styles -- */
-            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; font-size: 0.7rem; margin-bottom: var(--adventure-block-gap, 0.75rem); }
+            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; font-size: 0.6rem; margin-bottom: var(--adventure-block-gap, 0.75rem); }
             
             .adventure-text {
                 position: relative;
                 display: flow-root;
                 color: var(--text-secondary);
-                padding: 0 calc(var(--spacing-md) + 4px);
+                padding: 0 calc(var(--spacing-md));
                 line-height: 1.5;
                 z-index: 0;
                 background-color: transparent;
@@ -1701,7 +1708,7 @@ export class AdventureChatMode extends BaseChatMode {
                 float: left;
                 margin-right: 8px;
                 box-shadow: 0 0px 2px 2px var(--bg-1);
-                width: 64px; height: 64px;
+                width: 96px; height: 96px;
                 border-radius: var(--radius-md);
                 object-fit: cover;
                 background-color: var(--bg-3);
@@ -1714,6 +1721,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-speech-content {
                 color: var(--text-secondary);
                 line-height: 1.4;
+                font-size: 0.6rem; /* Match narration text size */
                 display: block; /* Text follows flow rules around float */
             }
             .adventure-speech-content p { margin: 0; line-height: 1.4; }
@@ -1794,15 +1802,23 @@ export class AdventureChatMode extends BaseChatMode {
                     padding: var(--spacing-md);
                     gap: var(--spacing-sm); 
                 }
-                .chat-message { display: flex; flex-direction: column; font-size: 0.8rem; gap: var(--spacing-lg); }
+                .chat-message { display: flex; flex-direction: column; font-size: 0.6rem; gap: var(--spacing-sm); }
                 .message-header .message-menu-trigger, .chat-message.assistant.adventure-mode .message-menu-trigger.adventure-menu { opacity: 1; }
-                .adventure-block { font-size: 0.8rem; }
-                .adventure-speech { gap: 8px; }
-                .adventure-speaker-avatar { width: 48px; height: 48px; border-radius: var(--radius-sm); }
+                .adventure-speech { gap: 8px; font-size: 0.6rem; }
+                .adventure-speaker-avatar { width: 64px; height: 64px; border-radius: var(--radius-sm); }
                 .adventure-image, .adventure-image.layout-side-by-side, .adventure-image.layout-overlay { display: flex; flex-direction: column; background-color: var(--bg-0); }
                 .adventure-image-container { order: 1; max-height: 250px; }
                 .adventure-image-display { object-fit: contain; }
                 .adventure-image-content { order: 2; grid-area: auto; padding: var(--spacing-sm) var(--spacing-md); background: none; color: inherit; }
+                .adventure-text *,
+                .adventure-speech-content,
+                .adventure-speech-content * {
+                    font-size: 12px;
+                    line-height: 1.4;
+                }
+                .adventure-speaker-name {
+                    font-size: 0.85rem;
+                }
             }
         `;
     }

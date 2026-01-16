@@ -115,6 +115,7 @@ class MainChatView extends BaseComponent {
         modeContainer.addEventListener('chat-mode-regenerate-message', e => this.#handleRegenerateMessage(e.detail.messageId));
         modeContainer.addEventListener('chat-mode-regenerate-with-history', e => this.#handleRegenerateWithHistory(e.detail));
         modeContainer.addEventListener('chat-mode-branch-message', e => this.#handleBranchMessage(e.detail.messageId));
+        modeContainer.addEventListener('chat-mode-rewind', e => this.#handleRewind(e.detail.messageId));
         modeContainer.addEventListener('chat-mode-edit-message', e => this.#saveEditedMessage(e.detail.messageId, e.detail.newContent));
         modeContainer.addEventListener('chat-mode-delete-message', e => this.#handleDeleteMessage(e.detail.messageId));
         modeContainer.addEventListener('chat-mode-copy-message', e => this.#copyMessageContent(e.detail.content));
@@ -179,6 +180,46 @@ class MainChatView extends BaseComponent {
         
             case 'chat_details':
                 if (eventType === 'update' && this.state.selectedChat?.id === data.id) {
+                    // Logic to preserve pagination window:
+                    // The server sends the FULL chat history in `data.messages`.
+                    // We must filter this to match our current view window (e.g. last 50 messages),
+                    // otherwise the whole history gets rendered.
+                    
+                    const currentMessages = this.state.selectedChat.messages || [];
+                    const incomingMessages = data.messages || [];
+                    
+                    let filteredMessages = incomingMessages;
+                    let hasMore = false; // Default if we take everything
+
+                    if (currentMessages.length > 0) {
+                        const oldestCurrentId = currentMessages[0].id;
+                        const oldestIndexInIncoming = incomingMessages.findIndex(m => m.id === oldestCurrentId);
+                        
+                        if (oldestIndexInIncoming !== -1) {
+                            // Maintain the window starting from our current oldest message
+                            filteredMessages = incomingMessages.slice(oldestIndexInIncoming);
+                            // If there are messages before this index, we have more to load
+                            hasMore = oldestIndexInIncoming > 0;
+                        } else {
+                            // If we can't find our anchor (rare/error case), fallback to keeping the same count from end
+                            const keepCount = Math.max(currentMessages.length, 50);
+                            if (incomingMessages.length > keepCount) {
+                                filteredMessages = incomingMessages.slice(-keepCount);
+                                hasMore = true;
+                            }
+                        }
+                    } else {
+                        // Initial state empty? Apply default limit (50) to prevent massive render
+                        if (incomingMessages.length > 50) {
+                            filteredMessages = incomingMessages.slice(-50);
+                            hasMore = true;
+                        }
+                    }
+
+                    // Mutate data to match our view window before updating state
+                    data.messages = filteredMessages;
+                    data.hasMoreMessages = hasMore;
+
                     this.state.selectedChat = data;
                     if (this.#activeChatMode) this.#activeChatMode.chat = data;
         
@@ -616,8 +657,9 @@ class MainChatView extends BaseComponent {
             // Replace ID with full object (embedded version)
             resourceArray[resourceIndex] = { ...resourceData };
 
-            // Save the updated chat
-            await api.put(`/api/chats/${selectedChat.id}`, selectedChat);
+            // Save only the relevant field (participants or notes)
+            const fieldName = resourceType === 'character' ? 'participants' : 'notes';
+            await api.put(`/api/chats/${selectedChat.id}`, { [fieldName]: resourceArray });
             
             // Update the view
             this.#updateRightPanel();
@@ -815,16 +857,32 @@ class MainChatView extends BaseComponent {
     }
     
     #handleDeleteMessage(messageId) {
+        const message = this.state.selectedChat.messages.find(m => m.id === messageId);
+        if (!message) return;
+
         modal.confirm({
             title: 'Delete Message', content: `Are you sure you want to delete this message?`,
             confirmLabel: 'Delete', confirmButtonClass: 'button-danger',
             onConfirm: async () => {
-                const updatedChatState = JSON.parse(JSON.stringify(this.state.selectedChat));
-                updatedChatState.messages = updatedChatState.messages.filter(m => m.id !== messageId);
                 try {
-                    await api.put(`/api/chats/${this.state.selectedChat.id}`, updatedChatState);
+                    if (message._isInherited) {
+                        // Inherited message: Add to deletedMessageIds (this branch's opinion of history)
+                        // This doesn't affect sibling branches
+                        const existingDeleted = this.state.selectedChat.deletedMessageIds || [];
+                        await api.put(`/api/chats/${this.state.selectedChat.id}`, {
+                            deletedMessageIds: [...existingDeleted, messageId]
+                        });
+                        // Update local state
+                        this.state.selectedChat.deletedMessageIds = [...existingDeleted, messageId];
+                    } else {
+                        // Own message: Actually delete it from the chat via dedicated endpoint
+                        await api.delete(`/api/chats/${this.state.selectedChat.id}/messages/${messageId}`);
+                    }
+                    // Remove from local messages for immediate UI feedback
+                    this.state.selectedChat.messages = this.state.selectedChat.messages.filter(m => m.id !== messageId);
                     notifier.show({ message: 'Message deleted.' });
                 } catch (error) {
+                    console.error('Failed to delete message:', error);
                     notifier.show({ header: 'Error', message: 'Could not delete message.' });
                 }
             }
@@ -832,37 +890,37 @@ class MainChatView extends BaseComponent {
     }
 
     async #saveEditedMessage(messageId, newContent) {
-        const updatedChatState = JSON.parse(JSON.stringify(this.state.selectedChat));
-        const messageToUpdate = updatedChatState.messages.find(m => m.id === messageId);
-        if (messageToUpdate) {
-            // Check if editing an inherited message - if so, create an override
-            if (messageToUpdate._isInherited) {
-                // Initialize messageOverrides if it doesn't exist
-                if (!updatedChatState.messageOverrides) {
-                    updatedChatState.messageOverrides = {};
-                }
+        const message = this.state.selectedChat.messages.find(m => m.id === messageId);
+        if (!message) return;
 
-                // Create override entry for this inherited message
-                updatedChatState.messageOverrides[messageId] = { content: newContent };
+        try {
+            if (message._isInherited) {
+                // Inherited message: Create/update an override (branch's opinion of content)
+                const existingOverrides = this.state.selectedChat.messageOverrides || {};
+                const newOverrides = { ...existingOverrides, [messageId]: { content: newContent } };
 
-                // Also update the in-memory message for immediate UI feedback
-                messageToUpdate.content = newContent;
-                messageToUpdate._isOverridden = true;
+                await api.put(`/api/chats/${this.state.selectedChat.id}`, {
+                    messageOverrides: newOverrides
+                });
+
+                // Update local state
+                this.state.selectedChat.messageOverrides = newOverrides;
+                message.content = newContent;
+                message._isOverridden = true;
             } else {
-                // Normal message editing (not inherited) - update content directly
-                messageToUpdate.content = newContent;
+                // Own message: Use dedicated endpoint to update content
+                await api.patch(`/api/chats/${this.state.selectedChat.id}/messages/${messageId}`, {
+                    content: newContent
+                });
+
+                // Update local state
+                message.content = newContent;
             }
 
-            // CRITICAL: Strip inherited messages before saving to prevent duplication
-            // Only send messages that truly belong to this chat
-            updatedChatState.messages = updatedChatState.messages.filter(msg => !msg._isInherited);
-
-            try {
-                await api.put(`/api/chats/${this.state.selectedChat.id}`, updatedChatState);
-                notifier.show({ message: 'Message updated.', type: 'good' });
-            } catch (error) {
-                notifier.show({ header: 'Error', message: 'Could not save message edit.', type: 'bad' });
-            }
+            notifier.show({ message: 'Message updated.', type: 'good' });
+        } catch (error) {
+            console.error('Failed to save message edit:', error);
+            notifier.show({ header: 'Error', message: 'Could not save message edit.', type: 'bad' });
         }
     }
 
@@ -883,6 +941,27 @@ class MainChatView extends BaseComponent {
             console.error('Failed to branch chat:', error);
             notifier.show({ type: 'bad', header: 'Error', message: 'Could not create a branch.' });
         }
+    }
+
+    async #handleRewind(messageId) {
+        if (!this.state.selectedChat) return;
+
+        modal.confirm({
+            title: 'Rewind Chat',
+            content: 'Are you sure you want to rewind to this point? All subsequent messages in this specific branch will be deleted. This cannot be undone.',
+            confirmLabel: 'Rewind',
+            confirmButtonClass: 'button-danger',
+            onConfirm: async () => {
+                try {
+                    await api.post(`/api/chats/${this.state.selectedChat.id}/rewind`, { targetMessageId: messageId });
+                    notifier.show({ type: 'good', message: 'Chat rewound successfully.' });
+                    // View update is handled automatically via SSE broadcast from server
+                } catch (error) {
+                    console.error('Failed to rewind chat:', error);
+                    notifier.show({ type: 'bad', header: 'Error', message: 'Could not rewind chat.' });
+                }
+            }
+        });
     }
 
     async #handleRegenerateMessage(messageId) {
@@ -1376,7 +1455,8 @@ class MainChatView extends BaseComponent {
                     
                     if (resourceIndex !== -1) {
                         resourceArray[resourceIndex] = existingResource.id;
-                        await api.put(`/api/chats/${this.state.selectedChat.id}`, this.state.selectedChat);
+                        const fieldName = resourceType === 'character' ? 'participants' : 'notes';
+                        await api.put(`/api/chats/${this.state.selectedChat.id}`, { [fieldName]: resourceArray });
                     }
                     
                     notifier.show({ 

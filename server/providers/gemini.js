@@ -7,7 +7,6 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 const getGeminiApiUrl = (modelId) => {
     return `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent`;
 };
-
 export class GoogleGeminiProvider extends BaseProvider {
     constructor(config) {
         super(config);
@@ -32,10 +31,11 @@ export class GoogleGeminiProvider extends BaseProvider {
     }
 
     // TODO: Use the gemini SDK instead of their REST API directly
-    async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }, useFastModel = false) {
+    async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }, useFastModel = false, extras = {}) {
+
         const { apiKey } = this.config;
         const { systemInstruction, signal, ...generationConfig } = options;
-
+        
         const body = {
             contents: this.prepareMessages(messages),
             ...(systemInstruction && { system_instruction: { parts: [{ text: systemInstruction }] } }),
@@ -44,27 +44,33 @@ export class GoogleGeminiProvider extends BaseProvider {
                 safetySettings: [
                     {
                         category: 'HARM_CATEGORY_HARASSMENT',
-                        threshold: 'BLOCK_NONE'
+                        threshold: 'OFF'
                     },
                     {
                         category: 'HARM_CATEGORY_HATE_SPEECH',
-                        threshold: 'BLOCK_NONE'
+                        threshold: 'OFF'
                     },
                     {
                         category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-                        threshold: 'BLOCK_NONE'
+                        threshold: 'OFF'
                     },
                     {
                         category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-                        threshold: 'BLOCK_NONE'
+                        threshold: 'OFF'
                     },
                     {
                         category: 'HARM_CATEGORY_CIVIC_INTEGRITY',
-                        threshold: 'BLOCK_NONE'
+                        threshold: 'OFF'
                     }
                 ]
-            }
+            },
+            tools: extras.websearchEnabled ? [
+                {
+                    google_search: {},
+                }
+            ] : undefined,
         };
+        console.log('Gemini prompt body:', body);
         
         try {
             // Use the streaming endpoint with SSE enabled
@@ -83,7 +89,8 @@ export class GoogleGeminiProvider extends BaseProvider {
             });
 
             console.log('Gemini response status:', response.status);
-            console.log('Gemini response headers:', Object.fromEntries(response.headers.entries()));
+            console.log('Gemini response headers:', Array.from(response.headers.entries()));
+            
 
             if (!response.ok || !response.body) {
                 const errorBody = await response.json().catch(() => ({ message: response.statusText }));
@@ -127,6 +134,7 @@ export class GoogleGeminiProvider extends BaseProvider {
                     }
                 }
             }
+
         } catch (error) {
             if (error.name === 'AbortError') {
                 // Re-throw so the server.js handler can catch it and know it was an abort

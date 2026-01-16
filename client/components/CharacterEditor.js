@@ -25,6 +25,10 @@ class CharacterEditor extends BaseComponent {
         form.addEventListener('change', this.handleFormChange.bind(this));
         form.addEventListener('blur', this.handleFormBlur.bind(this), true);
         this.shadowRoot.querySelector('#character-avatar-upload').addEventListener('change', this.onAvatarChange.bind(this));
+        
+        // Listener for the new generate button
+        this.shadowRoot.querySelector('#generate-btn').addEventListener('click', this.handleGenerate.bind(this));
+        
         this.#updateView();
     }
 
@@ -98,6 +102,85 @@ class CharacterEditor extends BaseComponent {
                 this.onAltTextChange(filename, newAlt);
             }
             return;
+        }
+    }
+
+    async handleGenerate() {
+        const nameInput = this.shadowRoot.querySelector('#character-name-input');
+        const descInput = this.shadowRoot.querySelector('#character-description');
+        const btn = this.shadowRoot.querySelector('#generate-btn');
+        const btnIcon = btn.querySelector('.material-icons');
+
+        const name = nameInput.value.trim();
+        const description = descInput.value.trim();
+
+        if (!name && !description) {
+            notifier.show({ type: 'warn', message: 'Please enter a name or description first.' });
+            return;
+        }
+
+        // Set loading state
+        btn.disabled = true;
+        const originalIcon = btnIcon.textContent;
+        btnIcon.textContent = 'hourglass_empty';
+        btnIcon.classList.add('spinning');
+
+        try {
+            notifier.show({ message: 'Generating character profile...', duration: 2000 });
+            
+            const result = await api.post('/api/tools/generate-character', { name, description });
+            
+            if (result.name) nameInput.value = result.name;
+            
+            let appearance = result.appearance || '';
+            let nature = result.nature || '';
+            let height = result.attributes?.height || undefined;
+            let weight = result.attributes?.weight || undefined;
+            let age = result.attributes?.age || undefined;
+            let sex = result.attributes?.sex || undefined;
+            let race = result.attributes?.race || undefined;
+            let combatAttributes = result.combatAttributes?.baseStats || undefined;
+            let combatSection = `# Combat Info
+
+${combatAttributes ? Object.entries(combatAttributes).map(([key, val]) => `- ${key.slice(0, 1).toUpperCase() + key.slice(1)}: ${val}`).join('\n') : 'N/A'}
+            `.trim();
+
+            let generatedDescription = `# Attributes
+
+${sex ? `- Sex: ${sex}` : ''}
+${age ? `- Age: ${age}` : ''}
+${height ? `- Height: ${height}` : ''}
+${weight ? `- Weight: ${weight}` : ''}
+${race ? `- Race: ${race}` : ''}
+
+${combatSection}
+
+---
+
+# Appearance
+
+${appearance}
+
+# Nature
+
+${nature}
+
+            `.trim().replace(/\n{3,}/g, '\n\n'); // Limit consecutive newlines
+            
+            descInput.value = generatedDescription;
+
+            // Trigger save implicitly via dispatch if we want, or just let user save manually.
+            // For better UX, we just update inputs and notify.
+            notifier.show({ type: 'good', message: 'Character profile generated!' });
+
+        } catch (error) {
+            console.error('Generation failed:', error);
+            notifier.show({ type: 'bad', header: 'Generation Failed', message: error.message });
+        } finally {
+            // Reset loading state
+            btn.disabled = false;
+            btnIcon.textContent = originalIcon;
+            btnIcon.classList.remove('spinning');
         }
     }
 
@@ -385,7 +468,10 @@ class CharacterEditor extends BaseComponent {
                         </div>
 
                         <div class="form-group">
-                            <label for="character-description">Description</label>
+                            <div class="label-row">
+                                <label for="character-description">Description</label>
+                                <button type="button" id="generate-btn" class="icon-button" title="Generate with AI"><span class="material-icons">auto_awesome</span></button>
+                            </div>
                             <p class="field-description">The main prompt for the character. You can use macros like {{player.name}}.</p>
                             <text-box id="character-description" name="description"></text-box>
                         </div>
@@ -605,6 +691,20 @@ class CharacterEditor extends BaseComponent {
                 color: var(--text-secondary);
                 margin-top: var(--spacing-xs);
                 margin-bottom: var(--spacing-xs);
+            }
+
+            .label-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+            .spinning {
+                animation: spin 1s linear infinite;
             }
         `;
     }

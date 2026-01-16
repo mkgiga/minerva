@@ -450,6 +450,15 @@ export class BaseChatMode extends BaseComponent {
     }
     
     /**
+     * Requests the main controller to rewind the chat to a specific message,
+     * deleting all subsequent messages in the current branch.
+     * @param {string} messageId - The ID of the message to rewind to (this message will be kept).
+     */
+    rewindToMessage(messageId) {
+        this.dispatch('chat-mode-rewind', { messageId });
+    }
+    
+    /**
      * Requests the main controller to navigate to the parent of the current chat.
      */
     goToParentChat() {

@@ -4,14 +4,14 @@ import './components/views/MainChatView.js';
 import './components/views/UserPreferencesView.js';
 import './components/views/NotesView.js';
 import './components/views/modes/index.js';
-// New view imports
 import './components/views/AIConnectionView.js';
 import './components/views/AIGenerationView.js';
 import './components/views/BrowseScenariosView.js';
 import './components/views/BrowseView.js';
 import './components/views/PluginsView.js';
-// Plugin imports
-import './components/plugins/CharacterCardGeneratorPlugin.js';
+import './components/views/ScenariosView.js';
+
+import './components/plugins/CharacterCardGeneratorPlugin.js'
 
 import { BaseComponent } from './components/BaseComponent.js';
 import './components/Notification.js';
@@ -71,6 +71,18 @@ export const api = {
         if (!response.ok) {
             const errorInfo = await response.json().catch(() => ({ message: response.statusText }));
             throw new Error(`Failed to PUT to ${endpoint}: ${errorInfo.message || response.statusText}`);
+        }
+        return response.json();
+    },
+    patch: async (endpoint, body) => {
+        const response = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            const errorInfo = await response.json().catch(() => ({ message: response.statusText }));
+            throw new Error(`Failed to PATCH ${endpoint}: ${errorInfo.message || response.statusText}`);
         }
         return response.json();
     },
@@ -180,6 +192,7 @@ class MinervaApp extends BaseComponent {
                 generation: { label: 'Generation', icon: 'tune', component: 'ai-generation-view', layout: 'layout-main-right' }
             }
         },
+        scenarios: { label: 'Scenarios', icon: 'movie_filter', component: 'scenarios-view', layout: 'layout-main-right' }, // NEW ENTRY
         notes: { label: 'Notes', icon: 'menu_book', component: 'notes-view', layout: 'layout-main-right' },
         chat: { label: 'Chat', icon: 'chat', component: 'main-chat-view', layout: 'layout-three-panel' },
         characters: { label: 'Characters', icon: 'people', component: 'characters-view', layout: 'layout-main-right' },

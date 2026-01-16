@@ -15,6 +15,7 @@ class UserPreferencesView extends BaseComponent {
         super();
         this.state = {
             settings: null,
+            connectionConfigs: [],
         };
         // Define the schema for the main chat settings (static)
         this.formSchema = {
@@ -37,6 +38,13 @@ class UserPreferencesView extends BaseComponent {
                     type: 'checkbox',
                     defaultValue: false,
                     description: 'Passes the AI\'s response through a second prompt to enhance writing quality. May increase response time and cost.'
+                },
+                {
+                    name: 'curationConnectionConfigId',
+                    label: 'Curation Provider',
+                    type: 'select',
+                    options: [], // Populated dynamically
+                    description: 'Optional: Select a specific connection to use for the curation step (e.g. a smaller local model). If blank, uses the main connection.'
                 }
             ]
         };
@@ -63,7 +71,7 @@ class UserPreferencesView extends BaseComponent {
         this.#initChatModeSettingsForms();
         
         // Fetch settings and populate forms with actual data
-        await this.fetchSettings();
+        await this.fetchAllData();
         this.#setNeedsSave(false); // Ensure initial state is 'no unsaved changes'
     }
     
@@ -81,18 +89,59 @@ class UserPreferencesView extends BaseComponent {
             this.state.settings = data;
             this.#updateSettingsForms();
             this.#setNeedsSave(false);
+        } else if (resourceType === 'connection_config') {
+            // Refresh connection list if configs change
+            this.fetchConnections();
+        }
+    }
+
+    async fetchAllData() {
+        try {
+            await Promise.all([
+                this.fetchSettings(),
+                this.fetchConnections()
+            ]);
+        } catch (error) {
+            console.error('Failed to load data:', error);
+            notifier.show({ header: 'Error', message: 'Could not load user preferences.', type: 'bad' });
+        }
+    }
+
+    async fetchConnections() {
+        try {
+            const connections = await api.get('/api/connection-configs');
+            this.state.connectionConfigs = connections;
+            this.#updateSchemaOptions();
+        } catch (error) {
+            console.error('Failed to fetch connections:', error);
         }
     }
 
     async fetchSettings() {
-        try {
-            const settings = await api.get('/api/settings');
-            this.state.settings = settings;
-            this.#updateSettingsForms();
-            this.#setNeedsSave(false); // After initial fetch, no unsaved changes
-        } catch (error) {
-            console.error('Failed to fetch settings:', error);
-            notifier.show({ header: 'Error', message: 'Could not load user preferences.', type: 'bad' });
+        const settings = await api.get('/api/settings');
+        this.state.settings = settings;
+        this.#updateSettingsForms();
+    }
+
+    #updateSchemaOptions() {
+        const curationField = this.formSchema.chat.find(f => f.name === 'curationConnectionConfigId');
+        if (curationField) {
+            const options = [{ value: '', label: 'Same as Main Connection' }];
+            // Sort connections by name
+            const sortedConnections = [...this.state.connectionConfigs].sort((a, b) => a.name.localeCompare(b.name));
+            sortedConnections.forEach(c => {
+                options.push({ value: c.id, label: c.name || 'Unnamed Connection' });
+            });
+            curationField.options = options;
+        }
+        
+        // Update schema on the form component if it exists
+        if (this.#chatSettingsForm) {
+            this.#chatSettingsForm.schema = this.formSchema.chat;
+            // Also need to re-apply data because setting schema might reset fields in some implementations
+            if (this.state.settings) {
+                this.#chatSettingsForm.data = this.state.settings.chat || {};
+            }
         }
     }
 
@@ -176,7 +225,8 @@ class UserPreferencesView extends BaseComponent {
             });
             // On failure, refetch to revert the form to its actual server state.
             // This will also reset #needsSave to false.
-            this.fetchSettings();
+            await this.fetchSettings();
+            this.#setNeedsSave(false);
         }
     }
 

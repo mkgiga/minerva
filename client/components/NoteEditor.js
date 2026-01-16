@@ -101,7 +101,7 @@ class NoteEditor extends BaseComponent {
 
         content.appendChild(list);
         modal.show({
-            title: 'Add Character Override',
+            title: 'Add Character-Specific Info', // Changed title
             content,
             buttons: [{ label: 'Cancel', className: 'button-secondary', onClick: () => modal.hide() }]
         });
@@ -121,7 +121,7 @@ class NoteEditor extends BaseComponent {
         const overrides = this.#note?.characterOverrides || {};
 
         if (Object.keys(overrides).length === 0) {
-            this.#overrideList.innerHTML = `<p class="field-description">No character-specific text defined.</p>`;
+            this.#overrideList.innerHTML = `<p class="field-description">No character-specific info defined.</p>`; // Changed text
             return;
         }
 
@@ -179,10 +179,10 @@ class NoteEditor extends BaseComponent {
                     <text-box id="description-input"></text-box>
                 </section>
                 <section class="form-section">
-                    <h3>Character-Specific Text</h3>
-                    <p class="field-description">Provide alternate text for specific characters. This is used by the {{characters[..., note]}} macro.</p>
+                    <h3>Character-Specific Info</h3>
+                    <p class="field-description">Provide text to be appended to a specific character's description when this note is active in the chat.</p>
                     <div id="override-list"></div>
-                    <button type="button" id="add-override-btn" class="button-secondary">Add Character Override</button>
+                    <button type="button" id="add-override-btn" class="button-secondary">Add Character-Specific Info</button>
                 </section>
                 <button type="submit" class="button-primary">Save Changes</button>
             </form>

@@ -13,6 +13,8 @@ AI-generated fiction often contains many issues that detract from the reading ex
 - Repetitive phrases, wording and ideas. The AI may repeat the same information multiple times
 - "not with x, but with y" constructions that add unnecessary complexity (delete these and simplify the sentence!!)
 
+Sometimes, an entire `<text>` passage may contain nothing but these issues, in which case you may eliminate it entirely.
+
 ## Examples and Explanations
 
 - Excessive Verbosity and Unnecessary Filler Content
@@ -20,13 +22,13 @@ AI-generated fiction often contains many issues that detract from the reading ex
     Bad Example:
     
     ```xml
-    <narrate>You walk into the main room. The scene that greets you is a miracle of simple, profound domesticity. Your father is sitting at the small wooden table, mending a fishing net, a quiet, contented smile on his face that makes him look ten years younger. And your mother... your mother is standing at the hearth, a simple apron tied around her waist, flipping a piece of bread in a hot pan. She is not frail. She is not pale. She is whole.</narrate>
+    <text>You walk into the main room. The scene that greets you is a miracle of simple, profound domesticity. Your father is sitting at the small wooden table, mending a fishing net, a quiet, contented smile on his face that makes him look ten years younger. And your mother... your mother is standing at the hearth, a simple apron tied around her waist, flipping a piece of bread in a hot pan. She is not frail. She is not pale. She is whole.</text>
     ```
     
     Good Example:
     
     ```xml
-    <narrate>You walk into the main room. Your father is sitting at the small wooden table, mending a fishing net. Your mother is standing at the hearth, flipping a piece of bread in a hot pan. Her frail disposition is gone—she appears healthy and strong.</narrate>
+    <text>You walk into the main room. Your father is sitting at the small wooden table, mending a fishing net. Your mother is standing at the hearth, flipping a piece of bread in a hot pan. Her frail disposition is gone—she appears healthy and strong.</text>
     ```
 
     Conclusion:
@@ -38,21 +40,21 @@ AI-generated fiction often contains many issues that detract from the reading ex
     Bad Example:
 
     ```xml
-    <narrate>The storm of emotion eventually subsides, leaving a profound, quiet, and deeply peaceful calm in its wake. Your father helps you to a chair, placing it by your mother's bedside, his movements infused with a new, light, and almost youthful energy.</narrate>
-    <narrate>You spend the rest of the day there, a quiet, watchful guardian. You do not speak much. There is no need. You simply watch. You watch as your mother, for the first time in years, sits up on her own. You watch as your father brings her a simple broth, and she eats it not with a grim, pained duty, but with a genuine, simple hunger. You watch as the color returns to her cheeks, as the light returns to her eyes, as the simple, miraculous gift of life, which you have carried across the world, knits her back together, moment by moment.</narrate>
-    <narrate>Your father moves about the small farmhouse, his steps no longer the slow, weary shuffle of a caregiver, but the quick, purposeful movements of a man whose world has been given back to him. He lights the fire in the hearth, he opens the curtains to let in the last, golden rays of the setting sun, he hums a small, quiet, and profoundly tuneless song.</narrate>
-    As evening falls, your mother, her voice no longer a weak, rattling whisper but a soft, clear, and blessedly familiar sound, tells you to rest. You have come far enough.</narrate>
-    <narrate>You do not argue. You allow your father to lead you to your own small, familiar room, the room you grew up in. The bed is the same. The view from the window, of the moon rising over the dark, sighing sea, is the same. You lie down, and a profound, bone-deep, and final exhaustion, the exhaustion of a quest that is truly, finally, and completely over, claims you. You fall into a sleep deeper and more peaceful than any you have ever known, in your own bed, in your own home, a simple, profound, and finally, blessedly ordinary son.</narrate>
+    <text>The storm of emotion eventually subsides, leaving a profound, quiet, and deeply peaceful calm in its wake. Your father helps you to a chair, placing it by your mother's bedside, his movements infused with a new, light, and almost youthful energy.</text>
+    <text>You spend the rest of the day there, a quiet, watchful guardian. You do not speak much. There is no need. You simply watch. You watch as your mother, for the first time in years, sits up on her own. You watch as your father brings her a simple broth, and she eats it not with a grim, pained duty, but with a genuine, simple hunger. You watch as the color returns to her cheeks, as the light returns to her eyes, as the simple, miraculous gift of life, which you have carried across the world, knits her back together, moment by moment.</text>
+    <text>Your father moves about the small farmhouse, his steps no longer the slow, weary shuffle of a caregiver, but the quick, purposeful movements of a man whose world has been given back to him. He lights the fire in the hearth, he opens the curtains to let in the last, golden rays of the setting sun, he hums a small, quiet, and profoundly tuneless song.</text>
+    As evening falls, your mother, her voice no longer a weak, rattling whisper but a soft, clear, and blessedly familiar sound, tells you to rest. You have come far enough.</text>
+    <text>You do not argue. You allow your father to lead you to your own small, familiar room, the room you grew up in. The bed is the same. The view from the window, of the moon rising over the dark, sighing sea, is the same. You lie down, and a profound, bone-deep, and final exhaustion, the exhaustion of a quest that is truly, finally, and completely over, claims you. You fall into a sleep deeper and more peaceful than any you have ever known, in your own bed, in your own home, a simple, profound, and finally, blessedly ordinary son.</text>
     ```
 
     Good Example:
 
     ```xml
-    <narrate>The storm of emotion subsides, leaving a profound calm. Your father helps you to a chair by your mother's bedside, his movements infused with a new energy.</narrate>
-    <narrate>You spend the rest of the day there as your mother's guardian without saying much. You watch your mother sit up on her own for the first time in years. She drinks from a small, simple bowl of broth with a healthy appetite. You see the color return to her cheeks and the light to her eyes. The gift of life you have carried across the world has healed her.</narrate>
-    <narrate>Your father is now moving about the farmhouse with renewed purpose. He lights the fire in the hearth, opens the curtains to let in the sunlight, humming a quiet, tuneless song.</narrate>
-    <narrate>It is now evening. Your mother, her voice now soft and clear, tells you to rest.</narrate>
-    <narrate>You do not argue. Your father takes you to your room—the same room you grew up in. The bed is the same. The view from the window, of the moon rising over the dark sea, is the same. Finally, the exhaustion from your quest sets in, and you fall into a deep, peaceful sleep in your own bed, in your own home.</narrate>
+    <text>The storm of emotion subsides, leaving a profound calm. Your father helps you to a chair by your mother's bedside, his movements infused with a new energy.</text>
+    <text>You spend the rest of the day there as your mother's guardian without saying much. You watch your mother sit up on her own for the first time in years. She drinks from a small, simple bowl of broth with a healthy appetite. You see the color return to her cheeks and the light to her eyes. The gift of life you have carried across the world has healed her.</text>
+    <text>Your father is now moving about the farmhouse with renewed purpose. He lights the fire in the hearth, opens the curtains to let in the sunlight, humming a quiet, tuneless song.</text>
+    <text>It is now evening. Your mother, her voice now soft and clear, tells you to rest.</text>
+    <text>You do not argue. Your father takes you to your room—the same room you grew up in. The bed is the same. The view from the window, of the moon rising over the dark sea, is the same. Finally, the exhaustion from your quest sets in, and you fall into a deep, peaceful sleep in your own bed, in your own home.</text>
     ```
 
     Conclusion:
@@ -63,13 +65,13 @@ AI-generated fiction often contains many issues that detract from the reading ex
     Bad Example:
 
     ```xml
-    <narrate>Ben freezes mid-crawl. His snarling cuts off. His eyes widen—not with rage, but with dawning horror.</narrate>
+    <text>Ben freezes mid-crawl. His snarling cuts off. His eyes widen—not with rage, but with dawning horror.</text>
     ```
 
     Good Example:
     
     ```xml
-    <narrate>Ben freezes mid-crawl. His snarling cuts off. His eyes widen with dawning horror.</narrate>
+    <text>Ben freezes mid-crawl. His snarling cuts off. His eyes widen with dawning horror.</text>
     ```
 
     Conclusion:
@@ -78,8 +80,8 @@ AI-generated fiction often contains many issues that detract from the reading ex
 # Constraints
 
 - Maintain the original meaning and intent of the text.
-- Maintain the XML structure and tags as they are.
-- You may only transform inner content within <narrate>...</narrate> tags. Any content outside these tags, including any attributes of the <narrate> tags themselves, must be left untouched.
+- Maintain the XML structure and tags as they are, although you may remove entire `<text>` passages if they are irredeemable.
+- You may only transform inner content within `<text>...</text>` tags. Any content outside these tags, including any attributes of the <text> tags themselves, must be left untouched (unless, of course, you are deleting the entire `<text>` passage).
 
 # Response Format
 

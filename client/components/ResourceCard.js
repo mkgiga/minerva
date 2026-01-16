@@ -80,10 +80,16 @@ class ResourceCard extends BaseComponent {
             ? description.substring(0, 120) + '...' 
             : description || '';
         
-        const typeIcon = type === 'note' ? 'note' : 'person';
-        const fallbackAvatar = type === 'note' 
-            ? 'assets/images/default_note.svg' 
-            : 'assets/images/default_avatar.svg';
+        let typeIcon = 'person';
+        let typeLabel = 'Character';
+        
+        if (type === 'note') {
+            typeIcon = 'note';
+            typeLabel = 'Note';
+        } else if (type === 'scenario') {
+            typeIcon = 'movie_filter';
+            typeLabel = 'Scenario';
+        }
 
         return `
             <div class="resource-card">
@@ -93,7 +99,7 @@ class ResourceCard extends BaseComponent {
                         <h3 class="card-title">${this._escapeHtml(name)}</h3>
                         <span class="card-type">
                             <span class="material-icons">${typeIcon}</span>
-                            ${type === 'note' ? 'Note' : 'Character'}
+                            ${typeLabel}
                         </span>
                     </div>
                 </div>
@@ -111,20 +117,33 @@ class ResourceCard extends BaseComponent {
 
     renderListItem() {
         const { name, avatarUrl, type } = this._resource;
-        const typeIcon = type === 'note' ? 'note' : 'person';
-        const fallbackAvatar = type === 'note' 
-            ? 'assets/images/default_note.svg' 
-            : 'assets/images/default_avatar.svg';
+        let typeIcon = 'person';
+        let typeLabel = 'Character';
+        
+        if (type === 'note') {
+            typeIcon = 'note';
+            typeLabel = 'Note';
+        } else if (type === 'scenario') {
+            typeIcon = 'movie_filter';
+            typeLabel = 'Scenario';
+        }
 
         return `
             <div class="resource-list-item">
                 ${avatarUrl ? `<img class="list-avatar" src="${avatarUrl}" alt="${this._escapeHtml(name)}'s avatar">` : `<div class="list-avatar-placeholder"><span class="material-icons">${typeIcon}</span></div>`}
                 <div class="list-item-content">
                     <span class="list-item-name">${this._escapeHtml(name)}</span>
-                    <span class="list-item-type">${type === 'note' ? 'Note' : 'Character'}</span>
+                    <span class="list-item-type">${typeLabel}</span>
                 </div>
             </div>
         `;
+    }
+    
+    _escapeHtml(str) {
+        if (typeof str !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     styles() {

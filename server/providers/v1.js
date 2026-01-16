@@ -2,7 +2,7 @@ import { BaseProvider } from './base.js';
 
 /**
  * Provider for OpenAI-compatible APIs (v1/chat/completions).
- * Works with OpenAI, local inference servers (Ollama, LM Studio, llama-server), 
+ * Works with OpenAI, local inference servers (Ollama, LM Studio, llama-server),
  * and other proxies that follow the OpenAI format.
  */
 export class OpenAIV1Provider extends BaseProvider {
@@ -10,254 +10,231 @@ export class OpenAIV1Provider extends BaseProvider {
         super(config);
     }
 
-    /**
-     * Defines configuration fields for the 'Connection' setup.
-     * These map to the persistent ConnectionConfig properties.
-     */
     static getProviderSchema() {
         return [
-            { 
-                name: 'url', 
-                label: 'Base URL', 
-                type: 'text', 
-                required: true, 
-                placeholder: 'http://localhost:1234/v1', 
-                defaultValue: 'http://localhost:1234/v1',
-                description: 'The API endpoint base URL. Usually ends in /v1'
-            },
-            { 
-                name: 'apiKey', 
-                label: 'API Key', 
-                type: 'password', 
-                required: false, 
-                placeholder: 'sk-... or leave empty for local',
-                description: 'Required for OpenAI. Often ignored by local servers.'
-            },
+            { name: 'url', label: 'Base URL', type: 'text', required: true, placeholder: 'http://localhost:11434/v1' },
+            { name: 'apiKey', label: 'API Key', type: 'password', required: false, placeholder: 'Optional for local servers' },
+            { name: 'modelId', label: 'Model ID', type: 'text', required: true, placeholder: 'gpt-4o, llama3.2, etc.' },
         ];
     }
-    
-    /**
-     * Defines dynamic parameters for the 'Generation' setup.
-     * These are stored in GenerationConfig.
-     */
+
     static getGenerationParametersSchema() {
         return [
-            { 
-                name: 'model', 
-                label: 'Model ID', 
-                type: 'text', 
-                placeholder: 'e.g., gpt-3.5-turbo, local-model',
-                description: 'Specific model identifier. Local servers often ignore this or accept any string.'
-            },
-            { 
-                name: 'temperature', 
-                label: 'Temperature', 
-                type: 'range', 
-                min: 0, 
-                max: 2, 
-                step: 0.1, 
-                defaultValue: 0.7 
-            },
-            { 
-                name: 'top_p', 
-                label: 'Top P', 
-                type: 'range', 
-                min: 0, 
-                max: 1, 
-                step: 0.05, 
-                defaultValue: 1.0 
-            },
-            { 
-                name: 'max_tokens', 
-                label: 'Max Tokens', 
-                type: 'number', 
-                min: -1, 
-                step: 1, 
-                defaultValue: -1,
-                description: 'Maximum new tokens to generate. Set to -1 for unlimited (context window permitting).'
-            },
-            { 
-                name: 'presence_penalty', 
-                label: 'Presence Penalty', 
-                type: 'range', 
-                min: -2, 
-                max: 2, 
-                step: 0.1, 
-                defaultValue: 0 
-            },
-            { 
-                name: 'frequency_penalty', 
-                label: 'Frequency Penalty', 
-                type: 'range', 
-                min: -2, 
-                max: 2, 
-                step: 0.1, 
-                defaultValue: 0 
-            },
-            { 
-                name: 'stop', 
-                label: 'Stop Sequences', 
-                type: 'text', 
-                placeholder: 'comma separated, e.g. "User:,Assistant:"' 
-            },
+            { name: 'temperature', label: 'Temperature', type: 'range', min: 0, max: 2, step: 0.1, defaultValue: 0.7 },
+            { name: 'top_p', label: 'Top P', type: 'range', min: 0, max: 1, step: 0.05, defaultValue: 1 },
+            { name: 'max_tokens', label: 'Max Tokens', type: 'number', min: 1, step: 1, defaultValue: 4096 },
+            { name: 'frequency_penalty', label: 'Frequency Penalty', type: 'range', min: -2, max: 2, step: 0.1, defaultValue: 0 },
+            { name: 'presence_penalty', label: 'Presence Penalty', type: 'range', min: -2, max: 2, step: 0.1, defaultValue: 0 },
+            { name: 'stop', label: 'Stop Sequences', type: 'text', placeholder: 'Comma-separated, e.g.: Human:,Assistant:' },
         ];
     }
-    
+
+    prepareMessages(messages) {
+        // OpenAI format is very close to the internal format
+        // Just ensure we only pass role and content
+        return messages
+            .filter(msg => msg.content) // Skip empty messages
+            .map(msg => ({
+                role: msg.role, // 'user' or 'assistant'
+                content: msg.content,
+            }));
+    }
+
     async *prompt(messages, options = {}) {
-        const { url, apiKey } = this.config;
-        const { systemInstruction, stream = true, signal, ...genParams } = options;
+        const { url, apiKey, modelId } = this.config;
+        const { systemInstruction, signal, stop, ...generationConfig } = options;
 
-        // 1. Prepare messages
-        const apiMessages = this.prepareMessages(messages);
-        
-        // Inject system instruction if present
-        const finalMessages = [];
+        // Build the messages array with system instruction first if provided
+        const apiMessages = [];
         if (systemInstruction) {
-            finalMessages.push({ role: 'system', content: systemInstruction });
+            apiMessages.push({
+                role: 'system',
+                content: systemInstruction,
+            });
         }
-        finalMessages.push(...apiMessages);
+        apiMessages.push(...this.prepareMessages(messages));
 
-        // 2. Prepare Body
-        // Process 'stop' sequence string into array
-        if (genParams.stop && typeof genParams.stop === 'string') {
-            genParams.stop = genParams.stop.split(',').map(s => s.trim()).filter(s => s);
+        // Parse stop sequences from comma-separated string
+        let stopSequences = undefined;
+        if (stop && typeof stop === 'string' && stop.trim()) {
+            stopSequences = stop.split(',').map(s => s.trim()).filter(s => s);
         }
-        // Cleanup defaults
-        if (parseInt(genParams.max_tokens) === -1) delete genParams.max_tokens;
-        if (genParams.stop && genParams.stop.length === 0) delete genParams.stop;
-        
+
         const body = {
-            messages: finalMessages,
-            stream,
-            ...genParams
+            model: modelId,
+            messages: apiMessages,
+            stream: true,
+            ...generationConfig,
+            ...(stopSequences && stopSequences.length > 0 && { stop: stopSequences }),
         };
 
-        // Fallback model if not provided (required by strict OpenAI proxies)
-        if (!body.model) body.model = 'gpt-3.5-turbo';
+        // Ensure URL ends properly for the chat completions endpoint
+        const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+        const chatUrl = `${baseUrl}/chat/completions`;
 
-        // 3. Prepare URL
-        let fetchUrl = url;
-        if (!fetchUrl.endsWith('/chat/completions')) {
-            fetchUrl = fetchUrl.replace(/\/$/, '') + '/chat/completions';
-        }
+        try {
+            const messageCount = apiMessages.length;
+            const sysInstructionSize = systemInstruction?.length || 0;
+            console.log(`[OpenAI v1] Sending prompt - Messages: ${messageCount}, SysInstruction: ${sysInstructionSize} chars, Model: ${modelId}, Temp: ${body.temperature}, MaxTokens: ${body.max_tokens}`);
 
-        const headers = { 'Content-Type': 'application/json' };
-        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            if (apiKey) {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
 
-        console.log(`[OpenAIV1] Sending request to ${fetchUrl}`);
+            const response = await fetch(chatUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(body),
+                signal,
+            });
 
-        // 4. Send Request
-        const response = await fetch(fetchUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-            signal,
-        });
+            console.log('[OpenAI v1] Response status:', response.status);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            let errorMsg = `HTTP ${response.status} ${response.statusText}`;
-            try {
-                const errorJson = JSON.parse(errorText);
-                if (errorJson.error && errorJson.error.message) errorMsg = errorJson.error.message;
-            } catch (e) { /* ignore JSON parse error */ }
-            
-            throw new Error(`OpenAI Provider Error: ${errorMsg}`);
-        }
-        
-        // 5. Handle Non-Streaming Response
-        if (!stream) {
-            const data = await response.json();
-            yield data.choices?.[0]?.message?.content || '';
-            return;
-        }
+            if (!response.ok || !response.body) {
+                const errorBody = await response.json().catch(() => ({ message: response.statusText }));
+                console.error('[OpenAI v1] API Error:', errorBody);
+                throw new Error(`OpenAI v1 API Error: ${errorBody.error?.message || errorBody.message || response.statusText}`);
+            }
 
-        // 6. Handle Streaming Response
-        const decoder = new TextDecoder();
-        
-        // Native Node.js fetch returns an async iterable body
-        if (response.body && response.body[Symbol.asyncIterator]) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
             let buffer = '';
-            for await (const chunk of response.body) {
-                const decodedChunk = decoder.decode(chunk, { stream: true });
-                buffer += decodedChunk;
+            let chunkCount = 0;
+            let tokenCount = 0;
+
+            console.log('[OpenAI v1] Starting stream...');
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    console.log(`[OpenAI v1] Stream complete - Chunks: ${chunkCount}, Tokens: ${tokenCount}`);
+                    break;
+                }
+
+                chunkCount++;
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+
+                // Process complete lines
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // Keep the last partial line in buffer
+                buffer = lines.pop(); // Keep incomplete line in buffer
 
                 for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed || trimmed === 'data: [DONE]') continue;
-                    
-                    if (trimmed.startsWith('data: ')) {
+                    const trimmedLine = line.trim();
+
+                    // Skip empty lines
+                    if (!trimmedLine) continue;
+
+                    // Check for stream end
+                    if (trimmedLine === 'data: [DONE]') {
+                        console.log('[OpenAI v1] Received [DONE] signal');
+                        continue;
+                    }
+
+                    // Parse SSE data lines
+                    if (trimmedLine.startsWith('data: ')) {
                         try {
-                            const data = JSON.parse(trimmed.substring(6));
-                            const token = data.choices?.[0]?.delta?.content;
-                            if (token) yield token;
-                        } catch (err) {
-                            console.warn('[OpenAIV1] Error parsing stream chunk:', err);
+                            const jsonStr = trimmedLine.substring(6);
+                            const jsonData = JSON.parse(jsonStr);
+
+                            // Extract token from delta content
+                            const token = jsonData.choices?.[0]?.delta?.content;
+                            if (token) {
+                                tokenCount++;
+                                yield token;
+                            }
+                        } catch (e) {
+                            // Some providers send malformed JSON occasionally, skip those
+                            console.error('[OpenAI v1] Error parsing SSE chunk:', e.message, trimmedLine);
                         }
                     }
                 }
             }
-        } else {
-            // Fallback if environment doesn't support async iterator on body
-            throw new Error('Streaming not supported in this Node environment.');
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw error;
+            }
+            console.error('[OpenAI v1] Prompt error:', error);
+            yield `**Error interacting with OpenAI v1 API:**\n*${error.message}*`;
         }
     }
 
     async healthCheck() {
-        const { url, apiKey } = this.config;
-        let fetchUrl = url;
-        
-        // Try to construct a /models endpoint
-        fetchUrl = fetchUrl.replace(/\/chat\/completions\/?$/, ''); 
-        fetchUrl = fetchUrl.replace(/\/$/, '');
-        const modelsUrl = fetchUrl + '/models';
-
-        const headers = {};
-        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+        const { url, apiKey, modelId } = this.config;
+        const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
 
         try {
-            // Attempt to list models
-            const response = await fetch(modelsUrl, { headers });
-            
-            if (response.ok) {
-                const data = await response.json();
-                const models = data.data || data; // OpenAI uses { data: [] }, some locals return [] directly
-                const count = Array.isArray(models) ? models.length : 0;
-                return { ok: true, message: `Connected successfully. Found ${count} models.` };
+            // First try the /models endpoint as it's lightweight
+            const modelsUrl = `${baseUrl}/models`;
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey) {
+                headers['Authorization'] = `Bearer ${apiKey}`;
             }
 
-            // If /models fails (404/405), try a basic chat completion as fallback check
-            const chatUrl = fetchUrl + '/chat/completions';
-            const testBody = {
-                model: 'test',
-                messages: [{ role: 'user', content: 'Test' }],
-                max_tokens: 1
-            };
-            
-            const chatRes = await fetch(chatUrl, {
+            const modelsResponse = await fetch(modelsUrl, { headers });
+
+            if (modelsResponse.ok) {
+                const modelsData = await modelsResponse.json();
+                const modelCount = modelsData.data?.length || 0;
+                return {
+                    ok: true,
+                    message: `Connected successfully. ${modelCount} model(s) available.`,
+                    data: modelsData,
+                };
+            }
+
+            // If /models fails, try a minimal chat completion
+            const chatUrl = `${baseUrl}/chat/completions`;
+            const response = await fetch(chatUrl, {
                 method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify(testBody)
+                headers,
+                body: JSON.stringify({
+                    model: modelId,
+                    messages: [{ role: 'user', content: 'Hi' }],
+                    max_tokens: 1,
+                }),
             });
 
-            if (chatRes.ok) {
-                return { ok: true, message: 'Connected successfully (verified via chat request).' };
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({}));
+                const message = errorBody.error?.message || `HTTP ${response.status}`;
+                return { ok: false, message: `Connection failed: ${message}` };
             }
 
-            const errText = await response.text();
-            return { ok: false, message: `Connection failed (HTTP ${response.status}). ${errText.substring(0, 100)}` };
+            return { ok: true, message: 'Successfully connected to OpenAI v1 API.' };
 
         } catch (error) {
-            return { ok: false, message: `Network error: ${error.message}` };
+            return { ok: false, message: `Connection failed: ${error.message}` };
         }
     }
 
-    /**
-     * Prepares standard messages into OpenAI API compatible format.
-     */
-    prepareMessages(messages) {
-        return messages.map(msg => ({ role: msg.role, content: msg.content }));
+    async getModels() {
+        const { url, apiKey } = this.config;
+        const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+        const modelsUrl = `${baseUrl}/models`;
+
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey) {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
+
+            const response = await fetch(modelsUrl, { headers });
+
+            if (!response.ok) {
+                console.warn('[OpenAI v1] Failed to fetch models:', response.status);
+                return [];
+            }
+
+            const data = await response.json();
+            // OpenAI format returns { data: [{ id: 'model-id', ... }] }
+            return data.data || [];
+
+        } catch (error) {
+            console.error('[OpenAI v1] Error fetching models:', error.message);
+            return [];
+        }
     }
 }

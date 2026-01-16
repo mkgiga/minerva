@@ -150,11 +150,11 @@ To add support for a new LLM backend:
     -   `async healthCheck()`: A method to test the connection to the provider.
     -   `prepareMessages()`: A method to transform the standard message format into the provider-specific format.
 4.  **Define Schemas**: Implement the static methods `getProviderSchema()` and `getGenerationParametersSchema()` to define the fields that will appear on the frontend for connection and generation settings.
-5.  **Register Provider**: In `server.js`, import your new provider and add it to the `ADAPTERS` map.
+5.  **Register Provider**: In `server.js`, import your new provider and add it to the `PROVIDERS` map.
     ```javascript
     import { NewProviderProvider } from './server/providers/newprovider.js';
     // ...
-    const ADAPTERS = {
+    const PROVIDERS = {
         v1: OpenAIV1Provider,
         gemini: GoogleGeminiProvider,
         newprovider: NewProviderProvider // Add your new provider here
