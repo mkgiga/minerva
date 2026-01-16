@@ -1,15 +1,22 @@
 server:
     host: 0.0.0.0
     port: 8077
-    whitelist:
-        - localhost
-        - 127.0.0.1
-        - 192.168.*
+
     cors:
         enabled: true
-        allow_origin: "*"
-        allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
-        allow_headers: "Content-Type, Authorization"
+        allow_origins: 
+            - "http://127.0.0.1:8077"
+            - "http://192.168.1.87:8077"
+            - "http://192.168.1.50:8077"
+            - "http://192.168.1.83:8077"
+            - "http://localhost:8077"
+        allow_methods:
+            - GET
+            - POST
+            - OPTIONS
+            - PUT
+            - DELETE
+            - PATCH
         credentials: true
 data:
     data_dir: ./data
