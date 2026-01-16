@@ -1,7 +1,8 @@
 @echo off
 @REM Serve the webui on localhost:8077
 
-setlocal enabledelayedexpansion
 echo "Starting Minerva..."
+
+cd server
 npm install
-node server.js
+npm start
