@@ -21,3 +21,19 @@ server:
 data:
     data_dir: ./data
     static_dir: ./client
+
+tools:
+    expressionGenerator:
+        sdApiUrl: "http://127.0.0.1:7860"
+        modelName: ""  # Uses SD's current model if empty
+        samplerName: "Euler"
+        schedulerName: "SGM Uniform"
+        cfgScale: 5.0
+        denoiseStrength: 0.7
+        steps: 20
+        defaultExpressions:
+            happy: ["smiling", "happy expression"]
+            sad: ["sad expression", "downcast eyes"]
+            angry: ["angry expression", "furrowed brow"]
+            surprised: ["surprised expression", "wide eyes"]
+            neutral: ["neutral expression"]

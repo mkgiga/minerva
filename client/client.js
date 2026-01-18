@@ -268,6 +268,16 @@ class MinervaApp extends BaseComponent {
             }
         });
 
+        this.#eventSource.addEventListener('expressionGenerationProgress', (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                // Dispatch to window so any component can listen
+                window.dispatchEvent(new CustomEvent('expressionGenerationProgress', { detail: data }));
+            } catch (error) {
+                console.error('Could not parse expression generation progress event:', error, event.data);
+            }
+        });
+
         this.#eventSource.onerror = (err) => {
             console.error('SSE connection error. Attempting to reconnect...', err);
             this.#eventSource.close();

@@ -12,6 +12,8 @@ import yaml from 'yaml';
 import cors from 'cors';
 import { CURRENT_REV, runMigrations, migrateData } from './server/migrations.js';
 import { fileURLToPath } from 'url';
+import { createSdClient } from './server/utils/sd-client.js';
+import { preprocessImage, preprocessMask, extractBase64 } from './server/utils/image-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -982,6 +984,17 @@ function initHttp() {
                 const oldPath = path.join(CHARACTERS_DIR, originalId);
                 await fs.rename(oldPath, newPath);
 
+                // Verify old path no longer exists (safety check)
+                try {
+                    await fs.access(oldPath);
+                    // If we get here, old directory still exists - remove it
+                    await fs.rm(oldPath, { recursive: true, force: true });
+                    console.warn(`Character ID change: had to manually remove old directory ${originalId}`);
+                } catch (e) {
+                    // Expected - old path should not exist after rename
+                    if (e.code !== 'ENOENT') throw e;
+                }
+
                 // 3. Update all references
                 await updateCharacterIdReferences(originalId, newId);
 
@@ -1114,15 +1127,52 @@ function initHttp() {
     });
     app.put('/api/notes/:id', async (req, res) => {
         try {
-            const { id } = req.params;
-            const index = state.notes.findIndex(s => s.id === id);
+            const originalId = req.params.id;
+            const updates = req.body;
+            const newId = updates.id ? updates.id.trim() : originalId;
+
+            const index = state.notes.findIndex(n => n.id === originalId);
             if (index === -1) return res.status(404).json({ message: 'Note not found.' });
-            const updatedNote = new Note({ ...req.body, id });
-            await fs.writeFile(path.join(NOTES_DIR, `${id}.json`), JSON.stringify(updatedNote, null, 2));
+
+            // Handle ID change
+            if (newId && newId !== originalId) {
+                // 1. Check for conflict
+                const newPath = path.join(NOTES_DIR, `${newId}.json`);
+                try {
+                    await fs.access(newPath);
+                    return res.status(409).json({ message: `Note ID "${newId}" already exists.` });
+                } catch (e) {
+                    if (e.code !== 'ENOENT') throw e;
+                }
+
+                // 2. Rename file
+                const oldPath = path.join(NOTES_DIR, `${originalId}.json`);
+                await fs.rename(oldPath, newPath);
+
+                // 3. Update note object
+                const updatedNote = { ...state.notes[index], ...updates, id: newId };
+                await fs.writeFile(newPath, JSON.stringify(updatedNote, null, 2));
+
+                // 4. Update state
+                state.notes.splice(index, 1);
+                state.notes.push(updatedNote);
+
+                // 5. Broadcast delete + create events
+                broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'delete', data: { id: originalId } });
+                broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'create', data: updatedNote });
+                return res.json(updatedNote);
+            }
+
+            // Standard update (no ID change)
+            const updatedNote = { ...state.notes[index], ...updates };
+            await fs.writeFile(path.join(NOTES_DIR, `${originalId}.json`), JSON.stringify(updatedNote, null, 2));
             state.notes[index] = updatedNote;
             broadcastEvent('resourceChange', { resourceType: 'note', eventType: 'update', data: updatedNote });
             res.json(updatedNote);
-        } catch (e) { res.status(500).json({ message: 'Failed to update note.' }); }
+        } catch (e) {
+            console.error('Error updating note:', e);
+            res.status(500).json({ message: 'Failed to update note.' });
+        }
     });
     app.delete('/api/notes/:id', async (req, res) => {
         try {
@@ -2406,6 +2456,236 @@ Description: ${description || '(No description provided)'}
             res.status(500).json({ message: error.message });
         }
     });
+
+    // Tool API: SD WebUI Health Check
+    app.get('/api/tools/sd-health', async (req, res) => {
+        try {
+            const sdConfig = serverConfig.tools?.expressionGenerator || {};
+            const sdApiUrl = sdConfig.sdApiUrl || 'http://127.0.0.1:7860';
+            const sdClient = createSdClient({ sdApiUrl });
+            const result = await sdClient.healthCheck();
+            res.json(result);
+        } catch (error) {
+            res.json({ available: false, error: error.message });
+        }
+    });
+
+    // Tool API: Generate Expressions
+    app.post('/api/tools/generate-expressions', async (req, res) => {
+        try {
+            const {
+                characterId,
+                baseImageData,
+                maskData,
+                baseAppearanceTags = [],
+                expressionVariations = {},
+                sdConfig: clientSdConfig = {}
+            } = req.body;
+
+            // Validate required fields
+            if (!characterId) {
+                return res.status(400).json({ message: 'characterId is required' });
+            }
+            if (!baseImageData) {
+                return res.status(400).json({ message: 'baseImageData is required' });
+            }
+            if (Object.keys(expressionVariations).length === 0) {
+                return res.status(400).json({ message: 'expressionVariations is required and cannot be empty' });
+            }
+
+            // Find character
+            const character = state.characters.find(c => c.id === characterId);
+            if (!character) {
+                return res.status(404).json({ message: 'Character not found' });
+            }
+
+            // Get SD config from server config, merge with client overrides
+            const serverSdConfig = serverConfig.tools?.expressionGenerator || {};
+            const sdApiUrl = clientSdConfig.sdApiUrl || serverSdConfig.sdApiUrl || 'http://127.0.0.1:7860';
+            const sdClient = createSdClient({
+                sdApiUrl,
+                modelName: clientSdConfig.modelName ?? serverSdConfig.modelName ?? '',
+                samplerName: clientSdConfig.samplerName ?? serverSdConfig.samplerName ?? 'Euler',
+                schedulerName: clientSdConfig.schedulerName ?? serverSdConfig.schedulerName ?? 'SGM Uniform',
+                cfgScale: clientSdConfig.cfgScale ?? serverSdConfig.cfgScale ?? 5.0,
+                denoiseStrength: clientSdConfig.denoiseStrength ?? serverSdConfig.denoiseStrength ?? 0.7,
+                steps: clientSdConfig.steps ?? serverSdConfig.steps ?? 20
+            });
+
+            // Check SD health first
+            const healthResult = await sdClient.healthCheck();
+            if (!healthResult.available) {
+                return res.status(503).json({
+                    message: `SD WebUI is not available: ${healthResult.error || 'Unknown error'}`,
+                    error: healthResult.error
+                });
+            }
+
+            // Preprocess base image
+            const rawBase64 = extractBase64(baseImageData);
+            const { base64: processedImage, width: imgWidth, height: imgHeight } = await preprocessImage(rawBase64);
+
+            // Preprocess mask if provided
+            let processedMask = null;
+            if (maskData) {
+                const rawMaskBase64 = extractBase64(maskData);
+                processedMask = await preprocessMask(rawMaskBase64, imgWidth, imgHeight);
+            }
+
+            // Prepare base appearance tags
+            const appearanceBaseTags = baseAppearanceTags.map(tag => tag.trim()).filter(Boolean);
+
+            // Generate expressions
+            const generatedImages = {};
+            const totalVariations = Object.keys(expressionVariations).length;
+            let completedCount = 0;
+
+            // Create expressions directory
+            const expressionsDir = path.join(CHARACTERS_DIR, characterId, 'expressions');
+            await fs.mkdir(expressionsDir, { recursive: true });
+
+            for (const [variationName, variationTags] of Object.entries(expressionVariations)) {
+                try {
+                    // Combine base tags with variation-specific tags
+                    const combinedTags = [...appearanceBaseTags, ...variationTags];
+                    const prompt = combinedTags.join(', ');
+
+                    // Broadcast progress
+                    broadcastEvent('expressionGenerationProgress', {
+                        characterId,
+                        variationName,
+                        status: 'generating',
+                        progress: completedCount / totalVariations,
+                        message: `Generating ${variationName}...`
+                    });
+
+                    // Generate image
+                    const images = await sdClient.img2img({
+                        baseImageData: processedImage,
+                        prompt,
+                        width: imgWidth,
+                        height: imgHeight,
+                        maskData: processedMask
+                    });
+
+                    if (images && images.length > 0) {
+                        // Save the first generated image
+                        const imageBase64 = images[0];
+                        const filename = `${uuidv4()}.png`;
+                        const imagePath = path.join(expressionsDir, filename);
+
+                        // Write image to disk
+                        await fs.writeFile(imagePath, Buffer.from(imageBase64, 'base64'));
+
+                        // Add to character's expressions
+                        const newExpression = { src: filename, name: variationName };
+                        character.expressions.push(newExpression);
+
+                        generatedImages[variationName] = {
+                            success: true,
+                            filename,
+                            url: `/data/characters/${characterId}/expressions/${filename}?t=${Date.now()}`
+                        };
+                    } else {
+                        generatedImages[variationName] = {
+                            success: false,
+                            error: 'No image returned from SD WebUI'
+                        };
+                    }
+
+                    completedCount++;
+
+                    // Broadcast progress
+                    broadcastEvent('expressionGenerationProgress', {
+                        characterId,
+                        variationName,
+                        status: 'completed',
+                        progress: completedCount / totalVariations,
+                        message: `Completed ${variationName}`
+                    });
+
+                } catch (genError) {
+                    console.error(`Error generating expression ${variationName}:`, genError);
+                    generatedImages[variationName] = {
+                        success: false,
+                        error: genError.message
+                    };
+                    completedCount++;
+
+                    // Broadcast error
+                    broadcastEvent('expressionGenerationProgress', {
+                        characterId,
+                        variationName,
+                        status: 'error',
+                        progress: completedCount / totalVariations,
+                        message: `Failed: ${genError.message}`
+                    });
+                }
+            }
+
+            // Save updated character
+            await fs.writeFile(
+                path.join(CHARACTERS_DIR, characterId, 'character.json'),
+                JSON.stringify(character.toSaveObject(), null, 2)
+            );
+
+            // Reload character to get updated URLs
+            const updatedCharacter = await loadSingleCharacter(characterId);
+            if (updatedCharacter) {
+                const charIndex = state.characters.findIndex(c => c.id === characterId);
+                if (charIndex !== -1) state.characters[charIndex] = updatedCharacter;
+                broadcastEvent('resourceChange', { resourceType: 'character', eventType: 'update', data: updatedCharacter });
+            }
+
+            // Broadcast completion
+            broadcastEvent('expressionGenerationProgress', {
+                characterId,
+                status: 'done',
+                progress: 1,
+                message: 'Expression generation complete'
+            });
+
+            res.json({
+                success: true,
+                generatedImages,
+                character: updatedCharacter
+            });
+
+        } catch (error) {
+            console.error('Error generating expressions:', error);
+
+            // Broadcast error
+            broadcastEvent('expressionGenerationProgress', {
+                characterId: req.body.characterId,
+                status: 'error',
+                progress: 0,
+                message: `Generation failed: ${error.message}`
+            });
+
+            res.status(500).json({ message: error.message });
+        }
+    });
+
+    // Tool API: Get Expression Generator Config
+    app.get('/api/tools/expression-generator-config', (req, res) => {
+        const config = serverConfig.tools?.expressionGenerator || {};
+        res.json({
+            sdApiUrl: config.sdApiUrl || 'http://127.0.0.1:7860',
+            modelName: config.modelName || '',
+            samplerName: config.samplerName || 'Euler',
+            schedulerName: config.schedulerName || 'SGM Uniform',
+            cfgScale: config.cfgScale ?? 5.0,
+            denoiseStrength: config.denoiseStrength ?? 0.7,
+            steps: config.steps ?? 20,
+            defaultExpressions: config.defaultExpressions || {
+                happy: ['smiling', 'happy expression'],
+                sad: ['sad expression', 'downcast eyes'],
+                angry: ['angry expression', 'furrowed brow'],
+                surprised: ['surprised expression', 'wide eyes'],
+                neutral: ['neutral expression']
+            }
+        });
+    });
 }
 
 // Helper Functions for Data Handling
@@ -2495,6 +2775,7 @@ class Character {
     avatarUrl = null;
     expressions = [];
     gallery = [];
+    tags = [];
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
@@ -2505,6 +2786,7 @@ class Character {
             avatarUrl: null,
             expressions: [],
             gallery: [],
+            tags: [],
             _rev: CURRENT_REV
         }, data);
     }
@@ -2520,6 +2802,7 @@ class Character {
             _rev: this._rev,
             name: this.name,
             description: this.description,
+            tags: this.tags,
             // Strip the full URLs from items before saving to JSON
             expressions: this.expressions.map(({ url, ...rest }) => rest),
             gallery: this.gallery.map(({ url, ...rest }) => rest),
@@ -2619,6 +2902,7 @@ class Note {
     describes = '';
     description = ''; // General note text
     characterOverrides = {}; // { [characterId]: "character-specific text" }
+    tags = [];
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
@@ -2628,6 +2912,7 @@ class Note {
             describes: '',
             description: '',
             characterOverrides: {},
+            tags: [],
             _rev: CURRENT_REV
         }, data);
     }
@@ -2660,6 +2945,7 @@ class Scenario {
     notes = []; // Array of note IDs
     avatarUrl = null;
     bannerUrl = null;
+    tags = [];
     _rev = CURRENT_REV;
 
     constructor(data = {}) {
@@ -2672,6 +2958,7 @@ class Scenario {
             notes: [],
             avatarUrl: null,
             bannerUrl: null,
+            tags: [],
             _rev: CURRENT_REV
         }, data);
     }

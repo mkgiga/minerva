@@ -5,6 +5,8 @@ class CharacterEditor extends BaseComponent {
     constructor() {
         super();
         this._character = null;
+        this._expressionGenInProgress = false;
+        this._sseHandler = null;
         this.render();
     }
     
@@ -37,6 +39,12 @@ class CharacterEditor extends BaseComponent {
         const addExprBtn = event.target.closest('#add-expression-btn');
         if (addExprBtn) {
             this.onAddExpression();
+            return;
+        }
+
+        const genExprBtn = event.target.closest('#generate-expressions-btn');
+        if (genExprBtn) {
+            this.onGenerateExpressions();
             return;
         }
 
@@ -288,6 +296,282 @@ ${nature}
         });
     }
 
+    async onGenerateExpressions() {
+        // Check if character has an avatar (required as base image)
+        if (!this.character?.avatarUrl) {
+            notifier.show({
+                type: 'warn',
+                header: 'Avatar Required',
+                message: 'Please upload an avatar for this character first. The avatar will be used as the base image for generating expressions.'
+            });
+            return;
+        }
+
+        // Check SD WebUI availability
+        notifier.show({ message: 'Checking Stable Diffusion availability...' });
+        let sdHealth;
+        try {
+            sdHealth = await api.get('/api/tools/sd-health');
+        } catch (e) {
+            notifier.show({ type: 'bad', header: 'Connection Error', message: 'Could not check SD WebUI status.' });
+            return;
+        }
+
+        if (!sdHealth.available) {
+            notifier.show({
+                type: 'bad',
+                header: 'SD WebUI Not Available',
+                message: sdHealth.error || 'Make sure Stable Diffusion WebUI is running with the ControlNet extension.'
+            });
+            return;
+        }
+
+        // Fetch default config from server
+        let serverConfig;
+        try {
+            serverConfig = await api.get('/api/tools/expression-generator-config');
+        } catch (e) {
+            serverConfig = {
+                steps: 20,
+                cfgScale: 5.0,
+                denoiseStrength: 0.7,
+                defaultExpressions: {
+                    happy: ['smiling', 'happy expression'],
+                    sad: ['sad expression', 'downcast eyes'],
+                    angry: ['angry expression', 'furrowed brow'],
+                    surprised: ['surprised expression', 'wide eyes'],
+                    neutral: ['neutral expression']
+                }
+            };
+        }
+
+        // Show configuration modal
+        this.#showExpressionGeneratorModal(serverConfig);
+    }
+
+    #showExpressionGeneratorModal(serverConfig) {
+        const content = document.createElement('div');
+        content.className = 'expression-generator-modal';
+        content.innerHTML = `
+            <div class="expr-gen-section">
+                <label>Base Appearance Tags</label>
+                <p class="field-description">Tags that describe your character's base appearance (applies to all expressions). One tag per line or comma-separated.</p>
+                <textarea id="expr-base-tags" class="form-group" rows="3" placeholder="e.g., 1girl, blonde hair, blue eyes, portrait"></textarea>
+            </div>
+
+            <div class="expr-gen-section">
+                <label>Expressions to Generate</label>
+                <p class="field-description">Define the expressions you want to generate. Each expression has a name and additional tags.</p>
+                <div id="expr-variations-list"></div>
+                <button type="button" id="add-expr-variation-btn" class="button-secondary button-sm">+ Add Expression</button>
+            </div>
+
+            <details class="expr-gen-advanced">
+                <summary>Advanced Options</summary>
+                <div class="advanced-options-grid">
+                    <div class="form-group-inline">
+                        <label for="expr-steps">Steps</label>
+                        <input type="number" id="expr-steps" value="${serverConfig.steps}" min="1" max="150" class="form-group">
+                    </div>
+                    <div class="form-group-inline">
+                        <label for="expr-cfg">CFG Scale</label>
+                        <input type="number" id="expr-cfg" value="${serverConfig.cfgScale}" min="1" max="30" step="0.5" class="form-group">
+                    </div>
+                    <div class="form-group-inline">
+                        <label for="expr-denoise">Denoise</label>
+                        <input type="number" id="expr-denoise" value="${serverConfig.denoiseStrength}" min="0" max="1" step="0.05" class="form-group">
+                    </div>
+                </div>
+            </details>
+
+            <div id="expr-gen-progress" class="expr-gen-progress" style="display: none;">
+                <div class="progress-bar-container">
+                    <div class="progress-bar" style="width: 0%"></div>
+                </div>
+                <p class="progress-message">Preparing...</p>
+            </div>
+        `;
+
+        // Add default expressions
+        const variationsList = content.querySelector('#expr-variations-list');
+        for (const [name, tags] of Object.entries(serverConfig.defaultExpressions || {})) {
+            this.#addExpressionVariationRow(variationsList, name, tags.join(', '));
+        }
+
+        // Add expression button handler
+        content.querySelector('#add-expr-variation-btn').addEventListener('click', () => {
+            this.#addExpressionVariationRow(variationsList, '', '');
+        });
+
+        modal.show({
+            title: 'Generate Expressions with AI',
+            content,
+            hideCloseButton: false,
+            buttons: [
+                {
+                    label: 'Cancel',
+                    className: 'button-secondary',
+                    onClick: () => {
+                        if (this._expressionGenInProgress) {
+                            notifier.show({ type: 'warn', message: 'Generation in progress. Please wait for it to complete.' });
+                            return;
+                        }
+                        modal.hide();
+                    }
+                },
+                {
+                    label: 'Generate',
+                    className: 'button-primary',
+                    onClick: () => this.#startExpressionGeneration(content)
+                }
+            ]
+        });
+    }
+
+    #addExpressionVariationRow(container, name = '', tags = '') {
+        const row = document.createElement('div');
+        row.className = 'expr-variation-row';
+        row.innerHTML = `
+            <input type="text" class="expr-var-name form-group" placeholder="Name (e.g., happy)" value="${name}">
+            <input type="text" class="expr-var-tags form-group" placeholder="Tags (e.g., smiling, bright eyes)" value="${tags}">
+            <button type="button" class="remove-expr-var-btn icon-btn" title="Remove"><span class="material-icons">close</span></button>
+        `;
+        row.querySelector('.remove-expr-var-btn').addEventListener('click', () => row.remove());
+        container.appendChild(row);
+    }
+
+    async #startExpressionGeneration(modalContent) {
+        if (this._expressionGenInProgress) {
+            notifier.show({ type: 'warn', message: 'Generation already in progress.' });
+            return;
+        }
+
+        // Gather data from modal
+        const baseTags = modalContent.querySelector('#expr-base-tags').value
+            .split(/[,\n]/)
+            .map(t => t.trim())
+            .filter(Boolean);
+
+        const variationRows = modalContent.querySelectorAll('.expr-variation-row');
+        const expressionVariations = {};
+
+        for (const row of variationRows) {
+            const name = row.querySelector('.expr-var-name').value.trim();
+            const tags = row.querySelector('.expr-var-tags').value
+                .split(',')
+                .map(t => t.trim())
+                .filter(Boolean);
+
+            if (name) {
+                expressionVariations[name] = tags;
+            }
+        }
+
+        if (Object.keys(expressionVariations).length === 0) {
+            notifier.show({ type: 'warn', message: 'Please add at least one expression to generate.' });
+            return;
+        }
+
+        // Get advanced options
+        const steps = parseInt(modalContent.querySelector('#expr-steps').value) || 20;
+        const cfgScale = parseFloat(modalContent.querySelector('#expr-cfg').value) || 5.0;
+        const denoiseStrength = parseFloat(modalContent.querySelector('#expr-denoise').value) || 0.7;
+
+        // Show progress UI
+        const progressContainer = modalContent.querySelector('#expr-gen-progress');
+        const progressBar = progressContainer.querySelector('.progress-bar');
+        const progressMessage = progressContainer.querySelector('.progress-message');
+        progressContainer.style.display = 'block';
+
+        // Disable buttons while generating
+        const generateBtn = modalContent.closest('.modal-content')?.querySelector('.button-primary');
+        if (generateBtn) generateBtn.disabled = true;
+
+        this._expressionGenInProgress = true;
+
+        // Listen for SSE progress updates
+        const progressHandler = (event) => {
+            const data = event.detail;
+            if (data.characterId !== this.character.id) return;
+
+            const progress = Math.round((data.progress || 0) * 100);
+            progressBar.style.width = `${progress}%`;
+            progressMessage.textContent = data.message || `Generating... ${progress}%`;
+
+            if (data.status === 'done' || data.status === 'error') {
+                window.removeEventListener('expressionGenerationProgress', progressHandler);
+            }
+        };
+        window.addEventListener('expressionGenerationProgress', progressHandler);
+
+        try {
+            // Fetch avatar as base64
+            progressMessage.textContent = 'Loading avatar image...';
+            const avatarUrl = this.character.avatarUrl.split('?')[0]; // Remove cache buster
+            const avatarResponse = await fetch(avatarUrl);
+            const avatarBlob = await avatarResponse.blob();
+            const base64Avatar = await this.#blobToBase64(avatarBlob);
+
+            progressMessage.textContent = 'Starting generation...';
+
+            // Call the API
+            const result = await api.post('/api/tools/generate-expressions', {
+                characterId: this.character.id,
+                baseImageData: base64Avatar,
+                baseAppearanceTags: baseTags,
+                expressionVariations,
+                sdConfig: {
+                    steps,
+                    cfgScale,
+                    denoiseStrength
+                }
+            });
+
+            // Count successes and failures
+            const results = Object.values(result.generatedImages || {});
+            const successes = results.filter(r => r.success).length;
+            const failures = results.filter(r => !r.success).length;
+
+            if (successes > 0) {
+                notifier.show({
+                    type: 'good',
+                    header: 'Generation Complete',
+                    message: `Generated ${successes} expression(s)${failures > 0 ? `, ${failures} failed` : ''}.`
+                });
+            } else {
+                notifier.show({
+                    type: 'bad',
+                    header: 'Generation Failed',
+                    message: 'All expressions failed to generate. Check if SD WebUI is running correctly.'
+                });
+            }
+
+            modal.hide();
+
+        } catch (error) {
+            console.error('Expression generation error:', error);
+            notifier.show({
+                type: 'bad',
+                header: 'Generation Failed',
+                message: error.message
+            });
+            progressMessage.textContent = `Error: ${error.message}`;
+        } finally {
+            this._expressionGenInProgress = false;
+            window.removeEventListener('expressionGenerationProgress', progressHandler);
+            if (generateBtn) generateBtn.disabled = false;
+        }
+    }
+
+    #blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
     async onAddGalleryImage() {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
@@ -480,7 +764,10 @@ ${nature}
                             <label>Expressions</label>
                             <p class="field-description">Named images for expressions. Can be referenced by name in chat modes, or included in prompts with {{<span id="replace-char-id">&lt;id&gt;</span>.expressions}}.</p>
                             <div id="expressions-grid"></div>
-                            <button type="button" id="add-expression-btn" class="button-secondary">Add Expression</button>
+                            <div class="expression-buttons">
+                                <button type="button" id="add-expression-btn" class="button-secondary">Add Expression</button>
+                                <button type="button" id="generate-expressions-btn" class="button-secondary" title="Generate expressions using Stable Diffusion"><span class="material-icons">auto_awesome</span> Generate with AI</button>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -638,9 +925,25 @@ ${nature}
                 transition: var(--transition-fast);
             }
             
-            #add-gallery-image-btn, #add-expression-btn {
+            #add-gallery-image-btn {
                 margin-top: var(--spacing-md);
                 width: 100%;
+            }
+
+            .expression-buttons {
+                display: flex;
+                gap: var(--spacing-sm);
+                margin-top: var(--spacing-md);
+            }
+            .expression-buttons button {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: var(--spacing-xs);
+            }
+            .expression-buttons .material-icons {
+                font-size: 1.2em;
             }
 
             #expressions-grid, #gallery-grid {
