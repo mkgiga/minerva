@@ -33,12 +33,16 @@ class NoteEditor extends BaseComponent {
 
         const form = this.shadowRoot.querySelector('form');
         form.addEventListener('submit', this.#onSave.bind(this));
-        
+
         // This will catch input events from the name, type, description, AND override text boxes
         form.addEventListener('input', () => this.dispatch('change'));
 
         this.shadowRoot.querySelector('#add-override-btn').addEventListener('click', () => this.#openAddOverrideModal());
         this.#overrideList.addEventListener('click', e => this.#handleOverrideListClick(e));
+
+        // Tag input handlers
+        this.shadowRoot.querySelector('#note-tags-input').addEventListener('keydown', this.#handleTagInput.bind(this));
+        this.shadowRoot.querySelector('#note-tags-container').addEventListener('click', this.#handleTagRemove.bind(this));
 
         this.#updateView();
     }
@@ -58,8 +62,9 @@ class NoteEditor extends BaseComponent {
             describes: this.shadowRoot.querySelector('#note-type-input').value,
             description: this.shadowRoot.querySelector('#description-input').value,
             characterOverrides: overrides,
+            tags: this.#note?.tags || [],
         };
-        
+
         this.dispatch('note-save', { note: noteData });
     }
 
@@ -117,6 +122,48 @@ class NoteEditor extends BaseComponent {
         }
     }
 
+    #handleTagInput(event) {
+        if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            const input = event.target;
+            const tag = input.value.trim().toLowerCase().replace(',', '');
+            if (tag && !this.#note.tags?.includes(tag)) {
+                if (!this.#note.tags) this.#note.tags = [];
+                this.#note.tags.push(tag);
+                this.#renderTags();
+                this.dispatch('change');
+            }
+            input.value = '';
+        }
+    }
+
+    #handleTagRemove(event) {
+        const removeBtn = event.target.closest('.remove-tag');
+        if (removeBtn) {
+            const tag = removeBtn.dataset.tag;
+            this.#note.tags = this.#note.tags.filter(t => t !== tag);
+            this.#renderTags();
+            this.dispatch('change');
+        }
+    }
+
+    #renderTags() {
+        const container = this.shadowRoot.querySelector('#note-tags-container');
+        const input = this.shadowRoot.querySelector('#note-tags-input');
+        const tags = this.#note?.tags || [];
+
+        // Remove existing chips
+        container.querySelectorAll('.tag-chip').forEach(el => el.remove());
+
+        // Add chip for each tag
+        tags.forEach(tag => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.innerHTML = `${tag}<button type="button" class="remove-tag" data-tag="${tag}">&times;</button>`;
+            container.insertBefore(chip, input);
+        });
+    }
+
     #renderOverridesList() {
         const overrides = this.#note?.characterOverrides || {};
 
@@ -157,6 +204,7 @@ class NoteEditor extends BaseComponent {
             this.shadowRoot.querySelector('#note-type-input').value = this.#note.describes || '';
             this.shadowRoot.querySelector('#description-input').value = this.#note.description || '';
             this.#renderOverridesList();
+            this.#renderTags();
         }
     }
 
@@ -170,6 +218,12 @@ class NoteEditor extends BaseComponent {
                         <div class="form-group-inline">
                             <label for="note-type-input">Type</label>
                             <input type="text" id="note-type-input" placeholder="e.g., Output Formatting" class="type-input">
+                        </div>
+                        <div class="form-group-inline">
+                            <label>Tags</label>
+                            <div class="tags-input-container" id="note-tags-container">
+                                <input type="text" class="tag-input" id="note-tags-input" placeholder="Add tag...">
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -224,6 +278,56 @@ class NoteEditor extends BaseComponent {
                 outline: none;
                 border-color: var(--accent-primary);
                 box-shadow: 0 0 0 2px var(--accent-primary-faded);
+            }
+
+            /* Tags input */
+            .tags-input-container {
+                display: flex;
+                flex-wrap: wrap;
+                gap: var(--spacing-xs);
+                padding: var(--spacing-xs) var(--spacing-sm);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-sm);
+                background: var(--bg-1);
+                flex: 1;
+                min-height: 34px;
+                align-items: center;
+            }
+            .tags-input-container:focus-within {
+                border-color: var(--accent-primary);
+                box-shadow: 0 0 0 2px var(--accent-primary-faded);
+            }
+            .tag-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 2px 8px;
+                background: var(--accent-primary-faded);
+                border-radius: 12px;
+                font-size: var(--font-size-sm);
+                color: var(--text-primary);
+            }
+            .tag-chip .remove-tag {
+                cursor: pointer;
+                background: none;
+                border: none;
+                color: inherit;
+                opacity: 0.7;
+                padding: 0;
+                font-size: 1rem;
+                line-height: 1;
+            }
+            .tag-chip .remove-tag:hover {
+                opacity: 1;
+            }
+            .tag-input {
+                border: none;
+                background: transparent;
+                flex: 1;
+                min-width: 80px;
+                outline: none;
+                color: var(--text-primary);
+                font-size: var(--font-size-sm);
             }
 
             #editor-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
