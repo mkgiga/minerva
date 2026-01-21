@@ -31,20 +31,52 @@ const CHATS_DIR = path.join(DATA_DIR, 'chats');
 const NOTES_DIR = path.join(DATA_DIR, 'notes');
 const SETTINGS_FILE_PATH = path.join(DATA_DIR, 'settings.json');
 
-// CORS
-const corsEnabled = serverConfig.server.cors?.enabled || false;
-const corsAllowOrigins = corsEnabled ? serverConfig.server.cors?.allow_origins : [`http://${HOST}:${PORT}`, 'http://localhost:3000'];
-const corsAllowMethods = serverConfig.server.cors?.allow_methods || ['GET', 'POST', 'PUT', 'DELETE'];
-const corsAllowHeaders = serverConfig.server.cors?.allow_headers || ['Content-Type', 'Authorization'];
-const corsCredentials = serverConfig.server.cors?.credentials || true;
+// CORS configuration (browser origin validation)
+const corsConfig = serverConfig.server.cors || {};
+const corsEnabled = corsConfig.enabled || false;
+const corsAllowOrigins = corsEnabled ? corsConfig.allow_origins || [] : ['*'];
+const corsAllowMethods = corsConfig.allow_methods || ['GET', 'POST', 'PUT', 'DELETE'];
+const corsAllowHeaders = corsConfig.allow_headers || ['Content-Type', 'Authorization'];
+const corsCredentials = corsConfig.credentials !== false;
+
+// IP access control (server-side blocking)
+const accessConfig = serverConfig.server.access || {};
+const accessEnabled = accessConfig.enabled || false;
+const allowedIps = new Set(accessConfig.allow_ips || []);
+
+// Always allow localhost variants
+if (accessEnabled) {
+    allowedIps.add('127.0.0.1');
+    allowedIps.add('localhost');
+    allowedIps.add('::1');
+}
+
 const corsOptions = {
-    origin: corsAllowOrigins,
+    origin: corsEnabled ? corsAllowOrigins : '*',
     methods: corsAllowMethods,
     allowedHeaders: corsAllowHeaders,
     credentials: corsCredentials,
 };
 
 const app = express();
+
+// IP access control middleware - runs before everything else
+if (accessEnabled && allowedIps.size > 0) {
+    app.use((req, res, next) => {
+        const clientIp = req.ip || req.connection.remoteAddress || '';
+        // Normalize IPv6-mapped IPv4 addresses
+        const normalizedIp = clientIp.replace(/^::ffff:/, '');
+
+        if (allowedIps.has(normalizedIp)) {
+            return next();
+        }
+
+        console.log(`Blocked request from IP: ${normalizedIp}`);
+        return res.status(403).json({ error: 'Access denied: IP not in whitelist' });
+    });
+}
+
+// Standard CORS middleware (for proper browser headers)
 app.use(cors(corsOptions));
 const server = createServer(app);
 
