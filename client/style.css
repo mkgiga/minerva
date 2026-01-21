@@ -543,3 +543,207 @@ user-card {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==================== TAG SYSTEM STYLES ==================== */
+
+/* Tag input container in editors */
+.tags-input-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--bg-3);
+    border-radius: var(--radius-sm);
+    background: var(--bg-1);
+    min-height: 42px;
+}
+
+.tags-input-container:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-primary-faded);
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--accent-primary-faded);
+    color: var(--text-primary);
+    border-radius: 12px;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+.tag-chip .remove-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 50%;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+}
+
+.tag-chip .remove-tag:hover {
+    background: rgba(255,255,255,0.2);
+    color: var(--text-primary);
+}
+
+.tag-input {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 80px;
+    outline: none;
+    font-size: var(--font-size-md);
+}
+
+.tag-input::placeholder {
+    color: var(--text-disabled);
+}
+
+/* List header with sortable columns */
+.list-header-row {
+    display: grid;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    border-bottom: 1px solid var(--bg-3);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.list-header-col {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.list-header-col:hover {
+    color: var(--text-primary);
+}
+
+.list-header-col.active {
+    color: var(--accent-primary);
+}
+
+.list-header-col .sort-icon {
+    font-size: 16px;
+    opacity: 0;
+}
+
+.list-header-col:hover .sort-icon,
+.list-header-col.active .sort-icon {
+    opacity: 1;
+}
+
+/* Tag filter dropdown */
+.tag-filter-container {
+    position: relative;
+}
+
+.tag-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-2);
+    border: 1px solid var(--bg-3);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+}
+
+.tag-filter-btn:hover {
+    background: var(--bg-3);
+    color: var(--text-primary);
+}
+
+.tag-filter-btn.has-filters {
+    background: var(--accent-primary-faded);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.tag-filter-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--bg-1);
+    border: 1px solid var(--bg-3);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    padding: var(--spacing-sm);
+    display: none;
+}
+
+.tag-filter-dropdown.open {
+    display: block;
+}
+
+.tag-filter-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+
+.tag-filter-item:hover {
+    background: var(--bg-2);
+}
+
+.tag-filter-item input[type="checkbox"] {
+    accent-color: var(--accent-primary);
+}
+
+/* Small tag indicators on list items */
+.item-tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.item-tag {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    background: var(--bg-2);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+/* Group headers in list */
+.list-group-header {
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-2);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.list-group-header:first-child {
+    margin-top: 0;
+}
