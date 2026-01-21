@@ -30,8 +30,54 @@ class CharacterEditor extends BaseComponent {
         
         // Listener for the new generate button
         this.shadowRoot.querySelector('#generate-btn').addEventListener('click', this.handleGenerate.bind(this));
-        
+
+        // Tag input handlers
+        this.shadowRoot.querySelector('#character-tags-input').addEventListener('keydown', this.handleTagInput.bind(this));
+        this.shadowRoot.querySelector('#character-tags-container').addEventListener('click', this.handleTagRemove.bind(this));
+
         this.#updateView();
+    }
+
+    handleTagInput(event) {
+        if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            const input = event.target;
+            const tag = input.value.trim().toLowerCase().replace(',', '');
+            if (tag && !this._character.tags?.includes(tag)) {
+                if (!this._character.tags) this._character.tags = [];
+                this._character.tags.push(tag);
+                this.#renderTags();
+            }
+            input.value = '';
+        }
+    }
+
+    handleTagRemove(event) {
+        const removeBtn = event.target.closest('.remove-tag');
+        if (removeBtn) {
+            const chip = removeBtn.closest('.tag-chip');
+            const tag = chip.dataset.tag;
+            this._character.tags = this._character.tags.filter(t => t !== tag);
+            this.#renderTags();
+        }
+    }
+
+    #renderTags() {
+        const container = this.shadowRoot.querySelector('#character-tags-container');
+        const input = container.querySelector('.tag-input');
+
+        // Remove existing chips
+        container.querySelectorAll('.tag-chip').forEach(chip => chip.remove());
+
+        // Add chips for each tag
+        const tags = this._character?.tags || [];
+        tags.forEach(tag => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.dataset.tag = tag;
+            chip.innerHTML = `${tag}<button type="button" class="remove-tag">×</button>`;
+            container.insertBefore(chip, input);
+        });
     }
 
     handleFormClick(event) {
@@ -199,6 +245,7 @@ ${nature}
             id: this.shadowRoot.querySelector('#character-id-input').value.trim(),
             name: this.shadowRoot.querySelector('#character-name-input').value,
             description: this.shadowRoot.querySelector('#character-description').value,
+            tags: this._character?.tags || [],
         };
         this.dispatch('character-save', { character: updatedCharacter });
     }
@@ -672,6 +719,7 @@ ${nature}
             this.shadowRoot.querySelector('#character-description').value = this._character.description || '';
             this.shadowRoot.querySelector('#replace-char-id').textContent = this._character.id || 'id';
 
+            this.#renderTags();
             this.#renderExpressions();
             this.#renderGallery();
         }
@@ -758,6 +806,14 @@ ${nature}
                             </div>
                             <p class="field-description">The main prompt for the character. You can use macros like {{player.name}}.</p>
                             <text-box id="character-description" name="description"></text-box>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Tags</label>
+                            <p class="field-description">Add tags to organize and filter characters. Press Enter or comma to add a tag.</p>
+                            <div class="tags-input-container" id="character-tags-container">
+                                <input type="text" class="tag-input" id="character-tags-input" placeholder="Add tag...">
+                            </div>
                         </div>
 
                         <div class="form-group">

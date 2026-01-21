@@ -10,6 +10,8 @@ class CharactersView extends BaseComponent {
             characters: [],
             selectedCharacter: null,
             userPersonaCharacterId: null,
+            sortMode: 'name-asc', // 'name-asc', 'name-desc', 'tag-group'
+            selectedFilterTags: [], // Tags to filter by (OR logic)
         };
 
         this.handleBackToCharacters = this.handleBackToCharacters.bind(this);
@@ -17,20 +19,24 @@ class CharactersView extends BaseComponent {
         this.handleItemAction = this.handleItemAction.bind(this);
         this.handleListHeaderClick = this.handleListHeaderClick.bind(this);
         this.handleCharacterDuplicate = this.handleCharacterDuplicate.bind(this);
+        this.handleColumnHeaderClick = this.handleColumnHeaderClick.bind(this);
+        this.handleTagFilterClick = this.handleTagFilterClick.bind(this);
         this._pendingSelectedId = null; // To hold an ID before data is fetched
         this._hasAutoSelectedFirst = false; // Track if we've auto-selected the first item
     }
 
     async connectedCallback() {
-        this.render(); 
-        
+        this.render();
+
         this.itemList = this.shadowRoot.querySelector('item-list');
 
         this.itemList.addEventListener('item-action', this.handleItemAction);
         this.shadowRoot.querySelector('#list-header').addEventListener('click', this.handleListHeaderClick);
         this.shadowRoot.querySelector('minerva-character-editor').addEventListener('character-save', this.handleCharacterSave.bind(this));
         this.shadowRoot.querySelector('#back-to-characters-btn').addEventListener('click', this.handleBackToCharacters);
-        
+        this.shadowRoot.querySelector('.list-header-row').addEventListener('click', this.handleColumnHeaderClick);
+        this.shadowRoot.querySelector('.tag-filter-container').addEventListener('click', this.handleTagFilterClick);
+
         window.addEventListener('minerva-resource-changed', this.handleResourceChange);
         window.addEventListener('resize', () => this.updateView());
 
@@ -158,6 +164,123 @@ class CharactersView extends BaseComponent {
         } else if (action === 'import') {
             this.handleCharacterImport();
         }
+    }
+
+    handleColumnHeaderClick(event) {
+        const col = event.target.closest('.list-header-col');
+        if (!col) return;
+
+        const sortBy = col.dataset.sort;
+        if (!sortBy) return;
+
+        // Toggle between asc/desc for the same column, or switch to new column
+        if (sortBy === 'name') {
+            if (this.state.sortMode === 'name-asc') {
+                this.state.sortMode = 'name-desc';
+            } else {
+                this.state.sortMode = 'name-asc';
+            }
+        } else if (sortBy === 'tags') {
+            this.state.sortMode = 'tag-group';
+        }
+
+        this.#updateSortIndicators();
+        this.#renderCharacterList();
+    }
+
+    handleTagFilterClick(event) {
+        const btn = event.target.closest('.tag-filter-btn');
+        const dropdown = this.shadowRoot.querySelector('.tag-filter-dropdown');
+        const checkbox = event.target.closest('input[type="checkbox"]');
+        const clearBtn = event.target.closest('.clear-filter-btn');
+
+        if (btn) {
+            // Toggle dropdown
+            dropdown.classList.toggle('show');
+            this.#renderTagFilterDropdown();
+        } else if (checkbox) {
+            // Toggle tag filter
+            const tag = checkbox.value;
+            if (checkbox.checked) {
+                if (!this.state.selectedFilterTags.includes(tag)) {
+                    this.state.selectedFilterTags.push(tag);
+                }
+            } else {
+                this.state.selectedFilterTags = this.state.selectedFilterTags.filter(t => t !== tag);
+            }
+            this.#updateFilterBtnState();
+            this.#renderCharacterList();
+        } else if (clearBtn) {
+            this.state.selectedFilterTags = [];
+            this.#renderTagFilterDropdown();
+            this.#updateFilterBtnState();
+            this.#renderCharacterList();
+        } else if (!event.target.closest('.tag-filter-dropdown')) {
+            // Click outside dropdown closes it
+            dropdown.classList.remove('show');
+        }
+    }
+
+    #updateSortIndicators() {
+        const nameCol = this.shadowRoot.querySelector('.list-header-col[data-sort="name"]');
+        const tagsCol = this.shadowRoot.querySelector('.list-header-col[data-sort="tags"]');
+
+        // Clear indicators
+        nameCol.classList.remove('sort-asc', 'sort-desc', 'sort-active');
+        tagsCol.classList.remove('sort-active');
+
+        if (this.state.sortMode === 'name-asc') {
+            nameCol.classList.add('sort-asc', 'sort-active');
+        } else if (this.state.sortMode === 'name-desc') {
+            nameCol.classList.add('sort-desc', 'sort-active');
+        } else if (this.state.sortMode === 'tag-group') {
+            tagsCol.classList.add('sort-active');
+        }
+    }
+
+    #updateFilterBtnState() {
+        const btn = this.shadowRoot.querySelector('.tag-filter-btn');
+        const count = this.state.selectedFilterTags.length;
+        if (count > 0) {
+            btn.classList.add('has-filter');
+            btn.querySelector('.filter-count').textContent = count;
+            btn.querySelector('.filter-count').style.display = 'inline';
+        } else {
+            btn.classList.remove('has-filter');
+            btn.querySelector('.filter-count').style.display = 'none';
+        }
+    }
+
+    #getAllUniqueTags() {
+        const tagsSet = new Set();
+        for (const char of this.state.characters) {
+            if (char.tags && Array.isArray(char.tags)) {
+                char.tags.forEach(tag => tagsSet.add(tag));
+            }
+        }
+        return Array.from(tagsSet).sort();
+    }
+
+    #renderTagFilterDropdown() {
+        const dropdown = this.shadowRoot.querySelector('.tag-filter-dropdown');
+        const allTags = this.#getAllUniqueTags();
+
+        if (allTags.length === 0) {
+            dropdown.innerHTML = '<div class="no-tags">No tags defined yet</div>';
+            return;
+        }
+
+        dropdown.innerHTML = `
+            <div class="tag-filter-list">
+                ${allTags.map(tag => `
+                    <label class="tag-filter-item">
+                        <input type="checkbox" value="${tag}" ${this.state.selectedFilterTags.includes(tag) ? 'checked' : ''}>
+                        <span>${tag}</span>
+                    </label>
+                `).join('')}
+            </div>
+            ${this.state.selectedFilterTags.length > 0 ? '<button class="clear-filter-btn">Clear filters</button>' : ''}
+        `;
     }
 
         handleItemAction(event) {
@@ -369,40 +492,108 @@ class CharactersView extends BaseComponent {
     
     #renderCharacterList() {
         if (!this.itemList) return;
-        
-        const charactersHtml = this.state.characters
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map(char => {
-                const isSelected = this.state.selectedCharacter?.id === char.id;
-                const isUser = this.state.userPersonaCharacterId === char.id;
-                
-                const classes = [
-                    isSelected ? 'selected' : '',
-                    isUser ? 'user-persona' : ''
-                ].join(' ').trim();
 
-                const setUserTitle = isUser ? 'Unset as User Persona' : 'Set as User Persona';
+        // Filter characters
+        let filtered = this.state.characters;
+        if (this.state.selectedFilterTags.length > 0) {
+            filtered = filtered.filter(char => {
+                if (!char.tags || char.tags.length === 0) return false;
+                // OR logic: show if character has ANY of the selected tags
+                return this.state.selectedFilterTags.some(tag => char.tags.includes(tag));
+            });
+        }
 
-                return `
-                    <li data-id="${char.id}" class="${classes}">
-                        <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
-                        <div class="item-name">${char.name}</div>
-                        <div class="actions">
-                            <button class="icon-button user-btn ${isUser ? 'active' : ''}" data-action="set-user" title="${setUserTitle}">
-                                <span class="material-icons">account_circle</span>
-                            </button>
-                            <button class="icon-button" data-action="duplicate" title="Duplicate">
-                                <span class="material-icons">content_copy</span>
-                            </button>
-                            <button class="icon-button delete-btn" data-action="delete" title="Delete">
-                                <span class="material-icons">delete</span>
-                            </button>
-                        </div>
-                    </li>
-                `;
-            }).join('');
-        
-        this.itemList.innerHTML = charactersHtml;
+        // Sort/group characters
+        let html = '';
+        if (this.state.sortMode === 'tag-group') {
+            html = this.#renderGroupedByTag(filtered);
+        } else {
+            const sorted = [...filtered].sort((a, b) => {
+                const cmp = a.name.localeCompare(b.name);
+                return this.state.sortMode === 'name-desc' ? -cmp : cmp;
+            });
+            html = sorted.map(char => this.#renderCharacterItem(char)).join('');
+        }
+
+        this.itemList.innerHTML = html;
+    }
+
+    #renderGroupedByTag(characters) {
+        // Group characters by their first tag
+        const groups = new Map();
+        const untagged = [];
+
+        for (const char of characters) {
+            if (char.tags && char.tags.length > 0) {
+                const firstTag = char.tags[0];
+                if (!groups.has(firstTag)) {
+                    groups.set(firstTag, []);
+                }
+                groups.get(firstTag).push(char);
+            } else {
+                untagged.push(char);
+            }
+        }
+
+        // Sort groups alphabetically
+        const sortedGroupNames = Array.from(groups.keys()).sort();
+
+        let html = '';
+        for (const groupName of sortedGroupNames) {
+            const groupChars = groups.get(groupName).sort((a, b) => a.name.localeCompare(b.name));
+            html += `<div class="list-group-header">${groupName}</div>`;
+            html += groupChars.map(char => this.#renderCharacterItem(char)).join('');
+        }
+
+        // Add untagged at the end
+        if (untagged.length > 0) {
+            untagged.sort((a, b) => a.name.localeCompare(b.name));
+            html += `<div class="list-group-header">Untagged</div>`;
+            html += untagged.map(char => this.#renderCharacterItem(char)).join('');
+        }
+
+        return html;
+    }
+
+    #renderCharacterItem(char) {
+        const isSelected = this.state.selectedCharacter?.id === char.id;
+        const isUser = this.state.userPersonaCharacterId === char.id;
+
+        const classes = [
+            isSelected ? 'selected' : '',
+            isUser ? 'user-persona' : ''
+        ].join(' ').trim();
+
+        const setUserTitle = isUser ? 'Unset as User Persona' : 'Set as User Persona';
+
+        // Show tag chips (limit to first 2)
+        const tags = char.tags || [];
+        const displayTags = tags.slice(0, 2);
+        const moreTags = tags.length > 2 ? tags.length - 2 : 0;
+        const tagsHtml = displayTags.length > 0
+            ? `<div class="item-tags">${displayTags.map(t => `<span class="item-tag">${t}</span>`).join('')}${moreTags > 0 ? `<span class="item-tag more">+${moreTags}</span>` : ''}</div>`
+            : '';
+
+        return `
+            <li data-id="${char.id}" class="${classes}">
+                <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
+                <div class="item-info">
+                    <div class="item-name">${char.name}</div>
+                    ${tagsHtml}
+                </div>
+                <div class="actions">
+                    <button class="icon-button user-btn ${isUser ? 'active' : ''}" data-action="set-user" title="${setUserTitle}">
+                        <span class="material-icons">account_circle</span>
+                    </button>
+                    <button class="icon-button" data-action="duplicate" title="Duplicate">
+                        <span class="material-icons">content_copy</span>
+                    </button>
+                    <button class="icon-button delete-btn" data-action="delete" title="Delete">
+                        <span class="material-icons">delete</span>
+                    </button>
+                </div>
+            </li>
+        `;
     }
 
     updateView() {
@@ -435,7 +626,7 @@ class CharactersView extends BaseComponent {
         }
     }
 
-        render() {
+    render() {
         super._initShadow(`
             <div style="display: contents;">
                 <div class="panel-main">
@@ -457,6 +648,24 @@ class CharactersView extends BaseComponent {
                             </button>
                         </div>
                     </header>
+                    <div class="list-controls">
+                        <div class="list-header-row">
+                            <div class="list-header-col sort-asc sort-active" data-sort="name">
+                                <span>Name</span>
+                                <span class="material-icons sort-icon">arrow_upward</span>
+                            </div>
+                            <div class="list-header-col" data-sort="tags">
+                                <span>Tags</span>
+                            </div>
+                        </div>
+                        <div class="tag-filter-container">
+                            <button class="tag-filter-btn" title="Filter by tags">
+                                <span class="material-icons">filter_list</span>
+                                <span class="filter-count" style="display:none;">0</span>
+                            </button>
+                            <div class="tag-filter-dropdown"></div>
+                        </div>
+                    </div>
                     <item-list></item-list>
                 </div>
             </div>
@@ -482,6 +691,144 @@ class CharactersView extends BaseComponent {
             }
             .header-actions .icon-button:hover {
                 color: var(--text-primary); background-color: var(--bg-2);
+            }
+
+            /* List Controls - Sort and Filter */
+            .list-controls {
+                display: flex;
+                align-items: center;
+                padding: var(--spacing-xs) var(--spacing-md);
+                border-bottom: 1px solid var(--bg-3);
+                gap: var(--spacing-sm);
+                flex-shrink: 0;
+            }
+            .list-header-row {
+                display: flex;
+                flex: 1;
+                gap: var(--spacing-md);
+            }
+            .list-header-col {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                cursor: pointer;
+                font-size: var(--font-size-sm);
+                color: var(--text-secondary);
+                padding: var(--spacing-xs);
+                border-radius: var(--radius-sm);
+                transition: var(--transition-fast);
+                user-select: none;
+            }
+            .list-header-col:hover {
+                color: var(--text-primary);
+                background: var(--bg-2);
+            }
+            .list-header-col.sort-active {
+                color: var(--accent-primary);
+                font-weight: 600;
+            }
+            .list-header-col .sort-icon {
+                font-size: 14px;
+                opacity: 0;
+                transition: var(--transition-fast);
+            }
+            .list-header-col.sort-active .sort-icon {
+                opacity: 1;
+            }
+            .list-header-col.sort-desc .sort-icon {
+                transform: rotate(180deg);
+            }
+            .list-header-col[data-sort="name"] { flex: 1; }
+            .list-header-col[data-sort="tags"] { flex-shrink: 0; }
+
+            /* Tag Filter */
+            .tag-filter-container {
+                position: relative;
+            }
+            .tag-filter-btn {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: none;
+                border: 1px solid var(--bg-3);
+                color: var(--text-secondary);
+                cursor: pointer;
+                padding: var(--spacing-xs);
+                border-radius: var(--radius-sm);
+                transition: var(--transition-fast);
+            }
+            .tag-filter-btn:hover {
+                color: var(--text-primary);
+                background: var(--bg-2);
+            }
+            .tag-filter-btn.has-filter {
+                color: var(--accent-primary);
+                border-color: var(--accent-primary);
+            }
+            .tag-filter-btn .material-icons { font-size: 18px; }
+            .tag-filter-btn .filter-count {
+                font-size: 10px;
+                font-weight: 600;
+                background: var(--accent-primary);
+                color: var(--bg-0);
+                border-radius: 8px;
+                padding: 0 5px;
+                min-width: 14px;
+                text-align: center;
+            }
+            .tag-filter-dropdown {
+                display: none;
+                position: absolute;
+                top: 100%;
+                right: 0;
+                margin-top: var(--spacing-xs);
+                background: var(--bg-1);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-sm);
+                box-shadow: var(--shadow-lg);
+                min-width: 160px;
+                max-height: 250px;
+                overflow-y: auto;
+                z-index: 100;
+            }
+            .tag-filter-dropdown.show { display: block; }
+            .tag-filter-list {
+                padding: var(--spacing-xs);
+            }
+            .tag-filter-item {
+                display: flex;
+                align-items: center;
+                gap: var(--spacing-xs);
+                padding: var(--spacing-xs) var(--spacing-sm);
+                cursor: pointer;
+                border-radius: var(--radius-sm);
+                transition: var(--transition-fast);
+            }
+            .tag-filter-item:hover {
+                background: var(--bg-2);
+            }
+            .tag-filter-item input[type="checkbox"] {
+                margin: 0;
+            }
+            .clear-filter-btn {
+                display: block;
+                width: 100%;
+                padding: var(--spacing-sm);
+                background: none;
+                border: none;
+                border-top: 1px solid var(--bg-3);
+                color: var(--accent-danger);
+                cursor: pointer;
+                font-size: var(--font-size-sm);
+            }
+            .clear-filter-btn:hover {
+                background: var(--bg-2);
+            }
+            .no-tags {
+                padding: var(--spacing-md);
+                color: var(--text-secondary);
+                font-size: var(--font-size-sm);
+                text-align: center;
             }
 
             .panel-main {
@@ -523,8 +870,34 @@ class CharactersView extends BaseComponent {
                 width: 40px; height: 40px; border-radius: var(--radius-sm); object-fit: cover;
                 flex-shrink: 0; background-color: var(--bg-3);
             }
+            item-list .item-info {
+                flex: 1;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
             item-list .item-name {
-                font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1;
+                font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }
+            item-list .item-tags {
+                display: flex;
+                gap: 4px;
+                flex-wrap: wrap;
+            }
+            item-list .item-tag {
+                font-size: 0.65rem;
+                padding: 1px 6px;
+                background: var(--bg-2);
+                border-radius: 8px;
+                color: var(--text-secondary);
+            }
+            item-list li.selected .item-tag {
+                background: rgba(255,255,255,0.2);
+                color: var(--bg-0);
+            }
+            item-list .item-tag.more {
+                font-style: italic;
             }
             item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
             item-list .icon-button {
@@ -537,6 +910,19 @@ class CharactersView extends BaseComponent {
             item-list .delete-btn:hover { color: var(--accent-danger); }
             item-list .user-btn.active { color: var(--accent-warn); }
             item-list li.selected .user-btn.active { color: var(--bg-0); }
+
+            /* Group headers */
+            .list-group-header {
+                font-weight: 600;
+                font-size: var(--font-size-sm);
+                padding: var(--spacing-sm) var(--spacing-md);
+                background: var(--bg-2);
+                color: var(--text-secondary);
+                border-bottom: 1px solid var(--bg-3);
+                position: sticky;
+                top: 0;
+                z-index: 1;
+            }
         `;
     }
 }
