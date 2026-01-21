@@ -25,7 +25,7 @@ class ScenarioEditor extends BaseComponent {
     connectedCallback() {
         const form = this.shadowRoot.querySelector('form');
         form.addEventListener('submit', this.onSave.bind(this));
-        
+
         // Image uploads
         this.shadowRoot.querySelector('#scenario-avatar-upload').addEventListener('change', (e) => this.onImageUpload(e, 'avatar'));
         this.shadowRoot.querySelector('#scenario-banner-upload').addEventListener('change', (e) => this.onImageUpload(e, 'banner'));
@@ -33,11 +33,15 @@ class ScenarioEditor extends BaseComponent {
         // List managers
         this.shadowRoot.querySelector('#add-participant-btn').addEventListener('click', () => this.openAddModal('character'));
         this.shadowRoot.querySelector('#add-note-btn').addEventListener('click', () => this.openAddModal('note'));
-        
+
         this.shadowRoot.querySelector('#participant-list').addEventListener('item-action', (e) => this.handleListAction(e, 'participants'));
         this.shadowRoot.querySelector('#note-list').addEventListener('item-action', (e) => this.handleListAction(e, 'notes'));
 
         this.shadowRoot.querySelector('#start-chat-btn').addEventListener('click', this.onStartChat.bind(this));
+
+        // Tag input handlers
+        this.shadowRoot.querySelector('#scenario-tags-input').addEventListener('keydown', this.#handleTagInput.bind(this));
+        this.shadowRoot.querySelector('#scenario-tags-container').addEventListener('click', this.#handleTagRemove.bind(this));
     }
 
     async onSave(event) {
@@ -49,6 +53,7 @@ class ScenarioEditor extends BaseComponent {
             name: this.shadowRoot.querySelector('#scenario-name-input').value,
             description: this.shadowRoot.querySelector('#scenario-description-input').value,
             firstMessage: this.shadowRoot.querySelector('#scenario-first-message-input').value,
+            tags: this.#scenario?.tags || [],
         };
 
         this.dispatch('scenario-save', { scenario: updatedScenario });
@@ -83,6 +88,46 @@ class ScenarioEditor extends BaseComponent {
             this.onSave(new Event('submit')); // Trigger auto-save
             this.#renderLists();
         }
+    }
+
+    #handleTagInput(event) {
+        if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            const input = event.target;
+            const tag = input.value.trim().toLowerCase().replace(',', '');
+            if (tag && !this.#scenario.tags?.includes(tag)) {
+                if (!this.#scenario.tags) this.#scenario.tags = [];
+                this.#scenario.tags.push(tag);
+                this.#renderTags();
+            }
+            input.value = '';
+        }
+    }
+
+    #handleTagRemove(event) {
+        const removeBtn = event.target.closest('.remove-tag');
+        if (removeBtn) {
+            const tag = removeBtn.dataset.tag;
+            this.#scenario.tags = this.#scenario.tags.filter(t => t !== tag);
+            this.#renderTags();
+        }
+    }
+
+    #renderTags() {
+        const container = this.shadowRoot.querySelector('#scenario-tags-container');
+        const input = this.shadowRoot.querySelector('#scenario-tags-input');
+        const tags = this.#scenario?.tags || [];
+
+        // Remove existing chips
+        container.querySelectorAll('.tag-chip').forEach(el => el.remove());
+
+        // Add chip for each tag
+        tags.forEach(tag => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.innerHTML = `${tag}<button type="button" class="remove-tag" data-tag="${tag}">&times;</button>`;
+            container.insertBefore(chip, input);
+        });
     }
 
     openAddModal(type) {
@@ -140,10 +185,10 @@ class ScenarioEditor extends BaseComponent {
         this.shadowRoot.querySelector('#scenario-name-input').value = this.#scenario.name || '';
         this.shadowRoot.querySelector('#scenario-description-input').value = this.#scenario.description || '';
         this.shadowRoot.querySelector('#scenario-first-message-input').value = this.#scenario.firstMessage || '';
-        
+
         const avatarImg = this.shadowRoot.querySelector('#avatar-preview');
         avatarImg.src = this.#scenario.avatarUrl || 'assets/images/default_avatar.svg';
-        
+
         const bannerImg = this.shadowRoot.querySelector('#banner-preview');
         if (this.#scenario.bannerUrl) {
             bannerImg.src = this.#scenario.bannerUrl;
@@ -153,6 +198,7 @@ class ScenarioEditor extends BaseComponent {
         }
 
         this.#renderLists();
+        this.#renderTags();
     }
 
     #renderLists() {
@@ -214,6 +260,14 @@ class ScenarioEditor extends BaseComponent {
                                     <span class="material-icons">play_arrow</span> Start Chat
                                 </button>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <label>Tags</label>
+                        <p class="field-description">Add tags to organize and filter scenarios. Press Enter or comma to add.</p>
+                        <div class="tags-input-container" id="scenario-tags-container">
+                            <input type="text" class="tag-input" id="scenario-tags-input" placeholder="Add tag...">
                         </div>
                     </div>
 
@@ -280,6 +334,56 @@ class ScenarioEditor extends BaseComponent {
 
             .form-section { display: flex; flex-direction: column; gap: var(--spacing-sm); }
             .form-section label { font-weight: 600; color: var(--text-secondary); font-size: 0.9rem; }
+            .field-description { font-size: var(--font-size-sm); color: var(--text-secondary); margin: 0; }
+
+            /* Tags input */
+            .tags-input-container {
+                display: flex;
+                flex-wrap: wrap;
+                gap: var(--spacing-xs);
+                padding: var(--spacing-sm);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-sm);
+                background: var(--bg-0);
+                min-height: 40px;
+                align-items: center;
+            }
+            .tags-input-container:focus-within {
+                border-color: var(--accent-primary);
+                box-shadow: 0 0 0 2px var(--accent-primary-faded);
+            }
+            .tag-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 2px 8px;
+                background: var(--accent-primary-faded);
+                border-radius: 12px;
+                font-size: var(--font-size-sm);
+                color: var(--text-primary);
+            }
+            .tag-chip .remove-tag {
+                cursor: pointer;
+                background: none;
+                border: none;
+                color: inherit;
+                opacity: 0.7;
+                padding: 0;
+                font-size: 1rem;
+                line-height: 1;
+            }
+            .tag-chip .remove-tag:hover {
+                opacity: 1;
+            }
+            .tag-input {
+                border: none;
+                background: transparent;
+                flex: 1;
+                min-width: 80px;
+                outline: none;
+                color: var(--text-primary);
+                font-size: var(--font-size-sm);
+            }
             
             .split-section { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); }
             .list-container { background-color: var(--bg-0); border-radius: var(--radius-sm); border: 1px solid var(--bg-3); padding: var(--spacing-sm); }
