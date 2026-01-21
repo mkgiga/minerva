@@ -112,7 +112,6 @@ export function createSdClient(config) {
             save_images: false,
             override_settings: {
                 img2img_color_correction: true,
-                sd_noise_schedule: 'Zero Terminal SNR',
             },
             alwayson_scripts: {
                 controlnet: {
@@ -130,7 +129,7 @@ export function createSdClient(config) {
                             guidance_start: 0.0,
                             guidance_end: 1.0,
                             control_mode: 'Balanced',
-                            pixel_perfect: false,
+                            pixel_perfect: true,
                         }
                     ]
                 }
