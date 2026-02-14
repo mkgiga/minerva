@@ -473,7 +473,8 @@ function resolveMacros(text, context) {
                 }
                 if (props.includes('images') && c.gallery && c.gallery.length > 0) {
                     const imageLines = c.gallery.map(img => {
-                        return `        <image>\n            <src>${escapeXML(img.src)}</src>\n            <alt>${escapeXML(img.alt || '')}</alt>\n        </image>`;
+                        const imgUrl = img.url || img.src;
+                        return `        <image>\n            <src>${escapeXML(imgUrl)}</src>\n            <alt>${escapeXML(img.alt || '')}</alt>\n        </image>`;
                     });
                     if (imageLines.length > 0) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
