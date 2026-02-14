@@ -20,6 +20,7 @@ class DropdownMenu extends BaseComponent {
     constructor() {
         super();
         this.items = [];
+        this.openedAt = 0; // Timestamp for grace period on touch devices
         this.render();
 
         // Bind methods
@@ -55,6 +56,11 @@ class DropdownMenu extends BaseComponent {
     }
 
     handleOutsideClick(event) {
+        // Ignore clicks/taps within 500ms of opening (prevents touch event race condition on iOS)
+        if (Date.now() - this.openedAt < 500) {
+            return;
+        }
+
         // Check if click is outside this component
         if (!this.contains(event.target) && !event.composedPath().includes(this)) {
             this.close();
@@ -74,6 +80,9 @@ class DropdownMenu extends BaseComponent {
     open(triggerElement) {
         if (!triggerElement) return;
 
+        // Track open time for grace period (prevents touch event race condition)
+        this.openedAt = Date.now();
+
         // Make the host visible
         this.classList.add('active');
 
@@ -85,9 +94,11 @@ class DropdownMenu extends BaseComponent {
         // Add open class for animation
         setTimeout(() => menu.classList.add('open'), 10);
 
-        // Add global listeners
+        // Add global listeners (including touch/mouse for iOS compatibility)
         setTimeout(() => {
             document.addEventListener('click', this.handleOutsideClick);
+            document.addEventListener('touchend', this.handleOutsideClick);
+            document.addEventListener('mouseup', this.handleOutsideClick);
             document.addEventListener('keydown', this.handleKeydown);
         }, 0);
     }
@@ -101,6 +112,8 @@ class DropdownMenu extends BaseComponent {
 
         // Remove global listeners
         document.removeEventListener('click', this.handleOutsideClick);
+        document.removeEventListener('touchend', this.handleOutsideClick);
+        document.removeEventListener('mouseup', this.handleOutsideClick);
         document.removeEventListener('keydown', this.handleKeydown);
     }
 
