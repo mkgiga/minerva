@@ -132,22 +132,25 @@ webview("<div class=\"alert\"><h1>SYSTEM ALERT</h1></div>", { css: ".alert { tex
 ---
 
 ## `image`
-Display an image with optional caption text.
+Display an image with optional caption text. Actors may have an `<images>` list in their data — use these when one matches the current scene.
 
 **Syntax:**
-- `image({ src: "url" })`
-- `image({ src: "url", caption: "text" })`
+- `image({ src: "filename", from: "actor_id" })`
+- `image({ src: "filename", from: "actor_id", caption: "text" })`
 
 **Options:**
 | Option | Type | Required | Description |
 |:-------|:-----|:---------|:------------|
-| `src` | string | Yes | The URL or filename of the image. |
-| `from` | string | No | The actor ID whose gallery contains the image. |
+| `src` | string | Yes | The filename from an actor's `<images>` list. |
+| `from` | string | Yes | The actor ID whose gallery contains the image. |
 | `caption` | string | No | Text to display as a caption or overlay. Supports Markdown. |
+
+**Using Actor Gallery Images:**
+Each `<image>` in an actor's data has a `description` attribute explaining what it depicts and a filename as its text content. Use the `description` to decide which image fits the current scene, then reference it by filename with the actor's ID as `from`. Never fabricate filenames — only use exact filenames from the actor's `<images>` list.
 
 **Example:**
 ```javascript
-image({ src: "tavern_interior.png", from: "barkeep", caption: "The tavern is nearly empty at this hour." })
+image({ src: "a3f2c8d1.png", from: "barkeep", caption: "The tavern is nearly empty at this hour." })
 ```
 
 ---
@@ -189,8 +192,8 @@ unformatted("Some raw text content here.")
 ```javascript
 [
   text("You step into the tavern. The smell of ale and smoke fills the air."),
-  image({ src: "tavern_night.png" }),
-  speech("barkeep", "What'll it be?", { name: "Barkeep" })
+  image({ src: "b7e2f1a4.png", from: "barkeep", caption: "The tavern is nearly empty at this hour." }),
+  speech("barkeep", "What'll it be?", { expression: "neutral" })
 ]
 ```
 

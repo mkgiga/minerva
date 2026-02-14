@@ -473,8 +473,7 @@ function resolveMacros(text, context) {
                 }
                 if (props.includes('images') && c.gallery && c.gallery.length > 0) {
                     const imageLines = c.gallery.map(img => {
-                        const imgUrl = img.url || img.src;
-                        return `        <image>\n            <src>${escapeXML(imgUrl)}</src>\n            <alt>${escapeXML(img.alt || '')}</alt>\n        </image>`;
+                        return `        <image description="${escapeXML(img.alt || '')}">${escapeXML(img.src)}</image>`;
                     });
                     if (imageLines.length > 0) {
                         characterLines.push(`    <images>\n${imageLines.join('\n')}\n    </images>`);
@@ -560,8 +559,7 @@ function resolveMacros(text, context) {
                         case 'images':
                             if (!targetCharacter.gallery || targetCharacter.gallery.length === 0) return '';
                             const imagesXml = targetCharacter.gallery.map(img => {
-                                const fullUrl = `/data/characters/${targetCharacter.id}/images/${img.src}`;
-                                return `<image src="${fullUrl}" alt="${escapeXML(img.alt || '')}" />`;
+                                return `<image description="${escapeXML(img.alt || '')}">${escapeXML(img.src)}</image>`;
                             }).join('');
                             return `<images>${imagesXml}</images>`;
                     }
