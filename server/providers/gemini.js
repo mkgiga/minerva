@@ -30,7 +30,6 @@ export class GoogleGeminiProvider extends BaseProvider {
         ];
     }
 
-    // TODO: Use the gemini SDK instead of their REST API directly
     async *prompt(messages, options = { generationConfig: {}, systemInstruction: '', signal: null }, useFastModel = false, extras = {}) {
 
         const { apiKey } = this.config;
