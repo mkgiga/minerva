@@ -3,6 +3,7 @@
 import { BaseChatMode } from "./BaseChatMode.js";
 import { chatModeRegistry } from "../../../ChatModeRegistry.js";
 import { notifier, uuidv4, imagePreview, api } from "../../../client.js";
+import { SceneBlockParser } from "./SceneBlockParser.js";
 import "../../common/Spinner.js";
 import "../../common/DropdownMenu.js";
 import "./AdventureBlockEditor.js"; 
@@ -129,9 +130,12 @@ export class AdventureChatMode extends BaseChatMode {
     #personaAvatarImg = null;
     #curationEnabled = false;
     #inputMode = 'plaintext';
-    
+
     // Scroller instance
     #scroller = null;
+
+    // Block parser instance
+    #blockParser = new SceneBlockParser();
 
     static getSettingsSchema() {
         return [
@@ -267,6 +271,276 @@ export class AdventureChatMode extends BaseChatMode {
         }
 
         return doc;
+    }
+
+    /**
+     * Unified content parser - tries new block format first, falls back to XML.
+     * @param {string} content - Raw content to parse
+     * @returns {{ format: 'blocks'|'xml', blocks?: Array, doc?: Document, errors?: Array }}
+     */
+    #parseContent(content) {
+        if (!content || typeof content !== 'string') {
+            return { format: 'blocks', blocks: [], errors: ['No content'] };
+        }
+
+        // Try new block format first
+        if (SceneBlockParser.looksLikeBlockFormat(content)) {
+            const { blocks, errors } = this.#blockParser.parse(content);
+            if (blocks.length > 0 && errors.length === 0) {
+                return { format: 'blocks', blocks };
+            }
+            // If we got some blocks but also errors, still try to use them
+            if (blocks.length > 0) {
+                console.warn('Block parsing had errors:', errors);
+                return { format: 'blocks', blocks, errors };
+            }
+        }
+
+        // Fallback to XML parsing
+        let contentToParse = content;
+        if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>") && !contentToParse.includes("<")) {
+            contentToParse = `<root><text>${contentToParse}</text></root>`;
+        } else if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>")) {
+            contentToParse = `<root>${contentToParse}</root>`;
+        }
+
+        const doc = this.#tryRepairSceneML(contentToParse);
+        if (doc && !doc.querySelector('parsererror')) {
+            return { format: 'xml', doc };
+        }
+
+        // Everything failed
+        return { format: 'blocks', blocks: [], errors: ['Failed to parse content'] };
+    }
+
+    /**
+     * Convert a parsed block object to a DOM element
+     */
+    #createBlockFromObject(block, msg, index = -1) {
+        switch (block.type) {
+            case 'text':
+                return this.#createTextBlockFromObj(block);
+            case 'unformatted':
+                return this.#createUnformattedBlockFromObj(block);
+            case 'speech':
+                return this.#createSpeechBlockFromObj(block);
+            case 'pause':
+                return this.#createPauseBlockFromObj(block);
+            case 'image':
+                return this.#createImageBlockFromObj(block, msg, index);
+            case 'webview':
+                return this.#createWebviewBlockFromObj(block);
+            case 'noop_continue':
+                return this.#createNoopContinueBlockFromObj();
+            case 'prompt':
+                return this.#createPromptBlockFromObj(block);
+            default:
+                console.warn(`Unknown block type: ${block.type}`);
+                return null;
+        }
+    }
+
+    #createTextBlockFromObj(block) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-text";
+
+        if (block.icon) {
+            const iconEl = document.createElement("span");
+            iconEl.className = "material-icons adventure-text-icon";
+            iconEl.textContent = block.icon;
+            el.appendChild(iconEl);
+        }
+
+        const contentWrapper = document.createElement("div");
+        contentWrapper.className = "adventure-text-content";
+        this.#renderMarkdownContent(contentWrapper, block.content || '');
+        el.appendChild(contentWrapper);
+
+        return el;
+    }
+
+    #createUnformattedBlockFromObj(block) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-text";
+
+        if (block.icon) {
+            const iconEl = document.createElement("span");
+            iconEl.className = "material-icons adventure-text-icon";
+            iconEl.textContent = block.icon;
+            el.appendChild(iconEl);
+        }
+
+        const contentWrapper = document.createElement("div");
+        contentWrapper.className = "adventure-text-content";
+        // For unformatted, escape HTML and preserve whitespace
+        contentWrapper.textContent = block.content || '';
+        contentWrapper.style.whiteSpace = 'pre-wrap';
+        el.appendChild(contentWrapper);
+
+        return el;
+    }
+
+    #createSpeechBlockFromObj(block) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-speech";
+
+        const charId = block.id;
+        const charName = block.name;
+        const expressionId = block.expression;
+
+        const character = this.#findCharacter(charId);
+        const displayName = charName || character?.name || charId || "Unknown";
+
+        let avatarUrl = character?.avatarUrl || "assets/images/default_avatar.svg";
+
+        if (expressionId && character?.expressions) {
+            const expr = character.expressions.find(e => e.name.toLowerCase() === expressionId.toLowerCase());
+            if (expr) avatarUrl = expr.url;
+        }
+
+        const avatarEl = document.createElement("img");
+        avatarEl.className = "adventure-speaker-avatar";
+        avatarEl.src = avatarUrl;
+        avatarEl.alt = displayName;
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "adventure-speaker-name";
+        nameEl.textContent = displayName;
+
+        const textEl = document.createElement("div");
+        textEl.className = "adventure-speech-content";
+        this.#renderMarkdownContent(textEl, block.content || '');
+
+        el.appendChild(avatarEl);
+        el.appendChild(nameEl);
+        el.appendChild(textEl);
+
+        return el;
+    }
+
+    #createPauseBlockFromObj(block) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-pause";
+        el.dataset.duration = String(block.duration || 0);
+        return el;
+    }
+
+    #createImageBlockFromObj(block, msg, index = -1) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-image";
+
+        if (block.src) {
+            const imgContainer = document.createElement("div");
+            imgContainer.className = "adventure-image-container";
+            const img = document.createElement("img");
+            img.className = "adventure-image-display";
+            img.onload = () => {
+                el.classList.add(img.naturalWidth / img.naturalHeight < 1 ? 'layout-side-by-side' : 'layout-overlay');
+            };
+            img.src = this.#resolveGalleryImageUrl(block.src, block.from);
+            imgContainer.appendChild(img);
+            el.appendChild(imgContainer);
+        }
+
+        if (block.caption) {
+            const captionEl = document.createElement("div");
+            captionEl.className = "adventure-image-caption";
+            this.#renderMarkdownContent(captionEl, block.caption);
+            el.appendChild(captionEl);
+        }
+
+        return el;
+    }
+
+    #createWebviewBlockFromObj(block) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-webview";
+
+        let htmlContent = block.html || '';
+
+        // If css or script provided, wrap them
+        if (block.css || block.script) {
+            const styleTag = block.css ? `<style>${block.css}</style>` : '';
+            const scriptTag = block.script ? `<script>${block.script}<\/script>` : '';
+            htmlContent = `<!DOCTYPE html><html><head>${styleTag}</head><body>${htmlContent}${scriptTag}</body></html>`;
+        }
+
+        const iframe = document.createElement("iframe");
+        iframe.className = "webview-frame";
+        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+        iframe.srcdoc = htmlContent;
+        el.appendChild(iframe);
+
+        return el;
+    }
+
+    #createNoopContinueBlockFromObj() {
+        const el = document.createElement("div");
+        el.className = "adventure-continue-divider";
+        el.innerHTML = `
+            <div class="adventure-continue-line"></div>
+            <div class="adventure-continue-text">
+                <span class="material-icons">fast_forward</span>
+                Autocontinue
+            </div>
+            <div class="adventure-continue-line"></div>
+        `;
+        return el;
+    }
+
+    #createPromptBlockFromObj(block) {
+        const el = document.createElement("div");
+        el.className = "adventure-block adventure-prompt";
+
+        if (block.info) {
+            const infoEl = document.createElement("div");
+            infoEl.className = "adventure-prompt-info";
+            infoEl.textContent = block.info;
+            el.appendChild(infoEl);
+        }
+
+        if (block.choices && block.choices.length > 0) {
+            const choicesContainer = document.createElement("div");
+            choicesContainer.className = "adventure-prompt-choices";
+
+            for (const choice of block.choices) {
+                const btn = document.createElement("button");
+                btn.className = "adventure-choice-btn";
+                btn.textContent = choice;
+                btn.addEventListener("click", () => {
+                    // Send this choice as user input
+                    this.#plaintextInput.value = choice;
+                    this.#handleSend(new Event('submit'));
+                });
+                choicesContainer.appendChild(btn);
+            }
+
+            el.appendChild(choicesContainer);
+        }
+
+        return el;
+    }
+
+    /**
+     * Render blocks from parsed content (either format)
+     */
+    #renderParsedContent(parsed, msg, index = -1) {
+        const fragment = document.createDocumentFragment();
+
+        if (parsed.format === 'blocks') {
+            for (const block of (parsed.blocks || [])) {
+                const el = this.#createBlockFromObject(block, msg, index);
+                if (el) fragment.appendChild(el);
+            }
+        } else if (parsed.format === 'xml' && parsed.doc) {
+            const rootNodes = Array.from(parsed.doc.documentElement.children);
+            for (const node of rootNodes) {
+                const el = this.#createSceneMLBlock(node, msg, index);
+                if (el) fragment.appendChild(el);
+            }
+        }
+
+        return fragment;
     }
 
     #rebuildStrippedHistory() {
@@ -698,56 +972,65 @@ export class AdventureChatMode extends BaseChatMode {
         const isAdventure = messageEl.classList.contains("adventure-mode");
         const contentContainer = isAdventure ? messageEl : messageEl.querySelector(".message-content");
         if (!contentContainer) return;
-        
+
         const originalContent = this.getMessageById(messageId)?.content || "";
         const originalHTML = contentContainer.innerHTML;
 
         const editContainer = document.createElement("div");
         editContainer.className = "message-edit-container";
         editContainer.style.width = "100%";
-        
-        let contentToParse = originalContent.trim();
-        if (!contentToParse.startsWith("<root>") && !contentToParse.startsWith("<scene>") && !contentToParse.includes("<")) {
+
+        const createBlockEditor = () => {
             const block = document.createElement("adventure-block-editor");
             block.setContext(this.allCharacters, this.chat?.participants.map(p => typeof p === 'object' ? p.id : p), this.userPersona);
-            block.setData('text', contentToParse);
-            editContainer.appendChild(block);
-        } else {
-            if (!contentToParse.startsWith("<root>") && !contentToParse.startsWith("<scene>")) {
-                contentToParse = `<root>${contentToParse}</root>`;
+            block.addEventListener("block-delete", () => block.remove());
+            block.addEventListener("block-up", () => {
+                const prev = block.previousElementSibling;
+                if (prev) editContainer.insertBefore(block, prev);
+            });
+            block.addEventListener("block-down", () => {
+                const next = block.nextElementSibling;
+                if (next) editContainer.insertBefore(next, block);
+            });
+            return block;
+        };
+
+        // Use unified parser to handle both formats
+        const parsed = this.#parseContent(originalContent);
+
+        if (parsed.format === 'blocks' && parsed.blocks && parsed.blocks.length > 0) {
+            // New block format
+            for (const blockData of parsed.blocks) {
+                if (['text', 'speech', 'unformatted'].includes(blockData.type)) {
+                    const block = createBlockEditor();
+                    block.setDataFromBlock(blockData);
+                    editContainer.appendChild(block);
+                }
             }
-            
-            const doc = this.#tryRepairSceneML(contentToParse);
-            const rootNodes = doc ? Array.from(doc.documentElement.children) : [];
-            
+        } else if (parsed.format === 'xml' && parsed.doc) {
+            // Legacy XML format
+            const rootNodes = Array.from(parsed.doc.documentElement.children);
             rootNodes.forEach(node => {
                 const tagName = node.nodeName.toLowerCase();
-                const block = document.createElement("adventure-block-editor");
-                block.setContext(this.allCharacters, this.chat?.participants.map(p => typeof p === 'object' ? p.id : p), this.userPersona);
-                
-                block.addEventListener("block-delete", () => block.remove());
-                block.addEventListener("block-up", () => {
-                    const prev = block.previousElementSibling;
-                    if (prev) editContainer.insertBefore(block, prev);
-                });
-                block.addEventListener("block-down", () => {
-                    const next = block.nextElementSibling;
-                    if (next) editContainer.insertBefore(next, block);
-                });
-
-                if (tagName === 'text') {
-                    block.setData('text', node.textContent.trim());
-                    editContainer.appendChild(block);
-                } else if (tagName === 'speech') {
-                    const id = node.getAttribute('id');
-                    const name = node.getAttribute('name');
-                    block.setData('speech', node.textContent.trim(), { id, name });
-                    editContainer.appendChild(block);
-                } else if (tagName === 'unformatted') {
-                    block.setData('unformatted', node.textContent.trim());
+                if (['text', 'speech', 'unformatted'].includes(tagName)) {
+                    const block = createBlockEditor();
+                    if (tagName === 'text') {
+                        block.setData('text', node.textContent.trim());
+                    } else if (tagName === 'speech') {
+                        const id = node.getAttribute('id');
+                        const name = node.getAttribute('name');
+                        block.setData('speech', node.textContent.trim(), { id, name });
+                    } else if (tagName === 'unformatted') {
+                        block.setData('unformatted', node.textContent.trim());
+                    }
                     editContainer.appendChild(block);
                 }
             });
+        } else {
+            // Plain text fallback
+            const block = createBlockEditor();
+            block.setData('text', originalContent.trim());
+            editContainer.appendChild(block);
         }
         
         const placeholder = document.createElement("adventure-block-editor");
@@ -789,8 +1072,9 @@ export class AdventureChatMode extends BaseChatMode {
         controls.querySelector(".save-btn").addEventListener("click", (e) => {
             e.stopPropagation();
             const editors = editContainer.querySelectorAll("adventure-block-editor:not(.placeholder)");
-            const newContent = Array.from(editors).map(ed => ed.toXML()).join("\n\n");
-            
+            const parts = Array.from(editors).map(ed => ed.toBlockFormat()).filter(Boolean);
+            const newContent = parts.length > 0 ? `[\n  ${parts.join(',\n  ')}\n]` : '';
+
             if (newContent.trim() !== originalContent.trim()) {
                 this.saveEditedMessage(messageId, newContent);
             } else {
@@ -799,15 +1083,21 @@ export class AdventureChatMode extends BaseChatMode {
         });
     }
 
+    #escapeForBlocks(str) {
+        return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    }
+
     getUserInput() {
         if (this.#inputMode === 'plaintext') {
             const raw = this.#plaintextInput.value.trim();
             if (!raw) return "";
-            return `<unformatted>\n${raw}\n</unformatted>`;
+            // Use new block format
+            return `[unformatted("${this.#escapeForBlocks(raw)}")]`;
         } else {
             const editors = this.#inputContainer.querySelectorAll("adventure-block-editor:not(.placeholder)");
-            const parts = Array.from(editors).map(ed => ed.toXML());
-            return parts.join("\n\n").trim();
+            const parts = Array.from(editors).map(ed => ed.toBlockFormat()).filter(Boolean);
+            if (parts.length === 0) return "";
+            return `[\n  ${parts.join(',\n  ')}\n]`;
         }
     }
 
@@ -934,6 +1224,31 @@ export class AdventureChatMode extends BaseChatMode {
         return this.allCharacters.find(c => c.name.toLowerCase() === idOrName.toLowerCase());
     }
 
+    #resolveGalleryImageUrl(src, from) {
+        if (!src || src.startsWith('/') || src.startsWith('http://') || src.startsWith('https://')) {
+            return src;
+        }
+
+        // If 'from' is specified, check that character's gallery first
+        if (from) {
+            const character = this.#findCharacter(from);
+            if (character?.gallery) {
+                const match = character.gallery.find(item => item.src === src);
+                if (match?.url) return match.url;
+            }
+        }
+
+        // Fallback: scan all characters (safe — gallery filenames are UUIDs, globally unique)
+        for (const character of this.allCharacters) {
+            if (character.gallery) {
+                const match = character.gallery.find(item => item.src === src);
+                if (match?.url) return match.url;
+            }
+        }
+
+        return src;
+    }
+
     #createMessageElement(msg) {
         const messageEl = document.createElement("div");
         messageEl.dataset.messageId = msg.id;
@@ -948,35 +1263,41 @@ export class AdventureChatMode extends BaseChatMode {
             return;
         }
 
-        let contentToParse = msg.content || "";
-        if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>") && !contentToParse.includes("<")) {
-             contentToParse = `<root><text>${contentToParse}</text></root>`;
-        } else if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>")) {
-             contentToParse = `<root>${contentToParse}</root>`;
-        }
+        // Use unified parser (tries block format first, then XML)
+        const parsed = this.#parseContent(msg.content);
+        const hasContent = parsed.format === 'blocks'
+            ? (parsed.blocks && parsed.blocks.length > 0)
+            : (parsed.doc && Array.from(parsed.doc.documentElement.children).length > 0);
 
-        const doc = this.#tryRepairSceneML(contentToParse);
-        const rootNodes = doc ? Array.from(doc.documentElement.children) : [];
-        const parserError = doc?.querySelector("parsererror");
+        if (!hasContent) {
+            // Fallback to plain text rendering
+            const authorName = msg.role === 'user' ? (this.userPersona?.name || "You") : "Assistant";
+            const avatarUrl = msg.role === 'user' ? (this.userPersona?.avatarUrl || "assets/images/user_icon.svg") : "assets/images/assistant_icon.svg";
 
-        if (parserError || rootNodes.length === 0) {
-             const authorName = msg.role === 'user' ? (this.userPersona?.name || "You") : "Assistant";
-             const avatarUrl = msg.role === 'user' ? (this.userPersona?.avatarUrl || "assets/images/user_icon.svg") : "assets/images/assistant_icon.svg";
-             
-             messageEl.className = `chat-message ${msg.role}`;
-             messageEl.innerHTML = `<img src="${avatarUrl}" alt="${authorName}" class="avatar"><div class="message-bubble"><div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this.#escapeHtml(msg.content).replace(/\n/g, "<br>")}</div></div>`;
-             
-             const menuButton = this.#createMessageMenuButton(msg);
-             messageEl.querySelector('.message-header').appendChild(menuButton);
+            messageEl.className = `chat-message ${msg.role}`;
+            messageEl.innerHTML = `<img src="${avatarUrl}" alt="${authorName}" class="avatar"><div class="message-bubble"><div class="message-header"><span class="author-name">${authorName}</span></div><div class="message-content">${this.#escapeHtml(msg.content).replace(/\n/g, "<br>")}</div></div>`;
+
+            const menuButton = this.#createMessageMenuButton(msg);
+            messageEl.querySelector('.message-header').appendChild(menuButton);
+
+            // Setup long-press for mobile
+            if ('ontouchstart' in window) {
+                this.#setupLongPress(messageEl, msg);
+            }
         } else {
             messageEl.className = `chat-message ${msg.role} adventure-mode`;
             messageEl.innerHTML = "";
-            
-            messageEl.appendChild(this.#renderSceneMLOutput(rootNodes, msg, index));
+
+            messageEl.appendChild(this.#renderParsedContent(parsed, msg, index));
 
             const menuButton = this.#createMessageMenuButton(msg);
             menuButton.classList.add('adventure-menu');
             messageEl.appendChild(menuButton);
+
+            // Setup long-press for mobile
+            if ('ontouchstart' in window) {
+                this.#setupLongPress(messageEl, msg);
+            }
         }
     }
 
@@ -1030,35 +1351,42 @@ export class AdventureChatMode extends BaseChatMode {
         this.updateInputState(this.isSending);
         messageEl.innerHTML = "";
 
-        let contentToParse = msg.content || "";
-        if (!contentToParse.trim().startsWith("<root>") && !contentToParse.trim().startsWith("<scene>")) {
-            contentToParse = `<root>${contentToParse}</root>`;
+        // Use unified parser (tries block format first, then XML)
+        const parsed = this.#parseContent(msg.content);
+
+        // Get blocks based on format
+        let domBlocks = [];
+        if (parsed.format === 'blocks' && parsed.blocks && parsed.blocks.length > 0) {
+            for (const block of parsed.blocks) {
+                const el = this.#createBlockFromObject(block, msg, -1);
+                if (el) domBlocks.push(el);
+            }
+        } else if (parsed.format === 'xml' && parsed.doc) {
+            const rootNodes = Array.from(parsed.doc.documentElement.children);
+            for (const node of rootNodes) {
+                const el = this.#createSceneMLBlock(node, msg, -1);
+                if (el) domBlocks.push(el);
+            }
         }
 
-        const doc = this.#tryRepairSceneML(contentToParse);
-        const rootNodes = doc ? Array.from(doc.documentElement.children) : [];
-        
-        if (rootNodes.length === 0) { 
-            this.#updateMessageContent(messageEl, msg); 
-            this.#isAnimating = false; 
-            this.updateInputState(false); 
-            return; 
+        if (domBlocks.length === 0) {
+            this.#updateMessageContent(messageEl, msg);
+            this.#isAnimating = false;
+            this.updateInputState(false);
+            return;
         }
 
         messageEl.className = "chat-message assistant adventure-mode";
 
         const blocksAndContent = [];
-        for (const node of rootNodes) {
-            const block = this.#createSceneMLBlock(node, msg, -1);
-            if (block) {
-                const elementsToType = this.#getElementsToType(block);
-                const contentMapForBlock = new Map();
-                for (const el of elementsToType) {
-                    contentMapForBlock.set(el, Array.from(el.childNodes));
-                    el.innerHTML = "";
-                }
-                blocksAndContent.push({ block, contentMap: contentMapForBlock, elementsToType });
+        for (const block of domBlocks) {
+            const elementsToType = this.#getElementsToType(block);
+            const contentMapForBlock = new Map();
+            for (const el of elementsToType) {
+                contentMapForBlock.set(el, Array.from(el.childNodes));
+                el.innerHTML = "";
             }
+            blocksAndContent.push({ block, contentMap: contentMapForBlock, elementsToType });
         }
 
         const allImageElements = blocksAndContent
@@ -1098,6 +1426,11 @@ export class AdventureChatMode extends BaseChatMode {
             const menuButton = this.#createMessageMenuButton(finalMessageObject);
             menuButton.classList.add('adventure-menu');
             messageEl.appendChild(menuButton);
+
+            // Setup long-press for mobile
+            if ('ontouchstart' in window) {
+                this.#setupLongPress(messageEl, finalMessageObject);
+            }
         }
 
         this.#isAnimating = false;
@@ -1343,66 +1676,225 @@ export class AdventureChatMode extends BaseChatMode {
         dropdown.open(triggerElement);
     }
 
+    /**
+     * Get menu items for a message (shared between button click and long-press)
+     */
+    #getMessageMenuItems(msg, messageEl) {
+        const isLastMessage = this.chat?.messages.at(-1)?.id === msg.id;
+        const messageId = msg.id;
+
+        const items = [
+            {
+                icon: 'content_copy',
+                label: 'Copy',
+                callback: () => this.copyMessageContent(msg.content)
+            },
+            {
+                icon: 'edit',
+                label: 'Edit',
+                callback: () => {
+                    const el = messageEl || this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+                    if (el) this.#handleEditMessage(messageId, el);
+                }
+            },
+            {
+                icon: 'call_split',
+                label: 'Branch',
+                callback: () => this.branchFromMessage(messageId)
+            },
+        ];
+
+        if (msg.role === "assistant" || (msg.role === "user" && isLastMessage)) {
+            items.push({
+                icon: 'replay',
+                label: 'Regenerate',
+                callback: () => this.regenerateMessage(messageId)
+            });
+        }
+
+        if (!isLastMessage) {
+            items.push({
+                icon: 'fast_rewind',
+                label: 'Rewind Here',
+                callback: () => this.rewindToMessage(messageId),
+                danger: true
+            });
+        }
+
+        items.push(
+            { separator: true },
+            {
+                icon: 'delete',
+                label: 'Delete',
+                callback: () => this.deleteMessage(messageId),
+                danger: true
+            }
+        );
+
+        return items;
+    }
+
+    /**
+     * Show message menu at a given position (for long-press)
+     */
+    #showMessageMenuAtPosition(msg, messageEl, x, y) {
+        const items = this.#getMessageMenuItems(msg, messageEl);
+        // Create a virtual trigger element at touch position
+        const virtualTrigger = {
+            getBoundingClientRect: () => ({
+                top: y,
+                bottom: y,
+                left: x,
+                right: x,
+                width: 0,
+                height: 0
+            })
+        };
+        this.showDropdown(virtualTrigger, items);
+    }
+
+    /**
+     * Setup long-press gesture for message menu on touch devices
+     */
+    #setupLongPress(messageEl, msg) {
+        let pressTimer = null;
+        let startX, startY;
+        let isLongPressing = false;
+        const LONG_PRESS_DURATION = 500;
+        const MOVE_THRESHOLD = 10;
+        const SCALE_AMOUNT = 1.02; // Subtle scale
+
+        // Disable text selection via CSS during touch
+        const disableSelection = () => {
+            messageEl.style.webkitUserSelect = 'none';
+            messageEl.style.userSelect = 'none';
+            messageEl.style.webkitTouchCallout = 'none';
+        };
+
+        const enableSelection = () => {
+            messageEl.style.webkitUserSelect = '';
+            messageEl.style.userSelect = '';
+            messageEl.style.webkitTouchCallout = '';
+        };
+
+        // Visual feedback - scale animation during charge
+        const startChargeAnimation = () => {
+            messageEl.style.transition = `transform ${LONG_PRESS_DURATION}ms ease-out`;
+            messageEl.style.transformOrigin = 'center center';
+            messageEl.style.transform = `scale(${SCALE_AMOUNT})`;
+        };
+
+        const resetChargeAnimation = (instant = false) => {
+            if (instant) {
+                messageEl.style.transition = 'none';
+            } else {
+                messageEl.style.transition = 'transform 150ms ease-out';
+            }
+            messageEl.style.transform = '';
+            // Clean up after transition
+            if (!instant) {
+                setTimeout(() => {
+                    messageEl.style.transition = '';
+                    messageEl.style.transformOrigin = '';
+                }, 150);
+            } else {
+                messageEl.style.transition = '';
+                messageEl.style.transformOrigin = '';
+            }
+        };
+
+        const handleTouchStart = (e) => {
+            // Don't trigger on interactive elements
+            const target = e.target;
+            if (target.closest('button, a, input, textarea, .adventure-choice-btn')) {
+                return;
+            }
+
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            isLongPressing = false;
+
+            // Disable text selection immediately
+            disableSelection();
+            window.getSelection()?.removeAllRanges();
+
+            // Start visual feedback
+            startChargeAnimation();
+
+            pressTimer = setTimeout(() => {
+                isLongPressing = true;
+                // Haptic feedback if available
+                if (navigator.vibrate) navigator.vibrate(50);
+                // Reset scale on completion
+                resetChargeAnimation();
+                window.getSelection()?.removeAllRanges();
+                this.#showMessageMenuAtPosition(msg, messageEl, startX, startY);
+            }, LONG_PRESS_DURATION);
+        };
+
+        const handleTouchMove = (e) => {
+            if (!pressTimer) return;
+            const dx = Math.abs(e.touches[0].clientX - startX);
+            const dy = Math.abs(e.touches[0].clientY - startY);
+            if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+                // Cancel animation and re-enable selection
+                resetChargeAnimation();
+                enableSelection();
+            }
+        };
+
+        const handleTouchEnd = (e) => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+                // Cancel animation if released early
+                resetChargeAnimation();
+            }
+            // Re-enable text selection
+            enableSelection();
+            // Prevent click/selection if we triggered long-press
+            if (isLongPressing) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                // Keep flag true briefly to catch synthetic click
+                setTimeout(() => { isLongPressing = false; }, 500);
+            }
+        };
+
+        // Catch and prevent synthetic click after long-press
+        const handleClick = (e) => {
+            if (isLongPressing) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
+        };
+
+        // Prevent context menu on long-press (iOS/Android native menu)
+        messageEl.addEventListener('contextmenu', (e) => {
+            if (isLongPressing || pressTimer) {
+                e.preventDefault();
+            }
+        });
+
+        messageEl.addEventListener('touchstart', handleTouchStart, { passive: true });
+        messageEl.addEventListener('touchmove', handleTouchMove, { passive: true });
+        messageEl.addEventListener('touchend', handleTouchEnd, { passive: false });
+        messageEl.addEventListener('touchcancel', handleTouchEnd);
+        messageEl.addEventListener('click', handleClick, { capture: true });
+    }
+
     #createMessageMenuButton(msg) {
         const button = document.createElement('button');
         button.className = 'message-menu-trigger';
-        // ... [Existing button setup]
+        button.innerHTML = '<span class="material-icons">more_vert</span>';
 
         button.addEventListener('click', (e) => {
             e.stopPropagation();
-
-            const isLastMessage = this.chat.messages.at(-1)?.id === msg.id;
-            const messageId = msg.id;
-
-            const items = [
-                {
-                    icon: 'content_copy',
-                    label: 'Copy',
-                    callback: () => this.copyMessageContent(msg.content)
-                },
-                {
-                    icon: 'edit',
-                    label: 'Edit',
-                    callback: () => {
-                        const messageEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"]`);
-                        if (messageEl) this.#handleEditMessage(messageId, messageEl);
-                    }
-                },
-                {
-                    icon: 'call_split',
-                    label: 'Branch',
-                    callback: () => this.branchFromMessage(messageId)
-                },
-            ];
-
-            if (msg.role === "assistant" || (msg.role === "user" && isLastMessage)) {
-                items.push({
-                    icon: 'replay',
-                    label: 'Regenerate',
-                    callback: () => this.regenerateMessage(messageId)
-                });
-            }
-
-            // Only show Rewind if it's NOT the very last message
-            if (!isLastMessage) {
-                items.push({
-                    icon: 'fast_rewind',
-                    label: 'Rewind Here',
-                    callback: () => this.rewindToMessage(messageId),
-                    danger: true
-                });
-            }
-
-            items.push(
-                { separator: true },
-                {
-                    icon: 'delete',
-                    label: 'Delete',
-                    callback: () => this.deleteMessage(messageId),
-                    danger: true
-                }
-            );
-
+            const items = this.#getMessageMenuItems(msg, null);
             this.showDropdown(button, items);
         });
 
@@ -1779,6 +2271,47 @@ export class AdventureChatMode extends BaseChatMode {
                 font-size: 16px;
             }
 
+            /* Prompt/Choice Block Styles */
+            .adventure-prompt {
+                background-color: var(--bg-0);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-md);
+                padding: var(--spacing-md);
+            }
+            .adventure-prompt-info {
+                color: var(--text-secondary);
+                font-size: 0.9rem;
+                margin-bottom: var(--spacing-sm);
+            }
+            .adventure-prompt-choices {
+                display: flex;
+                flex-direction: column;
+                gap: var(--spacing-xs);
+            }
+            .adventure-choice-btn {
+                background-color: var(--bg-1);
+                border: 1px solid var(--bg-3);
+                border-radius: var(--radius-sm);
+                padding: var(--spacing-sm) var(--spacing-md);
+                color: var(--text-primary);
+                font-size: 0.9rem;
+                text-align: left;
+                cursor: pointer;
+                transition: var(--transition-fast);
+            }
+            .adventure-choice-btn:hover {
+                background-color: var(--bg-2);
+                border-color: var(--accent-primary);
+            }
+
+            /* Image caption styles */
+            .adventure-image-caption {
+                padding: var(--spacing-sm) var(--spacing-md);
+                color: var(--text-secondary);
+                font-size: 0.85rem;
+                font-style: italic;
+            }
+
             /* Modal Styles */
             .modal-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center; }
             .modal-content { background-color: var(--bg-1); border-radius: var(--radius-md); max-width: 500px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }
@@ -1803,7 +2336,11 @@ export class AdventureChatMode extends BaseChatMode {
                     gap: var(--spacing-sm); 
                 }
                 .chat-message { display: flex; flex-direction: column; font-size: 0.6rem; gap: var(--spacing-sm); }
-                .message-header .message-menu-trigger, .chat-message.assistant.adventure-mode .message-menu-trigger.adventure-menu { opacity: 1; }
+                /* Hide ellipses button on mobile - use long-press gesture instead */
+                .chat-message .message-menu-trigger,
+                .chat-message.adventure-mode .message-menu-trigger.adventure-menu,
+                .chat-message.user.adventure-mode .message-menu-trigger.adventure-menu,
+                .message-header .message-menu-trigger { display: none !important; }
                 .adventure-speech { gap: 8px; font-size: 0.6rem; }
                 .adventure-speaker-avatar { width: 64px; height: 64px; border-radius: var(--radius-sm); }
                 .adventure-image, .adventure-image.layout-side-by-side, .adventure-image.layout-overlay { display: flex; flex-direction: column; background-color: var(--bg-0); }

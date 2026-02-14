@@ -318,6 +318,93 @@ export class AdventureBlockEditor extends BaseComponent {
         }
     }
 
+    /**
+     * Serialize this block to the new JavaScript function array format.
+     * @returns {string} A function call string like: text("content") or speech("id", "dialogue")
+     */
+    toBlockFormat() {
+        const escapeStr = (str) => str
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t');
+
+        if (this.#activeType === "text") {
+            const content = this.shadowRoot.querySelector(".text-input").value.trim();
+            if (!content) return "";
+            return `text("${escapeStr(content)}")`;
+        }
+
+        if (this.#activeType === "unformatted") {
+            const content = this.shadowRoot.querySelector(".text-input").value.trim();
+            if (!content) return "";
+            return `unformatted("${escapeStr(content)}")`;
+        }
+
+        if (this.#activeType === "speech") {
+            const content = this.shadowRoot.querySelector(".speech-input").value.trim();
+            if (!content) return "";
+
+            if (this.#selectedCharacterId === "__custom__") {
+                const customName = this.shadowRoot.querySelector("#custom-name").value.trim() || "Unknown";
+                return `speech("${escapeStr(content)}", { name: "${escapeStr(customName)}" })`;
+            } else if (this.#selectedCharacterId) {
+                return `speech("${escapeStr(this.#selectedCharacterId)}", "${escapeStr(content)}")`;
+            } else {
+                return `speech("${escapeStr(content)}", { name: "Unknown" })`;
+            }
+        }
+
+        return "";
+    }
+
+    /**
+     * Set block data from a parsed block object (new format)
+     * @param {Object} block - Parsed block object with type, content, etc.
+     */
+    setDataFromBlock(block) {
+        if (!block || !block.type) return;
+
+        this.#activeType = block.type === 'unformatted' ? 'unformatted' :
+                          block.type === 'speech' ? 'speech' : 'text';
+
+        if (block.type === 'text' || block.type === 'unformatted') {
+            this.shadowRoot.querySelector('.text-input').value = block.content || '';
+        } else if (block.type === 'speech') {
+            this.shadowRoot.querySelector('.speech-input').value = block.content || '';
+
+            if (block.id) {
+                // Check if ID exists in participants/characters
+                const exists = this.#allCharacters.some(c => c.id === block.id) ||
+                               this.#participants.includes(block.id) ||
+                               (this.#userPersona && this.#userPersona.id === block.id);
+
+                if (exists) {
+                    this.#selectedCharacterId = block.id;
+                } else {
+                    this.#selectedCharacterId = "__custom__";
+                    this.#customName = block.name || block.id;
+                }
+            } else if (block.name) {
+                // Try to find by name
+                const char = this.#allCharacters.find(c => c.name.toLowerCase() === block.name.toLowerCase());
+                if (char) {
+                    this.#selectedCharacterId = char.id;
+                } else {
+                    this.#selectedCharacterId = "__custom__";
+                    this.#customName = block.name;
+                }
+            } else {
+                this.#selectedCharacterId = "__custom__";
+                this.#customName = "Unknown";
+            }
+        }
+
+        this.#updateView();
+        this.#updateCharacterDisplay();
+    }
+
     render() {
         super._initShadow(`
             <div class="block-container">
