@@ -533,10 +533,66 @@ class MainChatView extends BaseComponent {
         }
     }
 
+    #showResourceMenu(triggerButton, resourceType, resource) {
+        // Remove any existing dropdown
+        const existing = this.shadowRoot.querySelector('dropdown-menu');
+        if (existing) existing.remove();
+
+        const items = [];
+
+        if (!resource.isMissing) {
+            items.push({ icon: 'edit', label: 'Edit', action: 'edit' });
+
+            if (resource.isEmbedded) {
+                items.push({ icon: 'library_add', label: 'Save to Library', action: 'promote' });
+            } else {
+                items.push({ icon: 'anchor', label: 'Embed in Chat', action: 'embed' });
+            }
+        }
+
+        items.push({ divider: true });
+        items.push({ icon: 'close', label: 'Remove', action: 'delete', danger: true });
+
+        const dropdown = document.createElement('dropdown-menu');
+        dropdown.setItems(items);
+
+        dropdown.addEventListener('menu-action', (e) => {
+            const action = e.detail.action;
+            const id = resource.id;
+
+            if (resourceType === 'character') {
+                switch (action) {
+                    case 'delete': this.handleParticipantDelete(id); break;
+                    case 'edit': this.handleResourceEdit('character', id); break;
+                    case 'promote': this.handlePromoteToLibrary('character', id); break;
+                    case 'embed': this.handleEmbedResource('character', id); break;
+                }
+            } else {
+                switch (action) {
+                    case 'delete': this.handleModalNoteToggle(id, true); break;
+                    case 'edit': this.handleResourceEdit('note', id); break;
+                    case 'promote': this.handlePromoteToLibrary('note', id); break;
+                    case 'embed': this.handleEmbedResource('note', id); break;
+                }
+            }
+
+            dropdown.remove();
+        });
+
+        this.shadowRoot.appendChild(dropdown);
+        dropdown.open(triggerButton);
+    }
+
     handleParticipantAction(event) {
-        const { id, action, listItem } = event.detail;
-        
+        const { id, action, target, listItem } = event.detail;
+
         switch (action) {
+            case 'menu': {
+                const triggerBtn = target.closest('.item-menu-trigger') || listItem.querySelector('.item-menu-trigger');
+                const resource = this.#getResolvedParticipants().find(p => p.id === id);
+                if (triggerBtn && resource) this.#showResourceMenu(triggerBtn, 'character', resource);
+                break;
+            }
             case 'delete': this.handleParticipantDelete(id); break;
             case 'edit': this.handleResourceEdit('character', id); break;
             case 'promote': this.handlePromoteToLibrary('character', id); break;
@@ -611,8 +667,14 @@ class MainChatView extends BaseComponent {
     }
     
     handleActiveNoteAction(event) {
-        const { id, action } = event.detail;
+        const { id, action, target, listItem } = event.detail;
         switch (action) {
+            case 'menu': {
+                const triggerBtn = target.closest('.item-menu-trigger') || listItem.querySelector('.item-menu-trigger');
+                const resource = this.#getResolvedNotes().find(n => n.id === id);
+                if (triggerBtn && resource) this.#showResourceMenu(triggerBtn, 'note', resource);
+                break;
+            }
             case 'delete': this.handleModalNoteToggle(id, true); break; // true to force removal
             case 'edit': this.handleResourceEdit('note', id); break;
             case 'promote': this.handlePromoteToLibrary('note', id); break;
@@ -1715,16 +1777,6 @@ class MainChatView extends BaseComponent {
         const participants = this.#getResolvedParticipants();
 
         listEl.innerHTML = participants.map(char => {
-            // Toggle button: embed/reference (disabled for missing resources)
-            let toggleBtn;
-            if (char.isMissing) {
-                toggleBtn = `<button class="icon-button" disabled title="Character not found in library"><span class="material-icons">help_outline</span></button>`;
-            } else if (char.isEmbedded) {
-                toggleBtn = `<button class="icon-button" data-action="promote" title="Save to Library (Convert to Reference)"><span class="material-icons">library_add</span></button>`;
-            } else {
-                toggleBtn = `<button class="icon-button" data-action="embed" title="Embed in Chat (Anchor Data)"><span class="material-icons">anchor</span></button>`;
-            }
-            
             // Status indicator
             let statusIcon;
             if (char.isMissing) {
@@ -1734,7 +1786,7 @@ class MainChatView extends BaseComponent {
             } else {
                 statusIcon = `<div class="status-indicator library"><span class="material-icons">check</span></div>`;
             }
-            
+
             return `
                  <li data-id="${char.id}">
                     <div class="item-row">
@@ -1742,9 +1794,7 @@ class MainChatView extends BaseComponent {
                         <img class="avatar" src="${char.avatarUrl || 'assets/images/default_avatar.svg'}" alt="${char.name}'s avatar">
                         <div class="item-name">${char.name}</div>
                         <div class="actions">
-                            ${toggleBtn}
-                            <button class="icon-button" data-action="edit" title="Edit" ${char.isMissing ? 'disabled' : ''}><span class="material-icons">edit</span></button>
-                            <button class="icon-button delete-btn" data-action="delete" title="Remove"><span class="material-icons">close</span></button>
+                            <button class="icon-button item-menu-trigger" data-action="menu" title="Actions"><span class="material-icons">more_vert</span></button>
                         </div>
                     </div>
                 </li>
@@ -1762,16 +1812,6 @@ class MainChatView extends BaseComponent {
         }
 
         listEl.innerHTML = activeNotes.map(note => {
-            // Toggle button: embed/reference (disabled for missing resources)
-            let toggleBtn;
-            if (note.isMissing) {
-                toggleBtn = `<button class="icon-button" disabled title="Note not found in library"><span class="material-icons">help_outline</span></button>`;
-            } else if (note.isEmbedded) {
-                toggleBtn = `<button class="icon-button" data-action="promote" title="Save to Library (Convert to Reference)"><span class="material-icons">library_add</span></button>`;
-            } else {
-                toggleBtn = `<button class="icon-button" data-action="embed" title="Embed in Chat (Anchor Data)"><span class="material-icons">anchor</span></button>`;
-            }
-            
             // Status indicator
             let statusIcon;
             if (note.isMissing) {
@@ -1781,16 +1821,14 @@ class MainChatView extends BaseComponent {
             } else {
                 statusIcon = `<div class="status-indicator library"><span class="material-icons">check</span></div>`;
             }
-            
+
             return `
                 <li data-id="${note.id}">
                     <div class="item-row">
                         ${statusIcon}
                         <div class="item-name">${this._escapeHtml(note.name)}</div>
                         <div class="actions">
-                            ${toggleBtn}
-                            <button class="icon-button" data-action="edit" title="Edit" ${note.isMissing ? 'disabled' : ''}><span class="material-icons">edit</span></button>
-                            <button class="icon-button delete-btn" data-action="delete" title="Remove Note"><span class="material-icons">close</span></button>
+                            <button class="icon-button item-menu-trigger" data-action="menu" title="Actions"><span class="material-icons">more_vert</span></button>
                         </div>
                     </div>
                 </li>
