@@ -465,11 +465,9 @@ function resolveMacros(text, context) {
 
                 if (props.includes('expressions') && c.expressions && c.expressions.length > 0) {
                     const expressionLines = c.expressions.map(expr => {
-                        return `        <expression name="${escapeXML(expr.name)}">${escapeXML(expr.src)}</expression>`;
+                        return `        <expression name="${escapeXML(expr.name)}" />`;
                     });
-                    if (expressionLines.length > 0) {
-                        characterLines.push(`    <expressions>\n${expressionLines.join('\n')}\n    </expressions>`);
-                    }
+                    characterLines.push(`    <expressions>\n${expressionLines.join('\n')}\n    </expressions>`);
                 }
                 if (props.includes('images') && c.gallery && c.gallery.length > 0) {
                     const imageLines = c.gallery.map(img => {
