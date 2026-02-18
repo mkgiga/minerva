@@ -62,10 +62,21 @@ export class AdventureBlockEditor extends BaseComponent {
             this.#customName = e.target.value;
         });
         
+        // Auto-grow textareas on input
+        const textInput = this.shadowRoot.querySelector('.text-input');
+        const speechInput = this.shadowRoot.querySelector('.speech-input');
+        textInput.addEventListener('input', () => this.#autoGrow(textInput));
+        speechInput.addEventListener('input', () => this.#autoGrow(speechInput));
+
         // Close dropdown when clicking anywhere else
         document.addEventListener('click', this.#handleGlobalClick.bind(this));
 
         this.#updateView();
+    }
+
+    #autoGrow(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
     }
     
     disconnectedCallback() {
@@ -145,6 +156,14 @@ export class AdventureBlockEditor extends BaseComponent {
         }
         this.#updateView();
         this.#updateCharacterDisplay();
+
+        // Auto-grow after setting data (defer to ensure DOM is updated)
+        requestAnimationFrame(() => {
+            const activeTextarea = type === 'speech'
+                ? this.shadowRoot.querySelector('.speech-input')
+                : this.shadowRoot.querySelector('.text-input');
+            this.#autoGrow(activeTextarea);
+        });
     }
 
     #cycleType() {
@@ -403,6 +422,14 @@ export class AdventureBlockEditor extends BaseComponent {
 
         this.#updateView();
         this.#updateCharacterDisplay();
+
+        // Auto-grow after setting data
+        requestAnimationFrame(() => {
+            const activeTextarea = this.#activeType === 'speech'
+                ? this.shadowRoot.querySelector('.speech-input')
+                : this.shadowRoot.querySelector('.text-input');
+            this.#autoGrow(activeTextarea);
+        });
     }
 
     render() {
@@ -516,7 +543,8 @@ export class AdventureBlockEditor extends BaseComponent {
                 color: var(--text-primary);
                 font-family: inherit;
                 font-size: 0.9rem;
-                resize: vertical;
+                resize: none;
+                overflow: hidden;
                 display: block;
                 box-sizing: border-box;
             }
