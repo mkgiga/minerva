@@ -131,6 +131,10 @@ export class AdventureChatMode extends BaseChatMode {
     #curationEnabled = false;
     #inputMode = 'plaintext';
 
+    // Audio - reuse context and buffer across notifications
+    #audioContext = null;
+    #notificationBuffer = null;
+
     // Scroller instance
     #scroller = null;
 
@@ -722,9 +726,40 @@ export class AdventureChatMode extends BaseChatMode {
 
     onChatSwitched() { this.refreshChatHistory(); this.#rebuildStrippedHistory(); this.#refreshInputContext(); }
     onChatBranched() { this.#rebuildStrippedHistory(); }
-    onParticipantsChanged() { this.refreshChatHistory(); this.#refreshInputContext(); }
-    onAllCharactersChanged() { this.refreshChatHistory(); this.#refreshInputContext(); }
-    onUserPersonaChanged() { this.refreshChatHistory(); this.#updatePersonaAvatar(); this.#refreshInputContext(); }
+    onParticipantsChanged() { this.#patchAvatarsAndNames(); this.#refreshInputContext(); }
+    onAllCharactersChanged() { this.#patchAvatarsAndNames(); this.#refreshInputContext(); }
+    onUserPersonaChanged() { this.#patchAvatarsAndNames(); this.#updatePersonaAvatar(); this.#refreshInputContext(); }
+
+    #patchAvatarsAndNames() {
+        if (!this.#historyContainer || !this.chat) return;
+        // Patch speech block avatars and names
+        for (const speechBlock of this.#historyContainer.querySelectorAll('.adventure-speech')) {
+            const nameEl = speechBlock.querySelector('.adventure-speaker-name');
+            const avatarEl = speechBlock.querySelector('.adventure-speaker-avatar');
+            if (!nameEl || !avatarEl) continue;
+            const displayName = nameEl.textContent;
+            const character = this.allCharacters.find(c => c.name === displayName) || this.#findCharacter(displayName);
+            if (character) {
+                const newUrl = character.avatarUrl || 'assets/images/default_avatar.svg';
+                if (avatarEl.src !== newUrl) avatarEl.src = newUrl;
+                if (nameEl.textContent !== character.name) nameEl.textContent = character.name;
+            }
+        }
+        // Patch plain-text fallback messages (user messages with .avatar)
+        for (const messageEl of this.#historyContainer.querySelectorAll('.chat-message:not(.adventure-mode)')) {
+            const msgId = messageEl.dataset.messageId;
+            const msg = this.getMessageById(msgId);
+            if (!msg) continue;
+            const avatarEl = messageEl.querySelector('.avatar');
+            const nameEl = messageEl.querySelector('.author-name');
+            if (msg.role === 'user') {
+                const newName = this.userPersona?.name || 'You';
+                const newUrl = this.userPersona?.avatarUrl || 'assets/images/user_icon.svg';
+                if (avatarEl && avatarEl.src !== newUrl) avatarEl.src = newUrl;
+                if (nameEl && nameEl.textContent !== newName) nameEl.textContent = newName;
+            }
+        }
+    }
 
     #refreshInputContext() {
         const editors = this.shadowRoot.querySelectorAll("adventure-block-editor");
@@ -763,30 +798,31 @@ export class AdventureChatMode extends BaseChatMode {
             }
         }
 
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const notificationSound = new Audio('assets/audio/sfx/pop.ogg');
-        notificationSound.addEventListener('canplaythrough', () => {
-            const track = audioContext.createMediaElementSource(notificationSound);
-            const gainNode = audioContext.createGain();
-            gainNode.gain.value = 0.5;
-            track.connect(gainNode).connect(audioContext.destination);
-            notificationSound.play();
-        });
+        this.#playNotificationSound();
+    }
 
-        // destroy the audio context and element after playback to free resources
-        notificationSound.addEventListener('ended', () => {
-            audioContext.close();
-            notificationSound.src = '';
-            document.body.removeChild(notificationSound);
-        });
-
-        notificationSound.addEventListener('error', (e) => {
+    async #playNotificationSound() {
+        try {
+            if (!this.#audioContext) {
+                this.#audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (this.#audioContext.state === 'suspended') {
+                await this.#audioContext.resume();
+            }
+            if (!this.#notificationBuffer) {
+                const response = await fetch('assets/audio/sfx/pop.ogg');
+                const arrayBuffer = await response.arrayBuffer();
+                this.#notificationBuffer = await this.#audioContext.decodeAudioData(arrayBuffer);
+            }
+            const source = this.#audioContext.createBufferSource();
+            source.buffer = this.#notificationBuffer;
+            const gain = this.#audioContext.createGain();
+            gain.gain.value = 0.5;
+            source.connect(gain).connect(this.#audioContext.destination);
+            source.start(0);
+        } catch (e) {
             console.warn('Failed to play notification sound:', e);
-            audioContext.close();
-        });
-
-        // add the notification sound to the DOM to ensure it can play
-        document.body.appendChild(notificationSound);
+        }
     }
 
     onMessageUpdated(updatedMessage) {
@@ -1212,9 +1248,15 @@ export class AdventureChatMode extends BaseChatMode {
 
         this.#historyContainer.innerHTML = '<div id="history-loader-container"></div>';
         this.#renderHistoryLoader();
-        
-        for (let i = 0; i < this.chat.messages.length; i++) this.appendMessage(this.chat.messages[i], false, i);
-        
+
+        const fragment = document.createDocumentFragment();
+        for (let i = 0; i < this.chat.messages.length; i++) {
+            const messageEl = this.#createMessageElement(this.chat.messages[i]);
+            this.#updateMessageContent(messageEl, this.chat.messages[i], i);
+            fragment.appendChild(messageEl);
+        }
+        this.#historyContainer.appendChild(fragment);
+
         setTimeout(() => { this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight; }, 0);
         this.updateInputState(this.isSending);
     }
@@ -1413,16 +1455,6 @@ export class AdventureChatMode extends BaseChatMode {
             }
             blocksAndContent.push({ block, contentMap: contentMapForBlock, elementsToType });
         }
-
-        const allImageElements = blocksAndContent
-            .map(item => Array.from(item.block.querySelectorAll('img.adventure-image-display')))
-            .flat();
-
-        const imageLoadPromises = allImageElements.map(img => new Promise(resolve => {
-            if (img.complete) resolve();
-            else { img.onload = img.onerror = () => resolve(); }
-        }));
-        await Promise.all(imageLoadPromises);
 
         for (const item of blocksAndContent) {
             const { block, contentMap, elementsToType } = item;

@@ -16,7 +16,8 @@ export class DefaultChatMode extends BaseChatMode {
     #codeNavDown = null;
     #quickRegenButton = null;
     #streamingContent = new Map();
-
+    #renderScheduled = false;
+    #activeStreamMessageId = null;
 
     onInitialize() {
         this.render();
@@ -40,15 +41,41 @@ export class DefaultChatMode extends BaseChatMode {
             this.#quickRegenButton.addEventListener('click', this.#handleQuickRegen.bind(this));
         }
 
-        this.#historyContainer.addEventListener('click', this.#handleAvatarClick.bind(this));
+        this.#historyContainer.addEventListener('click', this.#handleHistoryClick.bind(this));
     }
     
     // Lifecycle Hooks
     onChatSwitched() { this.refreshChatHistory(); }
     onChatBranched() { this.refreshChatHistory(); }
-    onParticipantsChanged() { this.refreshChatHistory(); }
-    onAllCharactersChanged() { this.refreshChatHistory(); }
-    onUserPersonaChanged() { this.refreshChatHistory(); }
+    onParticipantsChanged() { this.#patchAvatarsAndNames(); }
+    onAllCharactersChanged() { this.#patchAvatarsAndNames(); }
+    onUserPersonaChanged() { this.#patchAvatarsAndNames(); }
+
+    #patchAvatarsAndNames() {
+        if (!this.#historyContainer || !this.chat) return;
+        for (const messageEl of this.#historyContainer.querySelectorAll('.chat-message[data-message-id]')) {
+            const messageId = messageEl.dataset.messageId;
+            const msg = this.getMessageById(messageId);
+            if (!msg) continue;
+
+            const isUser = msg.role === 'user';
+            let author = null;
+            if (isUser) {
+                author = this.getCharacterById(msg.characterId);
+            } else if (msg.role === 'assistant') {
+                const firstBotParticipant = this.chat.participants.find(p => !p.isAuto);
+                author = this.allCharacters.find(c => c.id === firstBotParticipant?.id);
+            }
+
+            const authorName = author?.name || (isUser ? 'You' : (msg.role === 'system' ? 'System' : 'Assistant'));
+            const avatarUrl = author?.avatarUrl || (isUser ? 'assets/images/user_icon.svg' : (msg.role === 'system' ? 'assets/images/system_icon.svg' : 'assets/images/assistant_icon.svg'));
+
+            const avatarImg = messageEl.querySelector('.avatar');
+            if (avatarImg && avatarImg.src !== avatarUrl) avatarImg.src = avatarUrl;
+            const nameEl = messageEl.querySelector('.author-name');
+            if (nameEl && nameEl.textContent !== authorName) nameEl.textContent = authorName;
+        }
+    }
 
     onMessagesAdded(addedMessages) {
         const optimisticUserEl = this.shadowRoot.querySelector('.chat-message[data-message-id^="user-"]');
@@ -147,8 +174,23 @@ export class DefaultChatMode extends BaseChatMode {
     onToken(token, messageId) {
         if (!this.#streamingContent.has(messageId)) return;
 
-        const newContent = this.#streamingContent.get(messageId) + token;
-        this.#streamingContent.set(messageId, newContent);
+        this.#streamingContent.set(messageId, this.#streamingContent.get(messageId) + token);
+        this.#activeStreamMessageId = messageId;
+
+        if (!this.#renderScheduled) {
+            this.#renderScheduled = true;
+            requestAnimationFrame(() => {
+                this.#flushStreamRender();
+                this.#renderScheduled = false;
+            });
+        }
+    }
+
+    #flushStreamRender() {
+        const messageId = this.#activeStreamMessageId;
+        if (!messageId) return;
+        const newContent = this.#streamingContent.get(messageId);
+        if (newContent === undefined) return;
 
         const messageContentEl = this.shadowRoot.querySelector(`.chat-message[data-message-id="${messageId}"] .message-content`);
         if (!messageContentEl) return;
@@ -156,16 +198,18 @@ export class DefaultChatMode extends BaseChatMode {
         if (this.rendererType === 'markdown' && window.marked) {
             messageContentEl.innerHTML = window.marked.parse(newContent, { renderer: this.#getMarkdownRenderer(), gfm: true });
         } else {
-            const textNode = document.createTextNode(newContent);
-            const div = document.createElement('div');
-            div.appendChild(textNode);
-            messageContentEl.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
+            messageContentEl.textContent = newContent;
         }
-        
+
         this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
     }
 
     onStreamFinish(messageId) {
+        // Flush any pending render immediately
+        this.#activeStreamMessageId = messageId;
+        this.#flushStreamRender();
+        this.#renderScheduled = false;
+        this.#activeStreamMessageId = null;
         this.updateInputState(false);
         this.updateCodeNavButtons();
         this.#streamingContent.delete(messageId);
@@ -262,10 +306,37 @@ export class DefaultChatMode extends BaseChatMode {
         editor.addEventListener('blur', onBlur);
     }
 
-    #handleAvatarClick(event) {
+    #handleHistoryClick(event) {
+        // Avatar click -> image preview
         const avatarImg = event.target.closest('.chat-message .avatar');
         if (avatarImg && avatarImg.tagName === 'IMG') {
             imagePreview.show({ src: avatarImg.src, alt: avatarImg.alt });
+            return;
+        }
+
+        // Delegated button actions
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const messageEl = button.closest('.chat-message[data-message-id]');
+        if (!messageEl) return;
+        const messageId = messageEl.dataset.messageId;
+        const action = button.dataset.action;
+
+        switch (action) {
+            case 'delete': this.deleteMessage(messageId); break;
+            case 'branch': this.branchFromMessage(messageId); break;
+            case 'regenerate': this.regenerateMessage(messageId); break;
+            case 'edit': this.#handleEditMessage(messageId, messageEl); break;
+            case 'copy': {
+                const message = this.getMessageById(messageId);
+                if (message) this.copyMessageContent(message.content);
+                break;
+            }
+            case 'copy-code': {
+                const codeText = button.closest('.code-block-wrapper')?.querySelector('pre code')?.textContent;
+                if (codeText) this.copyMessageContent(codeText);
+                break;
+            }
         }
     }
 
@@ -287,36 +358,7 @@ export class DefaultChatMode extends BaseChatMode {
         }
     }
     
-    #attachMessageListeners(messageEl) {
-        const messageId = messageEl.dataset.messageId;
-        if (!messageId) return;
-
-        // Attach listeners for main message actions (delete, edit, copy, etc.) in the header
-        for (const button of messageEl.querySelectorAll('.message-header button[data-action]')) {
-            const action = button.dataset.action;
-            button.addEventListener('click', () => {
-                switch (action) {
-                    case 'delete': this.deleteMessage(messageId); break;
-                    case 'branch': this.branchFromMessage(messageId); break;
-                    case 'regenerate': this.regenerateMessage(messageId); break;
-                    case 'edit': this.#handleEditMessage(messageId, messageEl); break;
-                    case 'copy': {
-                        const message = this.getMessageById(messageId);
-                        if (message) this.copyMessageContent(message.content);
-                        break;
-                    }
-                }
-            });
-        }
-
-        // Attach listeners for actions inside the content (e.g., copy code)
-        for (const button of messageEl.querySelectorAll('.message-content button[data-action="copy-code"]')) {
-            button.addEventListener('click', () => {
-                const codeText = button.closest('.code-block-wrapper')?.querySelector('pre code')?.textContent;
-                if (codeText) this.copyMessageContent(codeText);
-            });
-        }
-    }
+    // Event listeners for message actions are handled via delegation in #handleHistoryClick
 
     #renderSingleMessageHTML(msg, index = -1) {
         const isUser = msg.role === 'user';
@@ -389,12 +431,7 @@ export class DefaultChatMode extends BaseChatMode {
         const scrollAtBottom = (this.#historyContainer.scrollHeight - this.#historyContainer.clientHeight) <= this.#historyContainer.scrollTop + 1;
 
         this.#historyContainer.innerHTML = this.chat.messages.map((msg, index) => this.#renderSingleMessageHTML(msg, index)).join('');
-        
-        // After bulk-rendering, attach listeners to all the new elements
-        for (const messageEl of this.#historyContainer.querySelectorAll('.chat-message[data-message-id]')) {
-            this.#attachMessageListeners(messageEl);
-        }
-        
+
         if (scrollAtBottom) {
             this.#historyContainer.scrollTop = this.#historyContainer.scrollHeight;
         }
@@ -411,7 +448,6 @@ export class DefaultChatMode extends BaseChatMode {
         const messageEl = tempDiv.firstElementChild;
 
         if (messageEl) {
-            this.#attachMessageListeners(messageEl);
             this.#historyContainer.appendChild(messageEl);
         }
 
@@ -428,7 +464,6 @@ export class DefaultChatMode extends BaseChatMode {
         tempDiv.innerHTML = this.#renderSingleMessageHTML(newMessage);
         const newEl = tempDiv.firstElementChild;
         if (newEl) {
-            this.#attachMessageListeners(newEl);
             oldEl.replaceWith(newEl);
         }
     }

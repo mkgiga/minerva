@@ -163,13 +163,11 @@ class MainChatView extends BaseComponent {
     
     handleResourceChange(event) {
         const { resourceType, eventType, data } = event.detail;
-        
-        const oldSelectedChat = this.state.selectedChat ? JSON.parse(JSON.stringify(this.state.selectedChat)) : null;
-        
+
         let characterListChanged = false;
         let userPersonaChanged = false;
         let rendererChanged = false;
-        
+
         switch (resourceType) {
             case 'chat':
                 if (this.handleChatListChange(eventType, data)) {
@@ -177,9 +175,10 @@ class MainChatView extends BaseComponent {
                     this.updateMultiSelectControls();
                 }
                 break;
-        
+
             case 'chat_details':
                 if (eventType === 'update' && this.state.selectedChat?.id === data.id) {
+                    const oldSelectedChat = JSON.parse(JSON.stringify(this.state.selectedChat));
                     // Logic to preserve pagination window:
                     // The server sends the FULL chat history in `data.messages`.
                     // We must filter this to match our current view window (e.g. last 50 messages),
