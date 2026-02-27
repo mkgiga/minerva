@@ -762,6 +762,31 @@ export class AdventureChatMode extends BaseChatMode {
                 this.refreshChatHistory();
             }
         }
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const notificationSound = new Audio('assets/audio/sfx/pop.ogg');
+        notificationSound.addEventListener('canplaythrough', () => {
+            const track = audioContext.createMediaElementSource(notificationSound);
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.5;
+            track.connect(gainNode).connect(audioContext.destination);
+            notificationSound.play();
+        });
+
+        // destroy the audio context and element after playback to free resources
+        notificationSound.addEventListener('ended', () => {
+            audioContext.close();
+            notificationSound.src = '';
+            document.body.removeChild(notificationSound);
+        });
+
+        notificationSound.addEventListener('error', (e) => {
+            console.warn('Failed to play notification sound:', e);
+            audioContext.close();
+        });
+
+        // add the notification sound to the DOM to ensure it can play
+        document.body.appendChild(notificationSound);
     }
 
     onMessageUpdated(updatedMessage) {
