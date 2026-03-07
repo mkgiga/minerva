@@ -5,6 +5,7 @@ import { chatModeRegistry } from '../../ChatModeRegistry.js';
 import '../SchemaForm.js';
 
 class UserPreferencesView extends BaseComponent {
+    #audioSettingsForm = null;
     #chatSettingsForm = null;
     #chatModeSettingsContainer = null;
     #saveButton = null;
@@ -17,8 +18,27 @@ class UserPreferencesView extends BaseComponent {
             settings: null,
             connectionConfigs: [],
         };
-        // Define the schema for the main chat settings (static)
+        // Define the schema for settings forms (static)
         this.formSchema = {
+            audio: [
+                {
+                    name: 'muted',
+                    label: 'Mute All Sounds',
+                    type: 'checkbox',
+                    defaultValue: false,
+                    description: 'Completely mute all sound effects.'
+                },
+                {
+                    name: 'sfxVolume',
+                    label: 'Sound Effects Volume',
+                    type: 'range',
+                    min: 0,
+                    max: 100,
+                    step: 1,
+                    defaultValue: 50,
+                    description: 'Volume level for sound effects like notifications.'
+                }
+            ],
             chat: [
                 {
                     name: 'renderer',
@@ -57,6 +77,7 @@ class UserPreferencesView extends BaseComponent {
         // Initial render of the component's main structure
         this.render();
 
+        this.#audioSettingsForm = this.shadowRoot.querySelector('#audio-settings-form');
         this.#chatSettingsForm = this.shadowRoot.querySelector('#chat-settings-form');
         this.#chatModeSettingsContainer = this.shadowRoot.querySelector('#chat-mode-settings-container');
         this.#saveButton = this.shadowRoot.querySelector('#save-preferences-btn');
@@ -152,6 +173,11 @@ class UserPreferencesView extends BaseComponent {
     #updateSettingsForms() {
         if (!this.state.settings) return;
 
+        // Update audio settings form
+        if (this.#audioSettingsForm) {
+            this.#audioSettingsForm.data = this.state.settings.audio || {};
+        }
+
         // Update main chat settings form
         if (this.#chatSettingsForm) {
             this.#chatSettingsForm.data = this.state.settings.chat || {};
@@ -198,6 +224,7 @@ class UserPreferencesView extends BaseComponent {
     async saveSettings() {
         if (!this.#needsSave || !this.state.settings) return;
 
+        const audioSettings = this.#audioSettingsForm.serialize();
         const mainChatSettings = this.#chatSettingsForm.serialize();
         const chatModeSettings = {};
         for (const form of this.#chatModeSettingsContainer.querySelectorAll('schema-form')) {
@@ -206,6 +233,7 @@ class UserPreferencesView extends BaseComponent {
         }
 
         const settingsPayload = {
+            audio: audioSettings,
             chat: mainChatSettings,
             chatModes: chatModeSettings
         };
@@ -250,6 +278,10 @@ class UserPreferencesView extends BaseComponent {
                         <p class="placeholder-text">Theme and appearance settings will be available here in a future update.</p>
                     </fieldset>
                     <fieldset>
+                        <legend>Audio</legend>
+                        <schema-form id="audio-settings-form"></schema-form>
+                    </fieldset>
+                    <fieldset>
                         <legend>Chat</legend>
                         <schema-form id="chat-settings-form"></schema-form>
                     </fieldset>
@@ -263,7 +295,11 @@ class UserPreferencesView extends BaseComponent {
             </div>
         `, this.styles());
 
-        // Set the schema for the static chat settings form during initial render
+        // Set the schema for static settings forms during initial render
+        this.#audioSettingsForm = this.shadowRoot.querySelector('#audio-settings-form');
+        if (this.#audioSettingsForm) {
+            this.#audioSettingsForm.schema = this.formSchema.audio;
+        }
         this.#chatSettingsForm = this.shadowRoot.querySelector('#chat-settings-form');
         if (this.#chatSettingsForm) {
             this.#chatSettingsForm.schema = this.formSchema.chat;

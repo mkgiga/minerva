@@ -247,13 +247,20 @@ async function loadSettings() {
                 curateResponse: false,
                 curationConnectionConfigId: '', // Default: use main connection
             },
+            audio: {
+                muted: false,
+                sfxVolume: 50,
+            },
             chatModes: {}
         };
 
-        // Deep merge for nested objects like 'chat' and 'chatModes'
+        // Deep merge for nested objects like 'chat', 'audio', and 'chatModes'
         const mergedSettings = { ...defaultSettings, ...loadedSettings };
         if (loadedSettings.chat) {
             mergedSettings.chat = { ...defaultSettings.chat, ...loadedSettings.chat };
+        }
+        if (loadedSettings.audio) {
+            mergedSettings.audio = { ...defaultSettings.audio, ...loadedSettings.audio };
         }
         if (loadedSettings.chatModes) {
             mergedSettings.chatModes = { ...defaultSettings.chatModes, ...loadedSettings.chatModes };
@@ -271,6 +278,10 @@ async function loadSettings() {
                     renderer: 'raw',
                     curateResponse: false,
                     curationConnectionConfigId: '',
+                },
+                audio: {
+                    muted: false,
+                    sfxVolume: 50,
                 },
                 chatModes: {}
             };
@@ -686,6 +697,9 @@ function initHttp() {
             const newSettings = { ...state.settings, ...req.body };
             if (req.body.chat) {
                 newSettings.chat = { ...state.settings.chat, ...req.body.chat };
+            }
+            if (req.body.audio) {
+                newSettings.audio = { ...(state.settings.audio || {}), ...req.body.audio };
             }
             if (req.body.chatModes) {
                 newSettings.chatModes = { ...(state.settings.chatModes || {}) };

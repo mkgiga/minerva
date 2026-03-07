@@ -134,6 +134,8 @@ export class AdventureChatMode extends BaseChatMode {
     // Audio - reuse context and buffer across notifications
     #audioContext = null;
     #notificationBuffer = null;
+    #audioMuted = false;
+    #audioVolume = 0.5;
 
     // Scroller instance
     #scroller = null;
@@ -599,6 +601,25 @@ export class AdventureChatMode extends BaseChatMode {
         this.#rebuildStrippedHistory();
         this.#loadGlobalSettings();
         this.#updateInputModeUI();
+
+        // Pre-unlock AudioContext on first user interaction (required by browser autoplay policy)
+        const unlockAudio = () => {
+            if (!this.#audioContext) {
+                this.#audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (this.#audioContext.state === 'suspended') {
+                this.#audioContext.resume();
+            }
+            if (!this.#notificationBuffer) {
+                fetch('assets/audio/sfx/pop.ogg')
+                    .then(r => r.arrayBuffer())
+                    .then(buf => this.#audioContext.decodeAudioData(buf))
+                    .then(decoded => { this.#notificationBuffer = decoded; })
+                    .catch(() => {});
+            }
+            this.shadowRoot.removeEventListener('click', unlockAudio);
+        };
+        this.shadowRoot.addEventListener('click', unlockAudio);
     }
 
     #initializeInputBlocks() {
@@ -676,8 +697,12 @@ export class AdventureChatMode extends BaseChatMode {
             const settings = await api.get('/api/settings');
             this.#curationEnabled = !!settings.chat?.curateResponse;
             this.#updateCurationButton();
+            if (settings.audio) {
+                this.#audioMuted = !!settings.audio.muted;
+                this.#audioVolume = (settings.audio.sfxVolume ?? 50) / 100;
+            }
         } catch (error) {
-            console.warn('Failed to load global curation setting:', error);
+            console.warn('Failed to load global settings:', error);
         }
     }
 
@@ -714,6 +739,10 @@ export class AdventureChatMode extends BaseChatMode {
         if (settings.chat?.curateResponse !== undefined) {
             this.#curationEnabled = settings.chat.curateResponse;
             this.#updateCurationButton();
+        }
+        if (settings.audio) {
+            if (settings.audio.muted !== undefined) this.#audioMuted = settings.audio.muted;
+            if (settings.audio.sfxVolume !== undefined) this.#audioVolume = settings.audio.sfxVolume / 100;
         }
     }
 
@@ -801,23 +830,14 @@ export class AdventureChatMode extends BaseChatMode {
         this.#playNotificationSound();
     }
 
-    async #playNotificationSound() {
+    #playNotificationSound() {
+        if (this.#audioMuted || this.#audioVolume <= 0) return;
+        if (!this.#audioContext || this.#audioContext.state !== 'running' || !this.#notificationBuffer) return;
         try {
-            if (!this.#audioContext) {
-                this.#audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (this.#audioContext.state === 'suspended') {
-                await this.#audioContext.resume();
-            }
-            if (!this.#notificationBuffer) {
-                const response = await fetch('assets/audio/sfx/pop.ogg');
-                const arrayBuffer = await response.arrayBuffer();
-                this.#notificationBuffer = await this.#audioContext.decodeAudioData(arrayBuffer);
-            }
             const source = this.#audioContext.createBufferSource();
             source.buffer = this.#notificationBuffer;
             const gain = this.#audioContext.createGain();
-            gain.gain.value = 0.5;
+            gain.gain.value = this.#audioVolume;
             source.connect(gain).connect(this.#audioContext.destination);
             source.start(0);
         } catch (e) {
