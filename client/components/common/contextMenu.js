@@ -66,12 +66,10 @@ export const contextMenu = {
 
     close() {
         if (this._activeMenu) {
-            this._activeMenu.close();
-            // Give close animation time to finish before removing
-            setTimeout(() => {
-                this._activeMenu?.remove();
-                this._activeMenu = null;
-            }, 250);
+            const menu = this._activeMenu;
+            this._activeMenu = null;
+            menu.close();
+            setTimeout(() => menu.remove(), 250);
         }
     }
 };
