@@ -3,6 +3,7 @@ import { BaseComponent } from '../BaseComponent.js';
 /**
  * A mobile-friendly bottom sheet menu component.
  * Same item format and event interface as DropdownMenu.
+ * Supports swipe-to-close gesture.
  *
  * Usage:
  * const sheet = document.createElement('bottom-sheet');
@@ -19,16 +20,24 @@ class BottomSheet extends BaseComponent {
     constructor() {
         super();
         this.items = [];
+        this._dragStartY = 0;
+        this._dragging = false;
         this.render();
 
         this.handleBackdropClick = this.handleBackdropClick.bind(this);
         this.handleKeydown = this.handleKeydown.bind(this);
         this.handleItemClick = this.handleItemClick.bind(this);
+        this._onTouchStart = this._onTouchStart.bind(this);
+        this._onTouchMove = this._onTouchMove.bind(this);
+        this._onTouchEnd = this._onTouchEnd.bind(this);
     }
 
     connectedCallback() {
         const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
         sheet.addEventListener('click', this.handleItemClick);
+        sheet.addEventListener('touchstart', this._onTouchStart, { passive: true });
+        sheet.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        sheet.addEventListener('touchend', this._onTouchEnd);
 
         const backdrop = this.shadowRoot.querySelector('.bottom-sheet-backdrop');
         backdrop.addEventListener('click', this.handleBackdropClick);
@@ -59,17 +68,100 @@ class BottomSheet extends BaseComponent {
         }
     }
 
-    open() {
-        this.classList.add('active');
+    // --- Swipe-to-close gesture ---
 
+    _onTouchStart(e) {
+        const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
+        // Only allow drag when content is scrolled to top
+        if (sheet.scrollTop > 0) return;
+
+        this._dragStartY = e.touches[0].clientY;
+        this._dragging = false;
+    }
+
+    _onTouchMove(e) {
+        if (this._dragStartY === null) return;
+
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - this._dragStartY;
+
+        // Only drag downward
+        if (deltaY <= 0) {
+            if (this._dragging) this._resetDragStyles();
+            return;
+        }
+
+        // Once we start dragging, prevent scrolling
+        e.preventDefault();
+        this._dragging = true;
+
+        const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
+        const backdrop = this.shadowRoot.querySelector('.bottom-sheet-backdrop');
+
+        // Move sheet with finger, no transition lag
+        sheet.style.transition = 'none';
+        sheet.style.transform = `translateY(${deltaY}px)`;
+
+        // Fade backdrop proportionally
+        const sheetHeight = sheet.offsetHeight;
+        const opacity = Math.max(0, 0.5 * (1 - deltaY / sheetHeight));
+        backdrop.style.transition = 'none';
+        backdrop.style.background = `rgba(0, 0, 0, ${opacity})`;
+    }
+
+    _onTouchEnd() {
+        if (!this._dragging) {
+            this._dragStartY = null;
+            return;
+        }
+
+        const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
+        const currentTranslate = parseFloat(sheet.style.transform.replace('translateY(', '')) || 0;
+        const threshold = Math.min(80, sheet.offsetHeight * 0.3);
+
+        this._dragging = false;
+        this._dragStartY = null;
+
+        if (currentTranslate > threshold) {
+            this.close();
+        } else {
+            this._snapBack();
+        }
+    }
+
+    _snapBack() {
+        const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
+        const backdrop = this.shadowRoot.querySelector('.bottom-sheet-backdrop');
+
+        // Re-enable transitions for the snap-back animation
+        sheet.style.transition = '';
+        sheet.style.transform = '';
+        backdrop.style.transition = '';
+        backdrop.style.background = '';
+    }
+
+    _resetDragStyles() {
+        this._dragging = false;
+        this._snapBack();
+    }
+
+    // --- Open / Close ---
+
+    open() {
         const backdrop = this.shadowRoot.querySelector('.bottom-sheet-backdrop');
         const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
 
-        // Trigger animations on next frame
-        requestAnimationFrame(() => {
-            backdrop.classList.add('visible');
-            sheet.classList.add('open');
-        });
+        // Hide visually while the browser computes the starting translateY(100%) layout
+        sheet.style.visibility = 'hidden';
+        this.classList.add('active');
+
+        // Force layout so the off-screen position is committed
+        sheet.getBoundingClientRect();
+
+        // Reveal and transition in
+        sheet.style.visibility = '';
+        backdrop.classList.add('visible');
+        sheet.classList.add('open');
 
         document.addEventListener('keydown', this.handleKeydown);
     }
@@ -77,6 +169,12 @@ class BottomSheet extends BaseComponent {
     close() {
         const backdrop = this.shadowRoot.querySelector('.bottom-sheet-backdrop');
         const sheet = this.shadowRoot.querySelector('.bottom-sheet-menu');
+
+        // Clear any leftover drag inline styles
+        sheet.style.transition = '';
+        sheet.style.transform = '';
+        backdrop.style.transition = '';
+        backdrop.style.background = '';
 
         backdrop.classList.remove('visible');
         sheet.classList.remove('open');
@@ -171,7 +269,7 @@ class BottomSheet extends BaseComponent {
                 height: 4px;
                 border-radius: 2px;
                 background: var(--bg-3);
-                margin: var(--spacing-xs) auto var(--spacing-sm);
+                margin: var(--spacing-md) auto;
             }
 
             .menu-item {
