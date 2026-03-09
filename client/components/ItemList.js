@@ -52,6 +52,9 @@ class ItemList extends BaseComponent {
             :host {
                 display: block;
                 background-color: var(--bg-0);
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
             }
 
             /* 

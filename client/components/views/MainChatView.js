@@ -1964,8 +1964,8 @@ class MainChatView extends BaseComponent {
             .panel-left, .panel-right { flex-direction: column; }
             .panel-right { background-color: transparent; } /* Right panel is a container */
             .right-panel-content { display: none; flex-direction: column; height: 100%; }
-            .participants-section { flex: 2; display: flex; flex-direction: column; min-height: 150px; background-color: var(--bg-1); border-bottom: 1px solid var(--bg-3); }
-            .notes-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; background-color: var(--bg-1); }
+            .participants-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; overflow: hidden; background-color: var(--bg-1); border-bottom: 1px solid var(--bg-3); }
+            .notes-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; overflow: hidden; background-color: var(--bg-1); }
             .panel-left header, #participant-list-header, #note-list-header {
                 display: flex; justify-content: space-between; align-items: center;
                 padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
