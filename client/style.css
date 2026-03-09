@@ -267,12 +267,11 @@ minerva-app {
 }
 
 .main-view-wrapper {
-    /* Default to two panels, left and main */
-    grid-template-columns: 320px 1fr; 
+    grid-template-columns: 1fr;
 }
-.main-view-wrapper.layout-three-panel { grid-template-columns: 320px 1fr 280px; }
+.main-view-wrapper.layout-three-panel { grid-template-columns: 1fr 280px; }
 .main-view-wrapper.layout-main-only { grid-template-columns: 1fr; }
-.main-view-wrapper.layout-main-right { grid-template-columns: 1fr 320px; } /* NEW LAYOUT */
+.main-view-wrapper.layout-main-right { grid-template-columns: 1fr 320px; }
 
 /* Main View Panels */
 .panel-left, .panel-main, .panel-right, .panel-right-sidebar {

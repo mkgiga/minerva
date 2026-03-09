@@ -101,7 +101,6 @@ class MainChatView extends BaseComponent {
         this.shadowRoot.querySelector('#back-to-chats-btn').addEventListener('click', this.handleBackToChats);
         this.shadowRoot.querySelector('.view-overlay').addEventListener('click', () => this.toggleParticipantsPanel(false));
         
-        this.shadowRoot.querySelector('#chat-name-input').addEventListener('change', this.handleChatNameSave);
         this.shadowRoot.querySelector('#chat-title-mobile').addEventListener('click', this.handleChatNameEdit);
 
         this.shadowRoot.querySelector('#delete-selected-btn').addEventListener('click', this.handleDeleteSelectedChats);
@@ -1661,42 +1660,35 @@ class MainChatView extends BaseComponent {
     }
 
     updateViewChrome() {
-        const isMobile = window.matchMedia('(max-width: 768px)').matches;
         const panelLeft = this.shadowRoot.querySelector('.panel-left');
         const panelMain = this.shadowRoot.querySelector('.panel-main');
-        if (isMobile) {
-            panelLeft.style.display = this.state.selectedChat ? 'none' : 'flex';
-            panelMain.style.display = this.state.selectedChat ? 'flex' : 'none';
-        } else {
-            panelLeft.style.display = 'flex';
-            panelMain.style.display = 'flex';
-        }
-        this.shadowRoot.querySelector('#back-to-chats-btn').style.display = isMobile && this.state.selectedChat ? 'flex' : 'none';
-        
+
+        panelLeft.style.display = this.state.selectedChat ? 'none' : 'flex';
+        panelMain.style.display = this.state.selectedChat ? 'flex' : 'none';
+
+        this.shadowRoot.querySelector('#back-to-chats-btn').style.display =
+            this.state.selectedChat ? 'flex' : 'none';
+
         this.#renderChatList();
         this.updateMultiSelectControls();
         this.#updateRightPanel();
     }
 
     updateMainPanel() {
-        const mainHeader = this.shadowRoot.querySelector('.chat-main-header');
         const placeholder = this.shadowRoot.querySelector('.placeholder');
         const modeContainer = this.shadowRoot.querySelector('#chat-mode-container');
         if (this.state.selectedChat) {
-            mainHeader.style.display = 'flex';
             placeholder.style.display = 'none';
             modeContainer.style.display = 'flex';
-            this.shadowRoot.querySelector('#chat-name-input').value = this.state.selectedChat.name;
             this.shadowRoot.querySelector('#chat-title-mobile').textContent = this.state.selectedChat.name;
             this.shadowRoot.querySelector('#go-to-parent-btn').style.display = this.state.selectedChat.parentId ? 'flex' : 'none';
-            this.shadowRoot.querySelector('#export-chat-btn').style.display = 'flex'; // Show export button
+            this.shadowRoot.querySelector('#export-chat-btn').style.display = 'flex';
             
             // This now only creates/recreates the mode if necessary
             this.#ensureChatModeIsCorrect(); 
 
             this.#activeChatMode?.updateInputState(this.state.isSending);
         } else {
-            mainHeader.style.display = 'none';
             if (this.#activeChatMode) this.#activeChatMode.onDestroy();
             this.#activeChatMode = null;
             modeContainer.innerHTML = '';
@@ -1879,12 +1871,9 @@ class MainChatView extends BaseComponent {
                     <header class="mobile-chat-header">
                         <button id="back-to-chats-btn" class="icon-button" title="Back to Chats"><span class="material-icons">arrow_back</span></button>
                         <h2 id="chat-title-mobile">Select a Chat</h2>
-                        <button id="sidebar-btn" class="icon-button" title="View Sidebar"><span class="material-icons">view_sidebar</span></button>
-                    </header>
-                    <header class="chat-main-header">
-                        <input type="text" id="chat-name-input" placeholder="Chat Name">
                         <button id="go-to-parent-btn" class="icon-button" title="Go to Parent Chat"><span class="material-icons">arrow_upward</span></button>
                         <button id="export-chat-btn" class="icon-button" title="Export Chat Tree"><span class="material-icons">download</span></button>
+                        <button id="sidebar-btn" class="icon-button" title="View Sidebar"><span class="material-icons">view_sidebar</span></button>
                     </header>
                     <div id="chat-mode-container"></div>
                     <div class="placeholder"><h3>Select or create a chat to begin.</h3></div>
@@ -1964,8 +1953,8 @@ class MainChatView extends BaseComponent {
             .panel-left, .panel-right { flex-direction: column; }
             .panel-right { background-color: transparent; } /* Right panel is a container */
             .right-panel-content { display: none; flex-direction: column; height: 100%; }
-            .participants-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; overflow: hidden; background-color: var(--bg-1); border-bottom: 1px solid var(--bg-3); }
-            .notes-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; overflow: hidden; background-color: var(--bg-1); }
+            .participants-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; background-color: var(--bg-1); border-bottom: 1px solid var(--bg-3); }
+            .notes-section { flex: 1; display: flex; flex-direction: column; min-height: 100px; background-color: var(--bg-1); }
             .panel-left header, #participant-list-header, #note-list-header {
                 display: flex; justify-content: space-between; align-items: center;
                 padding: var(--spacing-md); border-bottom: 1px solid var(--bg-3);
@@ -1999,7 +1988,12 @@ class MainChatView extends BaseComponent {
             #modal-search-input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); }
             #go-to-parent-btn { display: none; }
             #export-chat-btn { display: none; } /* Hidden by default, shown when chat is selected */
-            .mobile-chat-header, #back-to-chats-btn, .view-overlay { display: none; }
+            .mobile-chat-header { display: flex; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; align-items: center; gap: var(--spacing-sm); }
+            .mobile-chat-header h2 { flex-grow: 1; margin: 0; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            #back-to-chats-btn { display: none; }
+            #chat-title-mobile { cursor: pointer; }
+            #chat-title-mobile[contenteditable="true"] { outline: 2px solid var(--accent-primary); outline-offset: 2px; border-radius: var(--radius-sm); padding: 2px 4px; white-space: normal; overflow: visible; }
+            .view-overlay { display: none; }
             .list-placeholder { color: var(--text-disabled); font-style: italic; padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-sm); }
 
             /* Item List Styles for this View */
@@ -2015,6 +2009,7 @@ class MainChatView extends BaseComponent {
             item-list .actions { display: flex; flex-shrink: 0; gap: var(--spacing-xs); }
             
             /* Status indicators for embedded/library items */
+            
             .status-indicator { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: var(--spacing-xs); }
             .status-indicator.library { background-color: var(--accent-good); }
             .status-indicator.library .material-icons { font-size: 14px; color: white; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
@@ -2023,6 +2018,9 @@ class MainChatView extends BaseComponent {
             .status-indicator.missing { background-color: var(--accent-danger); }
             .status-indicator.missing .material-icons { font-size: 14px; color: white; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
             
+            /* hide for now */
+            .status-indicator { display: none; }
+
             /* Specifics for Participant & Modal Lists */
             #modal-character-list li.is-participant > .item-row, #modal-note-list li.is-participant > .item-row { background-color: var(--accent-primary-faded); border-left: 3px solid var(--accent-primary); padding-left: calc(var(--spacing-md) - 3px); }
             #modal-character-list li.is-participant > .item-row:hover, #modal-note-list li.is-participant > .item-row:hover { background-color: rgba(138, 180, 248, 0.4); }
@@ -2063,20 +2061,6 @@ class MainChatView extends BaseComponent {
             .chat-tree-container .item-name { white-space: nowrap; overflow: visible; text-overflow: clip; min-width: max-content; }
             @media (max-width: 768px) {
                 .panel-main { padding: 0; height: 100%; }
-                .chat-main-header { display: none !important; }
-                .mobile-chat-header { display: flex; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; align-items: center; gap: var(--spacing-xs); }
-                .mobile-chat-header h2 { flex-grow: 1; }
-                #back-to-chats-btn { display: flex; }
-                #chat-title-mobile { font-size: 1.1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-                #chat-title-mobile[contenteditable="true"] {
-                    outline: 2px solid var(--accent-primary);
-                    outline-offset: 2px;
-                    border-radius: var(--radius-sm);
-                    padding: 2px 4px;
-                    white-space: normal;
-                    overflow: visible;
-                }
-                #sidebar-btn { display: flex; }
                 .panel-right { position: fixed; top: 0; right: 0; width: 85%; max-width: 320px; height: 100%; z-index: 1001; transform: translateX(100%); transition: transform 0.3s ease-in-out; box-shadow: -2px 0 8px rgba(0,0,0,0.3); border-left: 1px solid var(--bg-3); }
                 .panel-right.visible { transform: translateX(0); }
                 .view-overlay.visible { display: block; position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); z-index: 1000; }
