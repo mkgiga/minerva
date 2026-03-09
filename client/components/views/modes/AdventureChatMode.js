@@ -5,7 +5,7 @@ import { chatModeRegistry } from "../../../ChatModeRegistry.js";
 import { notifier, uuidv4, imagePreview, api } from "../../../client.js";
 import { SceneBlockParser } from "./SceneBlockParser.js";
 import "../../common/Spinner.js";
-import "../../common/DropdownMenu.js";
+import { contextMenu } from "../../common/contextMenu.js";
 import "./AdventureBlockEditor.js"; 
 
 /**
@@ -1721,36 +1721,26 @@ export class AdventureChatMode extends BaseChatMode {
     }
 
     showDropdown(triggerElement, items) {
-        const existingDropdown = this.shadowRoot.querySelector('dropdown-menu');
-        if (existingDropdown) {
-            existingDropdown.remove();
-        }
-
-        const dropdown = document.createElement('dropdown-menu');
-        const dropdownItems = items.map(item => {
-            if (item.separator) {
-                return { divider: true };
-            }
+        // Normalize { callback, separator } format to standard { action, divider } format
+        const menuItems = items.map(item => {
+            if (item.separator) return { divider: true };
             return {
                 icon: item.icon,
                 label: item.label,
-                action: item.label, 
+                action: item.label,
                 danger: item.danger || false
             };
         });
 
-        dropdown.setItems(dropdownItems);
-        dropdown.addEventListener('menu-action', (e) => {
-            const actionLabel = e.detail.action;
-            const item = items.find(i => i.label === actionLabel);
-            if (item && item.callback) {
-                item.callback();
+        contextMenu.show({
+            items: menuItems,
+            anchor: triggerElement,
+            container: this.shadowRoot,
+            onAction: (actionLabel) => {
+                const item = items.find(i => i.label === actionLabel);
+                if (item?.callback) item.callback();
             }
-            dropdown.remove();
         });
-
-        this.shadowRoot.appendChild(dropdown);
-        dropdown.open(triggerElement);
     }
 
     /**

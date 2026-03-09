@@ -4,6 +4,7 @@ import { chatModeRegistry } from '../../ChatModeRegistry.js';
 import '../ItemList.js';
 import '../CharacterEditor.js';
 import '../NoteEditor.js';
+import { contextMenu } from '../common/contextMenu.js';
 
 class MainChatView extends BaseComponent {
     #activeChatMode = null;
@@ -533,10 +534,6 @@ class MainChatView extends BaseComponent {
     }
 
     #showResourceMenu(triggerButton, resourceType, resource) {
-        // Remove any existing dropdown
-        const existing = this.shadowRoot.querySelector('dropdown-menu');
-        if (existing) existing.remove();
-
         const items = [];
 
         if (!resource.isMissing) {
@@ -552,34 +549,29 @@ class MainChatView extends BaseComponent {
         items.push({ divider: true });
         items.push({ icon: 'close', label: 'Remove', action: 'delete', danger: true });
 
-        const dropdown = document.createElement('dropdown-menu');
-        dropdown.setItems(items);
-
-        dropdown.addEventListener('menu-action', (e) => {
-            const action = e.detail.action;
-            const id = resource.id;
-
-            if (resourceType === 'character') {
-                switch (action) {
-                    case 'delete': this.handleParticipantDelete(id); break;
-                    case 'edit': this.handleResourceEdit('character', id); break;
-                    case 'promote': this.handlePromoteToLibrary('character', id); break;
-                    case 'embed': this.handleEmbedResource('character', id); break;
-                }
-            } else {
-                switch (action) {
-                    case 'delete': this.handleModalNoteToggle(id, true); break;
-                    case 'edit': this.handleResourceEdit('note', id); break;
-                    case 'promote': this.handlePromoteToLibrary('note', id); break;
-                    case 'embed': this.handleEmbedResource('note', id); break;
+        const id = resource.id;
+        contextMenu.show({
+            items,
+            anchor: triggerButton,
+            container: this.shadowRoot,
+            onAction: (action) => {
+                if (resourceType === 'character') {
+                    switch (action) {
+                        case 'delete': this.handleParticipantDelete(id); break;
+                        case 'edit': this.handleResourceEdit('character', id); break;
+                        case 'promote': this.handlePromoteToLibrary('character', id); break;
+                        case 'embed': this.handleEmbedResource('character', id); break;
+                    }
+                } else {
+                    switch (action) {
+                        case 'delete': this.handleModalNoteToggle(id, true); break;
+                        case 'edit': this.handleResourceEdit('note', id); break;
+                        case 'promote': this.handlePromoteToLibrary('note', id); break;
+                        case 'embed': this.handleEmbedResource('note', id); break;
+                    }
                 }
             }
-
-            dropdown.remove();
         });
-
-        this.shadowRoot.appendChild(dropdown);
-        dropdown.open(triggerButton);
     }
 
     handleParticipantAction(event) {
