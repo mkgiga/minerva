@@ -926,19 +926,8 @@ class MainChatView extends BaseComponent {
             confirmLabel: 'Delete', confirmButtonClass: 'button-danger',
             onConfirm: async () => {
                 try {
-                    if (message._isInherited) {
-                        // Inherited message: Add to deletedMessageIds (this branch's opinion of history)
-                        // This doesn't affect sibling branches
-                        const existingDeleted = this.state.selectedChat.deletedMessageIds || [];
-                        await api.put(`/api/chats/${this.state.selectedChat.id}`, {
-                            deletedMessageIds: [...existingDeleted, messageId]
-                        });
-                        // Update local state
-                        this.state.selectedChat.deletedMessageIds = [...existingDeleted, messageId];
-                    } else {
-                        // Own message: Actually delete it from the chat via dedicated endpoint
-                        await api.delete(`/api/chats/${this.state.selectedChat.id}/messages/${messageId}`);
-                    }
+                    // Server handles soft-delete for both own and inherited messages
+                    await api.delete(`/api/chats/${this.state.selectedChat.id}/messages/${messageId}`);
                     // Remove from local messages for immediate UI feedback
                     this.state.selectedChat.messages = this.state.selectedChat.messages.filter(m => m.id !== messageId);
                     notifier.show({ message: 'Message deleted.' });

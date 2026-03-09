@@ -1616,35 +1616,47 @@ function initHttp() {
         } catch (e) { res.status(404).json({ message: 'Chat not found' }); }
     });
 
-    // DELETE a message that belongs to THIS chat (not inherited)
-    // For inherited messages, use PUT with deletedMessageIds instead
+    /**
+     * Soft-deletes messages by adding their IDs to the chat's deletedMessageIds set.
+     * Messages remain in messages[] (preserving branch point references) but are
+     * filtered out at display time by buildFullChatForClient().
+     */
+    function softDeleteMessages(chat, messageIds) {
+        const existing = new Set(chat.deletedMessageIds || []);
+        for (const id of messageIds) existing.add(id);
+        chat.deletedMessageIds = [...existing];
+    }
+
+    // DELETE a message from this chat's view (works for both own and inherited messages)
+    // Uses soft-delete: message stays in messages[] but is added to deletedMessageIds
+    // This preserves branch point references so child branches don't get corrupted
     app.delete('/api/chats/:chatId/messages/:messageId', async (req, res) => {
         const { chatId, messageId } = req.params;
         try {
             const chatPath = path.join(CHATS_DIR, `${chatId}.json`);
             const chatData = JSON.parse(await fs.readFile(chatPath, 'utf-8'));
+            const chat = new Chat(chatData);
 
-            // Only delete if message exists in this chat's OWN messages (not inherited)
-            const msgIndex = chatData.messages.findIndex(m => m.id === messageId);
-            if (msgIndex === -1) {
-                return res.status(404).json({
-                    message: 'Message not found in this chat. If this is an inherited message, use deletedMessageIds instead.'
-                });
+            // Build full history to verify the message exists (own or inherited)
+            const fullChat = await buildFullChatForClient(chat);
+            const messageExists = fullChat.messages.some(m => m.id === messageId);
+            if (!messageExists) {
+                return res.status(404).json({ message: 'Message not found in this chat.' });
             }
 
-            chatData.messages.splice(msgIndex, 1);
-            chatData.lastModifiedAt = new Date().toISOString();
-            await fs.writeFile(chatPath, JSON.stringify(chatData, null, 2));
+            // Soft-delete: add to deletedMessageIds instead of splicing from messages[]
+            softDeleteMessages(chat, [messageId]);
+            chat.lastModifiedAt = new Date().toISOString();
+            await fs.writeFile(chatPath, JSON.stringify(chat, null, 2));
 
             // Update in-memory state
             const index = state.chats.findIndex(c => c.id === chatId);
-            if (index !== -1) state.chats[index] = new Chat(chatData);
+            if (index !== -1) state.chats[index] = chat;
 
             // Broadcast the change
-            const updatedChat = new Chat(chatData);
-            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: updatedChat.getSummary() });
-            const fullChat = await buildFullChatForClient(updatedChat);
-            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: fullChat });
+            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'update', data: chat.getSummary() });
+            const updatedFullChat = await buildFullChatForClient(chat);
+            broadcastEvent('resourceChange', { resourceType: 'chat_details', eventType: 'update', data: updatedFullChat });
 
             res.status(204).send();
         } catch (e) {
@@ -1818,29 +1830,12 @@ function initHttp() {
                 return res.json({ message: 'No messages to rewind (target is the latest message).' });
             }
 
-            let modified = false;
-            const existingDeletedSet = new Set(chat.deletedMessageIds || []);
+            // 3. Soft-delete all messages after the target (both own and inherited)
+            // Messages stay in messages[] to preserve branch point references
+            const idsToDelete = messagesToDelete.map(m => m.id);
 
-            // 3. Process deletions based on ownership
-            for (const msg of messagesToDelete) {
-                if (msg._isInherited) {
-                    // Inherited message: Add to deletedMessageIds list for this branch
-                    if (!existingDeletedSet.has(msg.id)) {
-                        existingDeletedSet.add(msg.id);
-                        modified = true;
-                    }
-                } else {
-                    // Owned message: Remove from the local messages array
-                    const localIndex = chat.messages.findIndex(m => m.id === msg.id);
-                    if (localIndex !== -1) {
-                        chat.messages.splice(localIndex, 1);
-                        modified = true;
-                    }
-                }
-            }
-
-            if (modified) {
-                chat.deletedMessageIds = Array.from(existingDeletedSet);
+            if (idsToDelete.length > 0) {
+                softDeleteMessages(chat, idsToDelete);
                 chat.lastModifiedAt = new Date().toISOString();
 
                 await fs.writeFile(chatPath, JSON.stringify(chat, null, 2));
