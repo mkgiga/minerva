@@ -139,7 +139,6 @@ class MinervaModal extends BaseComponent {
             .modal-body {
                 overflow-y: auto; padding: var(--spacing-lg); flex-grow: 1;
                 line-height: 1.6;
-                white-space: pre-wrap; /* For simple text messages */
             }
             
             footer {
