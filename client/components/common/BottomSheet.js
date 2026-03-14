@@ -40,7 +40,7 @@ class BottomSheet extends BaseComponent {
         sheet.addEventListener('touchend', this._onTouchEnd);
 
         const backdrop = this.shadowRoot.querySelector('.bottom-sheet-backdrop');
-        backdrop.addEventListener('click', this.handleBackdropClick);
+        backdrop.addEventListener('pointerdown', this.handleBackdropClick);
     }
 
     disconnectedCallback() {
