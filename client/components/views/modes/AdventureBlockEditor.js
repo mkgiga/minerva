@@ -12,6 +12,7 @@ export class AdventureBlockEditor extends BaseComponent {
     constructor() {
         super();
         this.render();
+        this._boundHandleGlobalClick = this.#handleGlobalClick.bind(this);
     }
 
     static get observedAttributes() {
@@ -69,7 +70,7 @@ export class AdventureBlockEditor extends BaseComponent {
         speechInput.addEventListener('input', () => this.#autoGrow(speechInput));
 
         // Close dropdown when clicking anywhere else
-        document.addEventListener('click', this.#handleGlobalClick.bind(this));
+        document.addEventListener('click', this._boundHandleGlobalClick);
 
         this.#updateView();
     }
@@ -80,7 +81,7 @@ export class AdventureBlockEditor extends BaseComponent {
     }
     
     disconnectedCallback() {
-        document.removeEventListener('click', this.#handleGlobalClick.bind(this));
+        document.removeEventListener('click', this._boundHandleGlobalClick);
     }
 
     #handleGlobalClick(e) {

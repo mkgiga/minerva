@@ -753,7 +753,7 @@ export class AdventureChatMode extends BaseChatMode {
 
     #applySettings() { this.style.setProperty("--adventure-block-gap", `${this.#settings.blockGap}rem`); }
 
-    onChatSwitched() { this.refreshChatHistory(); this.#rebuildStrippedHistory(); this.#refreshInputContext(); }
+    onChatSwitched() { this.#justAnimatedMessageIds.clear(); this.refreshChatHistory(); this.#rebuildStrippedHistory(); this.#refreshInputContext(); }
     onChatBranched() { this.#rebuildStrippedHistory(); }
     onParticipantsChanged() { this.#patchAvatarsAndNames(); this.#refreshInputContext(); }
     onAllCharactersChanged() { this.#patchAvatarsAndNames(); this.#refreshInputContext(); }
@@ -1824,6 +1824,11 @@ export class AdventureChatMode extends BaseChatMode {
      * Setup long-press gesture for message menu on touch devices
      */
     #setupLongPress(messageEl, msg) {
+        // Clean up previous long-press listeners on this element to prevent accumulation
+        if (messageEl._longPressCleanup) {
+            messageEl._longPressCleanup();
+        }
+
         let pressTimer = null;
         let startX, startY;
         let isLongPressing = false;
@@ -1941,17 +1946,28 @@ export class AdventureChatMode extends BaseChatMode {
         };
 
         // Prevent context menu on long-press (iOS/Android native menu)
-        messageEl.addEventListener('contextmenu', (e) => {
+        const handleContextMenu = (e) => {
             if (isLongPressing || pressTimer) {
                 e.preventDefault();
             }
-        });
+        };
 
+        messageEl.addEventListener('contextmenu', handleContextMenu);
         messageEl.addEventListener('touchstart', handleTouchStart, { passive: true });
         messageEl.addEventListener('touchmove', handleTouchMove, { passive: true });
         messageEl.addEventListener('touchend', handleTouchEnd, { passive: false });
         messageEl.addEventListener('touchcancel', handleTouchEnd);
         messageEl.addEventListener('click', handleClick, { capture: true });
+
+        // Store cleanup function so future calls can remove these listeners
+        messageEl._longPressCleanup = () => {
+            messageEl.removeEventListener('contextmenu', handleContextMenu);
+            messageEl.removeEventListener('touchstart', handleTouchStart);
+            messageEl.removeEventListener('touchmove', handleTouchMove);
+            messageEl.removeEventListener('touchend', handleTouchEnd);
+            messageEl.removeEventListener('touchcancel', handleTouchEnd);
+            messageEl.removeEventListener('click', handleClick, { capture: true });
+        };
     }
 
     #createMessageMenuButton(msg) {

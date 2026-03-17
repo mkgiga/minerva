@@ -9,6 +9,7 @@ class MinervaImagePreview extends BaseComponent {
     constructor() {
         super();
         this.render();
+        this._boundHandleKeyDown = this.#handleKeyDown.bind(this);
     }
 
     connectedCallback() {
@@ -19,11 +20,11 @@ class MinervaImagePreview extends BaseComponent {
         this.#backdrop.addEventListener('click', this.#handleBackdropClick.bind(this));
         this.#closeButton.addEventListener('click', this.hide.bind(this));
         // Allow closing with Escape key
-        document.addEventListener('keydown', this.#handleKeyDown.bind(this));
+        document.addEventListener('keydown', this._boundHandleKeyDown);
     }
 
     disconnectedCallback() {
-        document.removeEventListener('keydown', this.#handleKeyDown.bind(this));
+        document.removeEventListener('keydown', this._boundHandleKeyDown);
     }
 
     /**
