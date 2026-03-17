@@ -1136,6 +1136,31 @@ function initHttp() {
         } catch (error) { res.status(500).json({ message: 'Failed to delete scenario' }); }
     });
 
+    app.post('/api/scenarios/:id/start', async (req, res) => {
+        try {
+            const scenario = state.scenarios.find(s => s.id === req.params.id);
+            if (!scenario) return res.status(404).json({ message: 'Scenario not found' });
+
+            const newChat = new Chat({
+                name: scenario.name,
+                participants: [...scenario.participants],
+                notes: [...scenario.notes],
+            });
+
+            if (scenario.firstMessage) {
+                newChat.addMessage({ role: 'assistant', content: scenario.firstMessage });
+            }
+
+            await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
+            state.chats.push(newChat);
+            broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'create', data: newChat.getSummary() });
+            res.status(201).json(newChat);
+        } catch (error) {
+            console.error('Failed to start chat from scenario:', error);
+            res.status(500).json({ message: 'Failed to start chat from scenario' });
+        }
+    });
+
     app.post('/api/scenarios/:id/image', scenarioUpload.single('image'), async (req, res) => {
         try {
             const { id } = req.params;
@@ -1416,14 +1441,7 @@ function initHttp() {
         res.json(chats.map(c => new Chat(c)).sort((a, b) => new Date(b.lastModifiedAt) - new Date(a.lastModifiedAt)).map(c => c.getSummary()));
     });
     app.post('/api/chats', async (req, res) => {
-        const { firstMessage, ...chatData } = req.body;
-        const newChat = new Chat(chatData);
-
-        // Handle scenario-based initialization
-        if (firstMessage) {
-            newChat.addMessage({ role: 'assistant', content: firstMessage });
-        }
-
+        const newChat = new Chat(req.body);
         await fs.writeFile(path.join(CHATS_DIR, `${newChat.id}.json`), JSON.stringify(newChat, null, 2));
         state.chats.push(newChat);
         broadcastEvent('resourceChange', { resourceType: 'chat', eventType: 'create', data: newChat.getSummary() });

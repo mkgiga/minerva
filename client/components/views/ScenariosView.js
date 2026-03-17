@@ -258,14 +258,7 @@ class ScenariosView extends BaseComponent {
 
     async handleStartChat(scenario) {
         try {
-            const payload = {
-                name: scenario.name,
-                participants: [...scenario.participants],
-                notes: [...scenario.notes],
-                firstMessage: scenario.firstMessage
-            };
-            
-            const newChat = await api.post('/api/chats', payload);
+            const newChat = await api.post(`/api/scenarios/${scenario.id}/start`);
             
             // Navigate to main chat view and select the new chat
             this.dispatch('navigate-to-view', { 
