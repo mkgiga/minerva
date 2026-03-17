@@ -261,10 +261,12 @@ class ScenariosView extends BaseComponent {
             const newChat = await api.post(`/api/scenarios/${scenario.id}/start`);
             
             // Navigate to main chat view and select the new chat
-            this.dispatch('navigate-to-view', { 
-                view: 'chat', 
-                state: { selectedChatId: newChat.id } // MainChatView needs to support this
-            });
+            setTimeout(() => { // Delay to ensure chat is created before navigating
+                this.dispatch('navigate-to-view', { 
+                    view: 'chat', 
+                    state: { selectedChatId: newChat.id } // MainChatView needs to support this
+                });
+            }, 100);
             
             notifier.show({ type: 'good', message: 'Chat started from scenario.' });
         } catch (error) {
