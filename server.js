@@ -2951,7 +2951,7 @@ class ConnectionConfig {
             _rev: CURRENT_REV,
         }, data);
     }
-    toJSON() { return { id: this.id, name: this.name, provider: this.provider, url: this.url, apiKey: this.apiKey, _rev: this._rev }; }
+    toJSON() { return { ...this }; }
 }
 
 
