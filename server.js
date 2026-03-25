@@ -590,6 +590,15 @@ function resolveMacros(text, context) {
  * @param {AbortSignal} signal The AbortSignal to cancel the process.
  * @returns {AsyncGenerator<string>} The final stream to be sent to the client.
  */
+function getActiveGenerationParams(genConfig, providerId) {
+    if (!genConfig?.parameters?.[providerId]) return {};
+    const { _disabled, ...params } = genConfig.parameters[providerId];
+    if (Array.isArray(_disabled)) {
+        for (const key of _disabled) delete params[key];
+    }
+    return params;
+}
+
 async function getFinalStream(initialStream, defaultProvider, generationParameters, signal) {
     if (!state.settings.chat?.curateResponse) {
         return initialStream;
@@ -633,11 +642,7 @@ async function getFinalStream(initialStream, defaultProvider, generationParamete
                     const { activeGenerationConfigId } = state.settings;
                     if (activeGenerationConfigId) {
                         const genConfig = state.generationConfigs.find(c => c.id === activeGenerationConfigId);
-                        if (genConfig && genConfig.parameters && genConfig.parameters[config.provider]) {
-                            curationGenParams = genConfig.parameters[config.provider];
-                        } else {
-                            curationGenParams = {}; // Default if no specific params found for this provider
-                        }
+                        curationGenParams = getActiveGenerationParams(genConfig, config.provider);
                     } else {
                         curationGenParams = {};
                     }
@@ -2160,9 +2165,7 @@ function initHttp() {
         const genConfig = activeGenerationConfigId ? state.generationConfigs.find(c => c.id === activeGenerationConfigId) : null;
 
         if (genConfig) {
-            if (genConfig.parameters && genConfig.parameters[config.provider]) {
-                generationParameters = genConfig.parameters[config.provider];
-            }
+            generationParameters = getActiveGenerationParams(genConfig, config.provider);
 
             // Add the generation config's system prompt to system parts
             if (genConfig.systemPrompt) {

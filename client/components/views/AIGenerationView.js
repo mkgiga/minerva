@@ -26,6 +26,7 @@ class AIGenerationView extends BaseComponent {
         this.render();
         this.itemList = this.shadowRoot.querySelector('item-list');
         this.schemaForm = this.shadowRoot.querySelector('#generation-schema-form');
+        this.schemaForm.toggleable = true;
 
         this.attachEventListeners();
         window.addEventListener('minerva-resource-changed', this.handleResourceChange);
