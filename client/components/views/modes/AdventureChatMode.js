@@ -2062,7 +2062,7 @@ export class AdventureChatMode extends BaseChatMode {
             }
             #history-loader-container { min-height: 36px; }
             .loader-wrapper { display: flex; justify-content: center; padding: var(--spacing-xs) 0; }
-            #load-more-btn { padding: var(--spacing-xs) var(--spacing-md); font-size: 0.6rem; }
+            #load-more-btn { padding: var(--spacing-xs) var(--spacing-md); font-size: var(--font-size-sm); }
             
             #chat-form {
                 display: flex;
@@ -2177,16 +2177,16 @@ export class AdventureChatMode extends BaseChatMode {
                 display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;
             }
             
-            .chat-message { display: flex; flex-direction: column; gap: 0; position: relative; font-size: 0.6rem; margin-bottom: var(--spacing-sm); }
+            .chat-message { display: flex; flex-direction: column; gap: 0; position: relative; margin-bottom: var(--spacing-sm); }
             .chat-message.assistant.adventure-mode { position: relative; }
             .chat-message:not(.assistant.adventure-mode) { display: flex; width: 100%; }
             .chat-message .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 3px; background-color: var(--bg-3); }
             .message-bubble { background-color: var(--accent-primary-faded); padding-bottom: var(--spacing-md); padding-left: var(--spacing-md); flex-grow: 1; position: relative; width: 100%; border-radius: var(--radius-sm); }
             .chat-message.user .message-bubble { position: relative; display: flex; flex-direction: column; color: var(--text-primary); padding-bottom: var(--spacing-sm); width: 100%; }
-            .message-content { font-size: 0.6rem; line-height: 1.4; }
+            .message-content { line-height: 1.4; }
             .chat-message.user { margin-left: var(--spacing-md); }
             .message-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs); margin-top: var(--spacing-xs); }
-            .author-name { font-weight: 600; font-size: 0.6rem; }
+            .author-name { font-weight: 600; font-size: var(--font-size-sm); }
             
             .adventure-pause { display: none; }
 
@@ -2213,7 +2213,7 @@ export class AdventureChatMode extends BaseChatMode {
             @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             
             /* -- New Block Styles -- */
-            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; font-size: 0.6rem; margin-bottom: var(--adventure-block-gap, 0.75rem); }
+            .adventure-block { padding-top: 0; transition: opacity 0.4s ease-out; margin-bottom: var(--adventure-block-gap, 0.75rem); }
             
             .adventure-text {
                 position: relative;
@@ -2290,13 +2290,12 @@ export class AdventureChatMode extends BaseChatMode {
             }
             .adventure-speaker-name {
                 font-weight: 600; color: var(--text-primary);
-                font-size: 1.2rem; margin-bottom: 2px;
+                font-size: var(--font-size-lg); margin-bottom: 2px;
                 display: block; /* Ensures name takes up a line */
             }
             .adventure-speech-content {
                 color: var(--text-secondary);
                 line-height: 1.4;
-                font-size: 0.6rem; /* Match narration text size */
                 display: block; /* Text follows flow rules around float */
             }
             .adventure-speech-content p { margin: 0; line-height: 1.4; }
@@ -2342,7 +2341,7 @@ export class AdventureChatMode extends BaseChatMode {
             }
             .adventure-continue-text {
                 color: var(--accent-primary);
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
@@ -2363,7 +2362,7 @@ export class AdventureChatMode extends BaseChatMode {
             }
             .adventure-prompt-info {
                 color: var(--text-secondary);
-                font-size: 0.9rem;
+                font-size: var(--font-size-sm);
                 margin-bottom: var(--spacing-sm);
             }
             .adventure-prompt-choices {
@@ -2377,7 +2376,7 @@ export class AdventureChatMode extends BaseChatMode {
                 border-radius: var(--radius-sm);
                 padding: var(--spacing-sm) var(--spacing-md);
                 color: var(--text-primary);
-                font-size: 0.9rem;
+                font-size: var(--font-size-md);
                 text-align: left;
                 cursor: pointer;
                 transition: var(--transition-fast);
@@ -2391,7 +2390,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-image-caption {
                 padding: var(--spacing-sm) var(--spacing-md);
                 color: var(--text-secondary);
-                font-size: 0.85rem;
+                font-size: var(--font-size-sm);
                 font-style: italic;
             }
 
@@ -2399,45 +2398,46 @@ export class AdventureChatMode extends BaseChatMode {
             .modal-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center; }
             .modal-content { background-color: var(--bg-1); border-radius: var(--radius-md); max-width: 500px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }
             .modal-content header { display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--bg-3); }
-            .modal-content header h2 { margin: 0; font-size: 1.2rem; color: var(--text-primary); }
+            .modal-content header h2 { margin: 0; font-size: var(--font-size-lg); color: var(--text-primary); }
             .close-modal-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); border-radius: var(--radius-sm); }
             .close-modal-btn:hover { color: var(--text-primary); background-color: var(--bg-2); }
             .modal-body { display: flex; flex-direction: column; overflow-y: auto; flex-grow: 1; gap: var(--spacing-md); padding: var(--spacing-md); }
             .modal-search-bar { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); border: 1px solid var(--bg-3); background-color: var(--bg-0); border-radius: var(--radius-sm); flex-shrink: 0; }
-            .modal-search-bar input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); font-size: 0.9rem; }
+            .modal-search-bar input { background: none; border: none; outline: none; width: 100%; color: var(--text-primary); font-size: var(--font-size-md); }
             .character-list { display: flex; flex-direction: column; gap: var(--spacing-xs); }
             .character-item { display: flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); background-color: var(--bg-0); border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition-fast); border: 1px solid transparent; }
             .character-item:hover { background-color: var(--bg-2); }
             .character-item.is-persona { background-color: var(--accent-primary-faded); border-color: var(--accent-primary); }
             .character-item img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background-color: var(--bg-3); flex-shrink: 0; }
-            .character-item .character-name { flex-grow: 1; color: var(--text-primary); font-size: 0.9rem; font-weight: 500; }
+            .character-item .character-name { flex-grow: 1; color: var(--text-primary); font-size: var(--font-size-md); font-weight: 500; }
             .character-item .persona-icon { color: var(--accent-good); font-size: 20px; }
             
             @media (max-width: 768px) {
-                #chat-history { 
+                #chat-history {
                     padding: var(--spacing-md);
-                    gap: var(--spacing-sm); 
+                    gap: var(--spacing-sm);
                 }
-                .chat-message { display: flex; flex-direction: column; font-size: 0.6rem; gap: var(--spacing-sm); }
+                .chat-message { display: flex; flex-direction: column; gap: var(--spacing-sm); }
                 /* Hide ellipses button on mobile - use long-press gesture instead */
                 .chat-message .message-menu-trigger,
                 .chat-message.adventure-mode .message-menu-trigger.adventure-menu,
                 .chat-message.user.adventure-mode .message-menu-trigger.adventure-menu,
                 .message-header .message-menu-trigger { display: none !important; }
-                .adventure-speech { gap: 8px; font-size: 0.6rem; }
+                .adventure-speech { gap: 8px; }
                 .adventure-speaker-avatar { width: 64px; height: 64px; border-radius: var(--radius-sm); }
                 .adventure-image, .adventure-image.layout-side-by-side, .adventure-image.layout-overlay { display: flex; flex-direction: column; background-color: var(--bg-0); }
                 .adventure-image-container { order: 1; max-height: 250px; }
                 .adventure-image-display { object-fit: contain; }
                 .adventure-image-content { order: 2; grid-area: auto; padding: var(--spacing-sm) var(--spacing-md); background: none; color: inherit; }
+                .adventure-text,
                 .adventure-text *,
                 .adventure-speech-content,
                 .adventure-speech-content * {
-                    font-size: 12px;
+                    font-size: var(--font-size-md);
                     line-height: 1.4;
                 }
                 .adventure-speaker-name {
-                    font-size: 0.85rem;
+                    font-size: var(--font-size-md);
                 }
             }
         `;

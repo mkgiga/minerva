@@ -1968,7 +1968,7 @@ class MainChatView extends BaseComponent {
             #multi-select-controls button { flex-grow: 1; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); }
             .panel-main { padding: 0; position: relative; }
             .chat-main-header { display: none; padding: var(--spacing-sm) var(--spacing-lg); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; align-items: center; gap: var(--spacing-md); }
-            #chat-name-input { flex-grow: 1; font-size: 1.2rem; font-weight: 600; background: none; border: none; outline: none; color: var(--text-primary); padding: var(--spacing-xs); border-radius: var(--radius-sm); }
+            #chat-name-input { flex-grow: 1; font-size: var(--font-size-xl); font-weight: 600; background: none; border: none; outline: none; color: var(--text-primary); padding: var(--spacing-xs); border-radius: var(--radius-sm); }
             #chat-name-input:focus { background-color: var(--bg-1); }
             #chat-mode-container { display: none; flex-grow: 1; flex-direction: column; overflow: hidden; }
             .placeholder { flex-grow: 1; display: flex; align-items: center; justify-content: center; color: var(--text-disabled); text-align: center; }
@@ -1976,7 +1976,7 @@ class MainChatView extends BaseComponent {
             .modal-content { background-color: var(--bg-1); border: 1px solid var(--bg-3); border-radius: var(--radius-md); width: 90%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
             .modal-content.large { max-width: 800px; }
             .modal-content header { display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; }
-            .modal-content header h2 { margin: 0; font-size: 1.1rem; }
+            .modal-content header h2 { margin: 0; font-size: var(--font-size-lg); }
             .close-modal-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-xs); }
             .close-modal-btn:hover { color: var(--text-primary); }
             .modal-body { display: flex; flex-direction: column; overflow-y: auto; flex-grow: 1; gap: var(--spacing-md); }
@@ -1989,7 +1989,7 @@ class MainChatView extends BaseComponent {
             #go-to-parent-btn { display: none; }
             #export-chat-btn { display: none; } /* Hidden by default, shown when chat is selected */
             .mobile-chat-header { display: flex; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--bg-3); flex-shrink: 0; align-items: center; gap: var(--spacing-sm); }
-            .mobile-chat-header h2 { flex-grow: 1; margin: 0; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .mobile-chat-header h2 { flex-grow: 1; margin: 0; font-size: var(--font-size-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             #back-to-chats-btn { display: none; }
             #chat-title-mobile { cursor: pointer; }
             #chat-title-mobile[contenteditable="true"] { outline: 2px solid var(--accent-primary); outline-offset: 2px; border-radius: var(--radius-sm); padding: 2px 4px; white-space: normal; overflow: visible; }
