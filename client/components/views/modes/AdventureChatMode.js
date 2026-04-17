@@ -2218,7 +2218,7 @@ export class AdventureChatMode extends BaseChatMode {
             .adventure-text {
                 position: relative;
                 display: flow-root;
-                color: var(--text-secondary);
+                color: var(--text-disabled);
                 padding: 0 calc(var(--spacing-md));
                 line-height: 1.5;
                 z-index: 0;
@@ -2294,7 +2294,7 @@ export class AdventureChatMode extends BaseChatMode {
                 display: block; /* Ensures name takes up a line */
             }
             .adventure-speech-content {
-                color: var(--text-secondary);
+                color: var(--text-primary);
                 line-height: 1.4;
                 display: block; /* Text follows flow rules around float */
             }
